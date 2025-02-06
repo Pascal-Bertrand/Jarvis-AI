@@ -1,7 +1,7 @@
-import openai
-import os
+from openai import OpenAI
 from typing import Dict, Optional
-OPENAI_API_KEY="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"
+
+client = OpenAI(api_key="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")
 
 
 class Network:
@@ -93,7 +93,7 @@ class LLMNode:
         Send a prompt to the OpenAI ChatCompletion endpoint (or a future LLM call).
         """
         try:
-            completion = openai.ChatCompletion.create(
+            completion = client.chat.completions.create(
                 messages=[{"role": "system", "content": "You are a helpful assistant."},
                           {"role": "user", "content": prompt}],
                 **self.llm_params
