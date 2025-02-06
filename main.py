@@ -1,16 +1,13 @@
 from openai import OpenAI
 from typing import Dict, Optional
+import json
+
 
 client = OpenAI(api_key="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")
 
-
 class Network:
-    """
-    The Network class manages communication between LLMNode instances.
-    It can optionally log all messages to a text file.
-    """
     def __init__(self, log_file: Optional[str] = None):
-        self.nodes: Dict[str, 'LLMNode'] = {}
+        self.nodes: Dict[str, LLMNode] = {}
         self.log_file = log_file
 
     def register_node(self, node: 'LLMNode'):
@@ -18,27 +15,17 @@ class Network:
         node.network = self
 
     def send_message(self, sender_id: str, recipient_id: str, content: str):
-        """
-        Deliver a message from sender to recipient. Also log the exchange if a log file is specified.
-        """
-        # Log the message
         self._log_message(sender_id, recipient_id, content)
 
-        # Deliver the message
-        recipient_node = self.nodes.get(recipient_id)
-        if recipient_node:
-            recipient_node.receive_message(content, sender_id)
+        if recipient_id in self.nodes:
+            self.nodes[recipient_id].receive_message(content, sender_id)
         else:
-            print(f"Node {recipient_id} not found in the network.")
+            print(f"Node {recipient_id} not found.")
 
     def _log_message(self, sender_id: str, recipient_id: str, content: str):
-        """
-        Append the message to a log file if specified.
-        """
         if self.log_file:
             with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(f"From {sender_id} to {recipient_id}: {content}\n")
-
 
 class LLMNode:
     """
@@ -57,7 +44,7 @@ class LLMNode:
         self.llm_api_key = llm_api_key
         self.llm_params = llm_params if llm_params is not None else {
             "model": "gpt-3.5-turbo",
-            "temperature": 0.7
+            "temperature": 0.9
         }
 
         self.network: Optional[Network] = None
@@ -105,38 +92,89 @@ class LLMNode:
 
     def plan_project(self, objective: str):
         """
-        An example method to show how this node can leverage LLM logic to plan
-        a project and potentially involve other nodes.
+        Instruct the LLM to create a structured plan in JSON.
+        Then parse the plan and automatically message the relevant nodes.
         """
-        prompt = f"Objective: {objective}\n\n"
-        plan = self.query_llm(prompt + 
-                              "Please propose a step-by-step plan, including which roles/people to involve.")
-        print(f"[{self.node_id}] Proposed plan:\n{plan}")
-        # Here, you could parse the plan to identify relevant people and send messages automatically.
-        # For now, just printing it out.
+
+        # 1. Define a JSON structure in the prompt
+        plan_prompt = f"""
+        You are creating a project plan for the following objective:
+        {objective}
+
+        Return your answer in valid JSON with the following structure:
+        {{
+          "plan": [
+            {{
+              "role": "string, e.g. 'marketing' or 'engineering'",
+              "action": "string describing the action to be taken",
+              "details": "additional context or info about this step"
+            }},
+            ...
+          ]
+        }}
+        Only return valid JSON, no extra commentary.
+        """
+
+        # 2. Query the LLM
+        response = self.query_llm(plan_prompt)
+        print(f"[{self.node_id}] LLM raw response:\n{response}\n")
+
+        # 3. Parse the JSON
+        try:
+            data = json.loads(response)
+            plan_list = data.get("plan", [])
+
+            print(f"[{self.node_id}] Parsed plan: {plan_list}")
+
+            # 4. For demonstration, define how to map roles to node_ids
+            role_to_node = {
+                "marketing": "marketing",
+                "engineering": "engineering",
+                "design": "design",
+                "ceo": "ceo"  # If needed
+            }
+
+            # 5. Loop over the plan items and send messages
+            for item in plan_list:
+                role = item.get("role", "").lower()
+                action = item.get("action", "")
+                details = item.get("details", "")
+
+                if role in role_to_node:
+                    target_node = role_to_node[role]
+
+                    # Construct a message to the target
+                    message_text = (
+                        f"New action item for '{role}':\n"
+                        f"Action: {action}\n"
+                        f"Details: {details}\n"
+                        f"Objective: {objective}\n"
+                    )
+
+                    # Send the message to the appropriate LLM node
+                    self.send_message(target_node, message_text)
+                else:
+                    print(f"[{self.node_id}] No mapping for role '{role}'. Skipping.")
+
+        except json.JSONDecodeError as e:
+            print(f"[{self.node_id}] Error: Could not parse LLM response as JSON.\n{e}")
 
 
 def demo_run():
-    # Suppose we have a network for our small organization
     net = Network(log_file="communication_log.txt")
 
-    # Create a few LLMNodes with some minimal knowledge
-    ceo = LLMNode(node_id="ceo", knowledge="Knows about the entire org. Key players: marketing, engineering, design.")
-    marketing = LLMNode(node_id="marketing", knowledge="Knows about market trends and customer needs.")
-    engineering = LLMNode(node_id="engineering", knowledge="Knows about product technical details and code base.")
-    design = LLMNode(node_id="design", knowledge="Knows about user interfaces and design best practices.")
+    ceo = LLMNode(node_id="ceo", knowledge="Knows the entire org structure.")
+    marketing = LLMNode(node_id="marketing", knowledge="Knows about markets.")
+    engineering = LLMNode(node_id="engineering", knowledge="Knows about product code.")
+    design = LLMNode(node_id="design", knowledge="Knows about UI/UX.")
 
-    # Register them with the network
     net.register_node(ceo)
     net.register_node(marketing)
     net.register_node(engineering)
     net.register_node(design)
 
-    # Demonstration: The CEO wants to start a new project
+    # CEO starts a new project, automatically triggering a plan, which dispatches messages
     ceo.plan_project("Build a new AI-powered feature for our main product.")
-
-    # CEO manually decides to reach out to the marketing team
-    ceo.send_message("marketing", "Hey marketing, we are starting a new AI feature. Let's brainstorm positioning.")
 
 
 if __name__ == "__main__":
