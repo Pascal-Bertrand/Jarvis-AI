@@ -112,7 +112,7 @@ class LLMNode:
         combined_messages = system_prompt + messages
 
         try:
-            completion = openai.Chat.create(
+            completion = openai.ChatCompletion.create(
                 model=self.llm_params["model"],
                 messages=combined_messages,
                 temperature=self.llm_params.get("temperature", 0.0),
