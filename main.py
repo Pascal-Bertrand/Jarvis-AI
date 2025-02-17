@@ -2,8 +2,11 @@ import openai
 import json
 from typing import Dict, Optional
 
-# Set your OpenAI API key (or via environment variable)
-openai.api_key = "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"
+# Set your OpenAI API key from environment variable
+import os
+openai.api_key = os.getenv("OPENAI_API_KEY")
+if not openai.api_key:
+    raise ValueError("Please set OPENAI_API_KEY in Replit Secrets")
 
 class Network:
     def __init__(self, log_file: Optional[str] = None):
