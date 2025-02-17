@@ -1,9 +1,9 @@
-from openai import OpenAI
-from typing import Dict, Optional
+import openai
 import json
+from typing import Dict, Optional
 
-
-client = OpenAI(api_key="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")
+# Set your OpenAI API key (or via environment variable)
+openai.api_key = "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"
 
 class Network:
     def __init__(self, log_file: Optional[str] = None):
@@ -20,161 +20,254 @@ class Network:
         if recipient_id in self.nodes:
             self.nodes[recipient_id].receive_message(content, sender_id)
         else:
-            print(f"Node {recipient_id} not found.")
+            print(f"Node {recipient_id} not found in the network.")
 
     def _log_message(self, sender_id: str, recipient_id: str, content: str):
         if self.log_file:
             with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(f"From {sender_id} to {recipient_id}: {content}\n")
 
+
 class LLMNode:
-    """
-    Represents a user within the organization, each with their own LLM instance
-    and associated knowledge base.
-    """
-    def __init__(self, node_id: str, knowledge: str = "", llm_api_key: str = "", llm_params: dict = None):
+    def __init__(self, node_id: str, knowledge: str = "",
+                 llm_api_key: str = "", llm_params: dict = None):
         """
-        :param node_id: A unique identifier for the user (e.g., 'ceo', 'marketing', etc.)
-        :param knowledge: A placeholder for the user's knowledge/documents (text for prototype).
-        :param llm_api_key: The API key for OpenAI or other LLM providers.
-        :param llm_params: Dict of parameters for the LLM, e.g. {"model": "gpt-3.5-turbo", "temperature": 0.7}.
+        Changes:
+          - Lowered temperature to reduce verbosity and randomness.
+          - We'll add a 'calendar' structure to track scheduled meetings.
         """
         self.node_id = node_id
         self.knowledge = knowledge
+
+        # If each node can have its own API key, set it here. Otherwise, rely on global openai.api_key.
         self.llm_api_key = llm_api_key
-        self.llm_params = llm_params if llm_params is not None else {
+        if self.llm_api_key:
+            openai.api_key = self.llm_api_key
+
+        # Make responses short and direct
+        self.llm_params = llm_params if llm_params else {
             "model": "gpt-3.5-turbo",
-            "temperature": 0.9
+            "temperature": 0.0,    # Very low => more concise, deterministic
+            "max_tokens": 10000000     # Limit the length of responses
         }
+
+        # Store conversation if needed (but we'll be minimal now)
+        self.conversation_history = []
+
+        # For multiple projects, store them in a dict:
+        # { project_id: { "name": ..., "plan": [...], "participants": set(...) } }
+        self.projects = {}
+
+        # Each node has a calendar for scheduling
+        self.calendar = []  # list of tuples/dicts, e.g., {"project_id":..., "time":...}
 
         self.network: Optional[Network] = None
 
-        # Set the API key (minimal approach, all nodes might share the same key for the prototype)
-        if llm_api_key:
-            openai.api_key = llm_api_key
-
     def receive_message(self, message: str, sender_id: str):
         """
-        Called by the Network when a message arrives.
-        We can feed the message + the node's knowledge into the LLM to generate a response or an action.
+        Receive a message from another node or user.
+        Changes:
+         - We no longer auto-respond with multiple turns. Instead, we do a single short reply if needed.
+         - We keep conversation short: instruct the LLM to be direct and then end.
         """
-        print(f"[{self.node_id}] Received message from {sender_id}: {message}")
+        print(f"[{self.node_id}] Received from {sender_id}: {message}")
 
-        # For demonstration, the node might generate a short LLM-based response:
-        response = self.query_llm(f"User {sender_id} says: {message}\n\n"
-                                  f"My knowledge: {self.knowledge}\n\n"
-                                  "Compose a short helpful reply or next step.")
-        # Optionally send a reply back to the sender:
-        self.send_message(sender_id, response)
+        # Append to short-term memory
+        self.conversation_history.append({"role": "user", "content": f"{sender_id} says: {message}"})
+
+        # We'll decide if we want to generate exactly ONE response or skip.
+        # For demonstration, let's always generate exactly one short response if it's not "plan_project".
+        # If you want no auto-reply, comment out the block below.
+        if "plan" not in message and "meeting" not in message:
+            response = self.query_llm(self.conversation_history)
+            # Add assistant response to history
+            self.conversation_history.append({"role": "assistant", "content": response})
+            # Send a single message back
+            self.send_message(sender_id, response)
+        # If there's any custom logic to detect that info is fully shared, you can skip sending a reply.
 
     def send_message(self, recipient_id: str, content: str):
-        """
-        Send a message to another node via the network.
-        """
-        if self.network is None:
-            raise ValueError("LLMNode is not attached to a network.")
+        if not self.network:
+            print(f"[{self.node_id}] No network attached.")
+            return
         self.network.send_message(self.node_id, recipient_id, content)
 
-    def query_llm(self, prompt: str) -> str:
+    def query_llm(self, messages):
         """
-        Send a prompt to the OpenAI ChatCompletion endpoint (or a future LLM call).
+        We'll use a system prompt that instructs the LLM to be short, direct, and end the conversation.
         """
+        system_prompt = [{
+            "role": "system",
+            "content": (
+                "You are a direct and concise AI agent for an organization. "
+                "Provide short, to-the-point answers. Do not continue the conversation further than necessary. "
+                "End after conveying necessary information."
+            )
+        }]
+
+        # Combine system prompt + messages
+        combined_messages = system_prompt + messages
+
         try:
-            completion = client.chat.completions.create(
-                messages=[{"role": "system", "content": "You are a helpful assistant."},
-                          {"role": "user", "content": prompt}],
-                **self.llm_params
+            completion = openai.Chat.create(
+                model=self.llm_params["model"],
+                messages=combined_messages,
+                temperature=self.llm_params.get("temperature", 0.0),
+                max_tokens=self.llm_params.get("max_tokens", 100)
             )
             return completion.choices[0].message.content.strip()
         except Exception as e:
             print(f"[{self.node_id}] LLM query failed: {e}")
             return "LLM query failed."
 
-    def plan_project(self, objective: str):
+    def plan_project(self, project_id: str, objective: str):
         """
-        Instruct the LLM to create a structured plan in JSON.
-        Then parse the plan and automatically message the relevant nodes.
+        Create a project plan. Then schedule a meeting for the roles involved.
+        Changes:
+         - The plan is short and direct.
+         - Once the plan is parsed, we automatically schedule a meeting with all participants.
         """
+        if project_id not in self.projects:
+            self.projects[project_id] = {
+                "name": objective,
+                "plan": [],
+                "participants": set()
+            }
 
-        # 1. Define a JSON structure in the prompt
         plan_prompt = f"""
-        You are creating a project plan for the following objective:
-        {objective}
+        You are creating a short project plan for project '{project_id}'.
+        Objective: {objective}
 
-        Return your answer in valid JSON with the following structure:
+        Return valid JSON only, with this structure:
         {{
           "plan": [
             {{
-              "role": "string, e.g. 'marketing' or 'engineering'",
-              "action": "string describing the action to be taken",
-              "details": "additional context or info about this step"
-            }},
-            ...
+              "role": "string, e.g. 'marketing', 'engineering'",
+              "action": "short next step"
+            }}
           ]
         }}
-        Only return valid JSON, no extra commentary.
+        Keep it concise. End after providing the JSON. No extra words.
         """
 
-        # 2. Query the LLM
-        response = self.query_llm(plan_prompt)
-        print(f"[{self.node_id}] LLM raw response:\n{response}\n")
+        response = self.query_llm([{"role": "user", "content": plan_prompt}])
+        print(f"[{self.node_id}] LLM raw response (project '{project_id}'): {response}")
 
-        # 3. Parse the JSON
+        # Try to parse JSON
         try:
             data = json.loads(response)
             plan_list = data.get("plan", [])
+            self.projects[project_id]["plan"] = plan_list
 
-            print(f"[{self.node_id}] Parsed plan: {plan_list}")
-
-            # 4. For demonstration, define how to map roles to node_ids
+            # We'll message relevant roles
             role_to_node = {
                 "marketing": "marketing",
                 "engineering": "engineering",
                 "design": "design",
-                "ceo": "ceo"  # If needed
+                "ceo": "ceo"
             }
 
-            # 5. Loop over the plan items and send messages
+            participants = []
             for item in plan_list:
                 role = item.get("role", "").lower()
                 action = item.get("action", "")
-                details = item.get("details", "")
-
                 if role in role_to_node:
-                    target_node = role_to_node[role]
-
-                    # Construct a message to the target
-                    message_text = (
-                        f"New action item for '{role}':\n"
-                        f"Action: {action}\n"
-                        f"Details: {details}\n"
-                        f"Objective: {objective}\n"
-                    )
-
-                    # Send the message to the appropriate LLM node
-                    self.send_message(target_node, message_text)
+                    participants.append(role_to_node[role])
+                    self.send_message(role_to_node[role],
+                                      f"Project '{project_id}': {action}\nObjective: {objective}")
+                    self.projects[project_id]["participants"].add(role_to_node[role])
                 else:
                     print(f"[{self.node_id}] No mapping for role '{role}'. Skipping.")
 
+            # Once the plan is set, schedule a meeting for participants
+            self.schedule_meeting(project_id, participants)
+
         except json.JSONDecodeError as e:
-            print(f"[{self.node_id}] Error: Could not parse LLM response as JSON.\n{e}")
+            print(f"[{self.node_id}] Failed to parse JSON plan: {e}")
+
+    def schedule_meeting(self, project_id: str, participants: list):
+        """
+        Simulate setting up a meeting. We'll assume a simple text 'Meeting for project X'.
+        Then each participant can add it to their own calendars.
+        """
+        meeting_description = f"Meeting for project '{project_id}'"
+        # Just store a placeholder in this node's calendar
+        self.calendar.append({
+            "project_id": project_id,
+            "meeting_info": meeting_description
+        })
+        print(f"[{self.node_id}] Scheduled meeting for '{project_id}' with: {participants}")
+
+        # Notify participants so they add it to their calendars
+        for p in participants:
+            if p in self.network.nodes:
+                self.network.nodes[p].calendar.append({
+                    "project_id": project_id,
+                    "meeting_info": meeting_description
+                })
+                print(f"[{self.node_id}] Notified {p} to add meeting for project '{project_id}'.")
+
+
+def run_cli(network):
+    print("Commands:\n"
+          "  node_id: message => send 'message' to 'node_id'\n"
+          "  node_id: plan project_id = objective => create a new project plan\n"
+          "  quit => exit\n")
+
+    while True:
+        user_input = input("> ")
+        if user_input.lower() == "quit":
+            break
+
+        # Plan project command
+        if "plan" in user_input and "=" in user_input:
+            try:
+                # e.g. "ceo: plan p123 = Build AI feature"
+                node_part, plan_part = user_input.split("plan", 1)
+                node_id = node_part.replace(":", "").strip()
+                plan_part = plan_part.strip()
+                project_id_part, objective_part = plan_part.split("=", 1)
+                project_id = project_id_part.strip()
+                objective = objective_part.strip()
+
+                if node_id in network.nodes:
+                    network.nodes[node_id].plan_project(project_id, objective)
+                else:
+                    print(f"No node found: {node_id}")
+            except Exception as e:
+                print(f"Error parsing plan command: {e}")
+        else:
+            # normal message command: "node_id: some message"
+            if ":" not in user_input:
+                print("Invalid format. Use 'node_id: message' or 'node_id: plan project_id = objective'.")
+                continue
+            node_id, message = user_input.split(":", 1)
+            node_id = node_id.strip()
+            message = message.strip()
+
+            if node_id in network.nodes:
+                network.nodes[node_id].receive_message(message, "cli_user")
+            else:
+                print(f"No node with ID '{node_id}' found.")
 
 
 def demo_run():
     net = Network(log_file="communication_log.txt")
 
-    ceo = LLMNode(node_id="ceo", knowledge="Knows the entire org structure.")
-    marketing = LLMNode(node_id="marketing", knowledge="Knows about markets.")
-    engineering = LLMNode(node_id="engineering", knowledge="Knows about product code.")
-    design = LLMNode(node_id="design", knowledge="Knows about UI/UX.")
+    # Create nodes
+    ceo = LLMNode("ceo", knowledge="Knows entire org structure.")
+    marketing = LLMNode("marketing", knowledge="Knows about markets.")
+    engineering = LLMNode("engineering", knowledge="Knows codebase.")
+    design = LLMNode("design", knowledge="Knows UI/UX best practices.")
 
+    # Register them
     net.register_node(ceo)
     net.register_node(marketing)
     net.register_node(engineering)
     net.register_node(design)
 
-    # CEO starts a new project, automatically triggering a plan, which dispatches messages
-    ceo.plan_project("Build a new AI-powered feature for our main product.")
+    # Start the CLI
+    run_cli(net)
 
 
 if __name__ == "__main__":
