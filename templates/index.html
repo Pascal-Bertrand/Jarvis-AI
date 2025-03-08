@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Network Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .task {
+            border-left: 4px solid #4CAF50;
+            padding-left: 10px;
+            margin-bottom: 10px;
+        }
+        .high { border-left-color: #f44336; }
+        .medium { border-left-color: #ff9800; }
+        .low { border-left-color: #4CAF50; }
+        .node-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .node-item {
+            background-color: #e0e0e0;
+            padding: 8px 16px;
+            border-radius: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LLM Network Dashboard</h1>
+        
+        <div class="card">
+            <h2>Nodes</h2>
+            <div id="nodes" class="node-list">Loading...</div>
+        </div>
+        
+        <div class="card">
+            <h2>Projects</h2>
+            <div id="projects">Loading...</div>
+        </div>
+        
+        <div class="card">
+            <h2>Tasks</h2>
+            <div id="tasks">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        // Fetch and display nodes
+        fetch('/nodes')
+            .then(response => response.json())
+            .then(nodes => {
+                const nodesContainer = document.getElementById('nodes');
+                if (nodes.length === 0) {
+                    nodesContainer.textContent = 'No nodes available.';
+                    return;
+                }
+                
+                nodesContainer.innerHTML = '';
+                nodes.forEach(node => {
+                    const nodeElement = document.createElement('div');
+                    nodeElement.className = 'node-item';
+                    nodeElement.textContent = node;
+                    nodesContainer.appendChild(nodeElement);
+                });
+            })
+            .catch(error => {
+                document.getElementById('nodes').textContent = 'Error loading nodes.';
+                console.error('Error fetching nodes:', error);
+            });
+        
+        // Fetch and display projects
+        fetch('/projects')
+            .then(response => response.json())
+            .then(projects => {
+                const projectsContainer = document.getElementById('projects');
+                if (Object.keys(projects).length === 0) {
+                    projectsContainer.textContent = 'No projects available.';
+                    return;
+                }
+                
+                projectsContainer.innerHTML = '';
+                for (const [id, project] of Object.entries(projects)) {
+                    const projectElement = document.createElement('div');
+                    projectElement.className = 'task';
+                    projectElement.innerHTML = `
+                        <h3>${id}: ${project.name}</h3>
+                        <p>Owner: ${project.owner}</p>
+                        <p>Participants: ${project.participants.join(', ')}</p>
+                    `;
+                    projectsContainer.appendChild(projectElement);
+                }
+            })
+            .catch(error => {
+                document.getElementById('projects').textContent = 'Error loading projects.';
+                console.error('Error fetching projects:', error);
+            });
+        
+        // Fetch and display tasks
+        fetch('/tasks')
+            .then(response => response.json())
+            .then(tasks => {
+                const tasksContainer = document.getElementById('tasks');
+                if (tasks.length === 0) {
+                    tasksContainer.textContent = 'No tasks available.';
+                    return;
+                }
+                
+                tasksContainer.innerHTML = '';
+                tasks.forEach(task => {
+                    const taskElement = document.createElement('div');
+                    taskElement.className = `task ${task.priority}`;
+                    const dueDate = new Date(task.due_date).toLocaleDateString();
+                    taskElement.innerHTML = `
+                        <h3>${task.title}</h3>
+                        <p>${task.description}</p>
+                        <p>Due: ${dueDate} | Assigned to: ${task.assigned_to} | Priority: ${task.priority}</p>
+                        <p>Project: ${task.project_id}</p>
+                    `;
+                    tasksContainer.appendChild(taskElement);
+                });
+            })
+            .catch(error => {
+                document.getElementById('tasks').textContent = 'Error loading tasks.';
+                console.error('Error fetching tasks:', error);
+            });
+    </script>
+</body>
+</html> 
