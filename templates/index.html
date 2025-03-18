@@ -37,11 +37,139 @@
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
+            margin-bottom: 20px;
         }
         .node-item {
             background-color: #e0e0e0;
             padding: 8px 16px;
             border-radius: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .node-item:hover {
+            background-color: #ccc;
+        }
+        .node-item.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .chat-messages {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+        }
+        .chat-input-container {
+            display: flex;
+            padding: 10px;
+            background-color: #fff;
+            border-top: 1px solid #ddd;
+        }
+        .chat-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .chat-send-btn {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .chat-send-btn:hover {
+            background-color: #45a049;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+        .user-message {
+            background-color: #DCF8C6;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .agent-message {
+            background-color: #ECECEC;
+            align-self: flex-start;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background-color: #e0e0e0;
+            cursor: pointer;
+            border-radius: 4px 4px 0 0;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-bottom: none;
+        }
+        .terminal-message {
+            background-color: #2d2d2d;
+            color: #f0f0f0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            align-self: stretch;
+            max-width: 100%;
+            overflow-x: auto;
+        }
+        .terminal-toggle {
+            background-color: #444;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 5px;
+        }
+        .terminal-content {
+            background-color: #2d2d2d;
+            color: #f0f0f0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .loading {
+            opacity: 0.6;
+        }
+        .debug-button-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 10px 0;
+            width: 100%;
+        }
+        .debug-button-container .terminal-toggle {
+            font-size: 0.8em;
+            padding: 3px 8px;
         }
     </style>
 </head>
@@ -52,6 +180,16 @@
         <div class="card">
             <h2>Nodes</h2>
             <div id="nodes" class="node-list">Loading...</div>
+        </div>
+        
+        <div class="card">
+            <h2>Chat</h2>
+            <div id="chat-tabs" class="tabs">
+                <!-- Tabs will be added here dynamically -->
+            </div>
+            <div id="chat-tab-contents">
+                <!-- Tab contents will be added here dynamically -->
+            </div>
         </div>
         
         <div class="card">
@@ -66,84 +204,249 @@
     </div>
 
     <script>
+        let activeNodeId = null;
+        let nodes = [];
+        
         // Fetch and display nodes
         fetch('/nodes')
             .then(response => response.json())
-            .then(nodes => {
+            .then(nodeData => {
+                nodes = nodeData;
                 const nodesContainer = document.getElementById('nodes');
+                const chatTabsContainer = document.getElementById('chat-tabs');
+                const chatTabContentsContainer = document.getElementById('chat-tab-contents');
+                
                 if (nodes.length === 0) {
                     nodesContainer.textContent = 'No nodes available.';
                     return;
                 }
                 
                 nodesContainer.innerHTML = '';
+                chatTabsContainer.innerHTML = '';
+                chatTabContentsContainer.innerHTML = '';
+                
                 nodes.forEach(node => {
+                    // Create node item
                     const nodeElement = document.createElement('div');
                     nodeElement.className = 'node-item';
                     nodeElement.textContent = node;
+                    nodeElement.onclick = () => setActiveNode(node);
                     nodesContainer.appendChild(nodeElement);
+                    
+                    // Create chat tab
+                    const tabElement = document.createElement('div');
+                    tabElement.className = 'tab';
+                    tabElement.textContent = node;
+                    tabElement.dataset.nodeId = node;
+                    tabElement.onclick = () => activateTab(node);
+                    chatTabsContainer.appendChild(tabElement);
+                    
+                    // Create chat tab content
+                    const tabContentElement = document.createElement('div');
+                    tabContentElement.className = 'tab-content';
+                    tabContentElement.id = `chat-tab-${node}`;
+                    
+                    tabContentElement.innerHTML = `
+                        <div class="chat-container">
+                            <div class="chat-messages" id="chat-messages-${node}"></div>
+                            <div class="chat-input-container">
+                                <input type="text" class="chat-input" id="chat-input-${node}" placeholder="Type a message...">
+                                <button class="chat-send-btn" onclick="sendMessage('${node}')">Send</button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    chatTabContentsContainer.appendChild(tabContentElement);
+                    
+                    // Add event listener for Enter key
+                    const inputElement = document.getElementById(`chat-input-${node}`);
+                    inputElement.addEventListener('keypress', function(event) {
+                        if (event.key === 'Enter') {
+                            sendMessage(node);
+                        }
+                    });
                 });
+                
+                // Activate the first tab by default
+                if (nodes.length > 0) {
+                    activateTab(nodes[0]);
+                }
             })
             .catch(error => {
                 document.getElementById('nodes').textContent = 'Error loading nodes.';
                 console.error('Error fetching nodes:', error);
             });
         
-        // Fetch and display projects
-        fetch('/projects')
-            .then(response => response.json())
-            .then(projects => {
-                const projectsContainer = document.getElementById('projects');
-                if (Object.keys(projects).length === 0) {
-                    projectsContainer.textContent = 'No projects available.';
-                    return;
-                }
-                
-                projectsContainer.innerHTML = '';
-                for (const [id, project] of Object.entries(projects)) {
-                    const projectElement = document.createElement('div');
-                    projectElement.className = 'task';
-                    projectElement.innerHTML = `
-                        <h3>${id}: ${project.name}</h3>
-                        <p>Owner: ${project.owner}</p>
-                        <p>Participants: ${project.participants.join(', ')}</p>
-                    `;
-                    projectsContainer.appendChild(projectElement);
-                }
-            })
-            .catch(error => {
-                document.getElementById('projects').textContent = 'Error loading projects.';
-                console.error('Error fetching projects:', error);
+        function activateTab(nodeId) {
+            // Deactivate all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
             });
+            
+            // Deactivate all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Activate the selected tab
+            const selectedTab = document.querySelector(`.tab[data-node-id="${nodeId}"]`);
+            if (selectedTab) {
+                selectedTab.classList.add('active');
+            }
+            
+            // Activate the selected tab content
+            const selectedContent = document.getElementById(`chat-tab-${nodeId}`);
+            if (selectedContent) {
+                selectedContent.classList.add('active');
+            }
+        }
         
-        // Fetch and display tasks
-        fetch('/tasks')
+        function setActiveNode(nodeId) {
+            // Update active node
+            document.querySelectorAll('.node-item').forEach(node => {
+                node.classList.remove('active');
+            });
+            
+            document.querySelectorAll('.node-item').forEach(node => {
+                if (node.textContent === nodeId) {
+                    node.classList.add('active');
+                }
+            });
+            
+            activeNodeId = nodeId;
+        }
+        
+        function sendMessage(nodeId) {
+            const inputElement = document.getElementById(`chat-input-${nodeId}`);
+            const message = inputElement.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message to chat
+            addMessageToChat(nodeId, message, 'user');
+            
+            // Clear input
+            inputElement.value = '';
+            
+            // Show loading indicator
+            const loadingId = addLoadingIndicator(nodeId);
+            
+            // Send message to server
+            fetch('/send_message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    node_id: nodeId,
+                    message: message
+                }),
+            })
             .then(response => response.json())
-            .then(tasks => {
-                const tasksContainer = document.getElementById('tasks');
-                if (tasks.length === 0) {
-                    tasksContainer.textContent = 'No tasks available.';
-                    return;
+            .then(data => {
+                // Remove loading indicator
+                removeLoadingIndicator(loadingId);
+                
+                // Add agent response if available
+                if (data.response) {
+                    addMessageToChat(nodeId, data.response, 'agent');
+                } else if (data.terminal_output) {
+                    // If no direct response but terminal output exists, extract response from terminal
+                    const lines = data.terminal_output.split('\n');
+                    let responseFound = false;
+                    
+                    for (const line of lines) {
+                        if (line.includes(`[${nodeId}] Response:`)) {
+                            const response = line.replace(`[${nodeId}] Response:`, '').trim();
+                            addMessageToChat(nodeId, response, 'agent');
+                            responseFound = true;
+                            break;
+                        }
+                    }
+                    
+                    // If no response found in terminal output, show a generic response
+                    if (!responseFound) {
+                        addMessageToChat(nodeId, "Command processed. Check terminal for details.", 'agent');
+                    }
                 }
                 
-                tasksContainer.innerHTML = '';
-                tasks.forEach(task => {
-                    const taskElement = document.createElement('div');
-                    taskElement.className = `task ${task.priority}`;
-                    const dueDate = new Date(task.due_date).toLocaleDateString();
-                    taskElement.innerHTML = `
-                        <h3>${task.title}</h3>
-                        <p>${task.description}</p>
-                        <p>Due: ${dueDate} | Assigned to: ${task.assigned_to} | Priority: ${task.priority}</p>
-                        <p>Project: ${task.project_id}</p>
-                    `;
-                    tasksContainer.appendChild(taskElement);
-                });
+                // Add debug button for terminal output
+                if (data.terminal_output) {
+                    addDebugButton(nodeId, data.terminal_output);
+                }
             })
             .catch(error => {
-                document.getElementById('tasks').textContent = 'Error loading tasks.';
-                console.error('Error fetching tasks:', error);
+                // Remove loading indicator
+                removeLoadingIndicator(loadingId);
+                
+                console.error('Error sending message:', error);
+                addMessageToChat(nodeId, "Error: Couldn't send message", 'agent');
             });
+        }
+        
+        function addLoadingIndicator(nodeId) {
+            const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
+            const loadingElement = document.createElement('div');
+            loadingElement.className = 'message agent-message loading';
+            loadingElement.textContent = 'Thinking...';
+            loadingElement.id = 'loading-' + Date.now();
+            chatMessagesElement.appendChild(loadingElement);
+            
+            // Scroll to bottom
+            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+            
+            return loadingElement.id;
+        }
+        
+        function removeLoadingIndicator(loadingId) {
+            const loadingElement = document.getElementById(loadingId);
+            if (loadingElement) {
+                loadingElement.remove();
+            }
+        }
+        
+        function addDebugButton(nodeId, terminalOutput) {
+            const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
+            const debugButtonContainer = document.createElement('div');
+            debugButtonContainer.className = 'debug-button-container';
+            
+            const debugButton = document.createElement('button');
+            debugButton.textContent = 'Show Terminal Output';
+            debugButton.className = 'terminal-toggle';
+            
+            const terminalContent = document.createElement('pre');
+            terminalContent.className = 'terminal-content';
+            terminalContent.style.display = 'none';
+            terminalContent.textContent = terminalOutput;
+            
+            debugButton.onclick = function() {
+                if (terminalContent.style.display === 'none') {
+                    terminalContent.style.display = 'block';
+                    debugButton.textContent = 'Hide Terminal Output';
+                } else {
+                    terminalContent.style.display = 'none';
+                    debugButton.textContent = 'Show Terminal Output';
+                }
+            };
+            
+            debugButtonContainer.appendChild(debugButton);
+            debugButtonContainer.appendChild(terminalContent);
+            chatMessagesElement.appendChild(debugButtonContainer);
+            
+            // Scroll to bottom
+            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+        }
+        
+        function addMessageToChat(nodeId, message, sender) {
+            const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
+            const messageElement = document.createElement('div');
+            messageElement.className = `message ${sender}-message`;
+            messageElement.textContent = message;
+            chatMessagesElement.appendChild(messageElement);
+            
+            // Scroll to bottom
+            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+        }
     </script>
 </body>
-</html> 
+</html>

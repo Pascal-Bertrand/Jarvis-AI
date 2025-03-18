@@ -324,36 +324,216 @@ class LLMNode:
         """
         print(f"[{self.node_id}] Received from {sender_id}: {message}")
 
-        # Check for calendar-related commands in natural language
+        # Check if this is a message from the CLI user
         if sender_id == "cli_user":
-            # Check for meeting creation request with more patterns
-            if any(phrase in message.lower() for phrase in [
-                "schedule", "set up", "create", "organize", "arrange", "plan a meeting", 
-                "meeting with", "meet with", "get together with"
-            ]):
-                print(f"[{self.node_id}] Detected meeting creation request")
-                self._handle_meeting_creation(message)
-                return
+            # Use LLM to determine if this is a calendar-related command
+            calendar_intent = self._detect_calendar_intent(message)
             
-            # Check for meeting cancellation request
-            if any(phrase in message.lower() for phrase in [
-                "cancel", "delete", "remove", "call off", "postpone", "reschedule"
-            ]) and any(word in message.lower() for word in ["meeting", "appointment", "call"]):
-                print(f"[{self.node_id}] Detected meeting cancellation request")
-                self._handle_meeting_cancellation(message)
-                return
+            if calendar_intent.get("is_calendar_command", False):
+                action = calendar_intent.get("action")
+                
+                if action == "schedule_meeting":
+                    self._handle_meeting_creation(message)
+                    return
+                elif action == "cancel_meeting":
+                    self._handle_meeting_cancellation(message)
+                    return
+                elif action == "list_meetings":
+                    self._handle_list_meetings()
+                    return
+                elif action == "reschedule_meeting":
+                    self._handle_meeting_rescheduling(message)
+                    return
 
         # Record the incoming user message in the conversation history
         self.conversation_history.append({"role": "user", "content": f"{sender_id} says: {message}"})
 
-        # ---- KEY CHANGE ----
         # Only respond with LLM if the message came directly from the CLI user.
-        # If "ceo" or "marketing" or any node sends a message, we do NOT auto-respond.
         if sender_id == "cli_user":
             response = self.query_llm(self.conversation_history)
             self.conversation_history.append({"role": "assistant", "content": response})
             # Just print the response instead of trying to send it back
             print(f"[{self.node_id}] Response: {response}")
+
+    def _detect_calendar_intent(self, message):
+        """Use LLM to detect calendar-related intents in natural language"""
+        prompt = f"""
+        Analyze this message and determine if it's a calendar-related command:
+        
+        "{message}"
+        
+        Return a JSON object with these fields:
+        - is_calendar_command: boolean (true if this is a calendar command, false otherwise)
+        - action: string (one of: "schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or null if not calendar-related)
+        - confidence: number between 0 and 1 indicating confidence in this classification
+        
+        Examples of calendar commands:
+        - "Schedule a meeting with marketing tomorrow"
+        - "Cancel my meeting with engineering"
+        - "Show me my upcoming meetings"
+        - "Move the design review to Friday"
+        - "Set up a project kickoff next week"
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            
+            intent_data = json.loads(response.choices[0].message.content)
+            
+            # Only process as calendar command if confidence is high enough
+            if intent_data.get("confidence", 0) < 0.7:
+                intent_data["is_calendar_command"] = False
+            
+            return intent_data
+        except Exception as e:
+            print(f"[{self.node_id}] Error detecting calendar intent: {str(e)}")
+            return {"is_calendar_command": False, "action": None, "confidence": 0}
+
+    def _handle_list_meetings(self):
+        """Handle request to list upcoming meetings"""
+        if not self.calendar_service:
+            print(f"[{self.node_id}] Calendar service not available, showing local meetings only")
+            if not self.calendar:
+                print(f"[{self.node_id}] No meetings scheduled.")
+                return
+            
+        try:
+            # Get upcoming meetings from Google Calendar
+            now = datetime.utcnow().isoformat() + 'Z'
+            events_result = self.calendar_service.events().list(
+                calendarId='primary',
+                timeMin=now,
+                maxResults=10,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+            events = events_result.get('items', [])
+            
+            if not events:
+                print(f"[{self.node_id}] No upcoming meetings found.")
+                return
+            
+            print(f"[{self.node_id}] Upcoming meetings:")
+            for event in events:
+                start = event['start'].get('dateTime', event['start'].get('date'))
+                start_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                attendees = ", ".join([a.get('email', '').split('@')[0] for a in event.get('attendees', [])])
+                print(f"  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}")
+            
+        except Exception as e:
+            print(f"[{self.node_id}] Error listing meetings: {str(e)}")
+
+    def _handle_meeting_rescheduling(self, message):
+        """Handle natural language meeting rescheduling requests"""
+        if not self.calendar_service:
+            print(f"[{self.node_id}] Calendar service not available, can't reschedule meetings")
+            return
+        
+        try:
+            # Use OpenAI to extract rescheduling details
+            prompt = f"""
+            Extract meeting rescheduling details from this message: "{message}"
+            
+            Return a JSON object with these fields:
+            - meeting_identifier: Information to identify which meeting to reschedule (title, participants, or original date)
+            - new_date: New meeting date (YYYY-MM-DD format)
+            - new_time: New meeting time (HH:MM format)
+            - new_duration: New duration in minutes (or null to keep the same)
+            """
+            
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            
+            reschedule_data = json.loads(response.choices[0].message.content)
+            
+            # Get upcoming meetings
+            now = datetime.utcnow().isoformat() + 'Z'
+            events_result = self.calendar_service.events().list(
+                calendarId='primary',
+                timeMin=now,
+                maxResults=10,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+            events = events_result.get('items', [])
+            
+            if not events:
+                print(f"[{self.node_id}] No upcoming meetings found to reschedule")
+                return
+            
+            # Find the meeting to reschedule
+            meeting_identifier = reschedule_data.get("meeting_identifier", "").lower()
+            target_event = None
+            
+            for event in events:
+                # Check if this event matches the identifier
+                if (meeting_identifier in event.get('summary', '').lower() or
+                    any(meeting_identifier in a.get('email', '').lower() for a in event.get('attendees', []))):
+                    target_event = event
+                    break
+                
+            if not target_event:
+                print(f"[{self.node_id}] Could not find a meeting matching '{meeting_identifier}'")
+                return
+            
+            # Get the new date and time
+            new_date = reschedule_data.get("new_date")
+            new_time = reschedule_data.get("new_time", "10:00")
+            
+            if not new_date:
+                print(f"[{self.node_id}] No new date specified for rescheduling")
+                return
+            
+            # Create datetime objects for the new start and end times
+            new_start_datetime = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
+            
+            # Calculate new end time
+            original_start = datetime.fromisoformat(target_event['start'].get('dateTime').replace('Z', '+00:00'))
+            original_end = datetime.fromisoformat(target_event['end'].get('dateTime').replace('Z', '+00:00'))
+            original_duration = (original_end - original_start).total_seconds() / 60
+            
+            new_duration = reschedule_data.get("new_duration", original_duration)
+            new_end_datetime = new_start_datetime + timedelta(minutes=new_duration)
+            
+            # Update the event
+            target_event['start']['dateTime'] = new_start_datetime.isoformat()
+            target_event['end']['dateTime'] = new_end_datetime.isoformat()
+            
+            updated_event = self.calendar_service.events().update(
+                calendarId='primary',
+                eventId=target_event['id'],
+                body=target_event
+            ).execute()
+            
+            print(f"[{self.node_id}] Meeting '{updated_event.get('summary')}' rescheduled to {new_date} at {new_time}")
+            
+            # Update local calendar
+            for meeting in self.calendar:
+                if meeting.get('event_id') == updated_event['id']:
+                    meeting['meeting_info'] = f"{updated_event.get('summary')} (Rescheduled to {new_date} at {new_time})"
+            
+            # Notify participants
+            for attendee in updated_event.get('attendees', []):
+                attendee_id = attendee.get('email', '').split('@')[0]
+                if attendee_id in self.network.nodes:
+                    # Update their local calendar
+                    for meeting in self.network.nodes[attendee_id].calendar:
+                        if meeting.get('event_id') == updated_event['id']:
+                            meeting['meeting_info'] = f"{updated_event.get('summary')} (Rescheduled to {new_date} at {new_time})"
+                    
+                    # Notify them
+                    notification = f"Meeting '{updated_event.get('summary')}' has been rescheduled by {self.node_id} to {new_date} at {new_time}"
+                    self.network.send_message(self.node_id, attendee_id, notification)
+            
+        except Exception as e:
+            print(f"[{self.node_id}] Error rescheduling meeting: {str(e)}")
 
     def send_message(self, recipient_id: str, content: str):
         if not self.network:
@@ -931,6 +1111,61 @@ def show_projects():
                 }
     
     return jsonify(all_projects)
+
+@app.route('/send_message', methods=['POST'])
+def send_message():
+    global network
+    if not network:
+        return jsonify({"error": "Network not initialized"}), 500
+    
+    data = request.json
+    node_id = data.get('node_id')
+    message = data.get('message')
+    
+    if not node_id or not message:
+        return jsonify({"error": "Missing node_id or message"}), 400
+    
+    if node_id not in network.nodes:
+        return jsonify({"error": f"Node {node_id} not found"}), 404
+    
+    # Create a response collector
+    response_collector = {"response": None, "terminal_output": []}
+    
+    # Override the print function temporarily to capture all output
+    original_print = print
+    
+    def custom_print(text):
+        if isinstance(text, str):
+            # Capture all terminal output
+            response_collector["terminal_output"].append(text)
+            
+            # Also capture the direct response
+            if text.startswith(f"[{node_id}] Response: "):
+                response_collector["response"] = text.replace(f"[{node_id}] Response: ", "")
+        original_print(text)
+    
+    # Replace print function
+    import builtins
+    builtins.print = custom_print
+    
+    try:
+        # Send the message to the node
+        network.nodes[node_id].receive_message(message, "cli_user")
+        
+        # Restore original print function
+        builtins.print = original_print
+        
+        # Format terminal output for display
+        terminal_text = "\n".join(response_collector["terminal_output"])
+        
+        return jsonify({
+            "response": response_collector["response"],
+            "terminal_output": terminal_text
+        })
+    except Exception as e:
+        # Restore original print function
+        builtins.print = original_print
+        return jsonify({"error": str(e)}), 500
 
 def start_flask():
     # Try different ports if 5000 is in use
