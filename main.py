@@ -8,10 +8,12 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import pickle
 from datetime import datetime, timedelta
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
 import threading
 import webbrowser
 from flask_cors import CORS
+import base64
+import tempfile
 
 # Initialize the OpenAI client with your API key
 try:
@@ -32,7 +34,7 @@ if not client.api_key:
 
 # Add these constants at the top level
 SCOPES = ['https://www.googleapis.com/auth/calendar']
-CLIENT_ID = '473172815719-1vso4g75vqfe4p312ngp1htdjgeeve5g.apps.googleusercontent.com'
+CLIENT_ID = '473172815719-uqsf1bv6rior1ctebkernlnamca3mv3e.apps.googleusercontent.com'
 TOKEN_FILE = 'token.pickle'
 
 # Define task structure
@@ -112,9 +114,9 @@ class LLMNode:
 
         # Tuning LLM params for concise answers
         self.llm_params = llm_params if llm_params else {
-            "model": "gpt-4o-mini",
-            "temperature": 0.1,        # Very low => short, deterministic
-            "max_tokens": 1000         # Enough tokens but not huge
+            "model": "gpt-4o",
+            "temperature": 0.1,
+            "max_tokens": 1000
         }
 
         # Store conversation if needed
@@ -130,7 +132,6 @@ class LLMNode:
 
         self.network: Optional[Network] = None
 
-    # Uncomment the calendar service method
     def _get_calendar_service(self):
         """Initialize Google Calendar service with improved error handling"""
         print(f"[{self.node_id}] Initializing Google Calendar service...")
@@ -152,16 +153,30 @@ class LLMNode:
                 print(f"[{self.node_id}] Successfully loaded credentials from token file")
             except Exception as e:
                 print(f"[{self.node_id}] Error loading token file: {str(e)}")
+                # Delete invalid token file
+                os.remove(TOKEN_FILE)
+                print(f"[{self.node_id}] Deleted invalid token file")
+                creds = None
         else:
             print(f"[{self.node_id}] No token file found at {TOKEN_FILE}")
         
         try:
             if not creds or not creds.valid:
                 if creds and creds.expired and creds.refresh_token:
-                    print(f"[{self.node_id}] Refreshing expired credentials")
-                    creds.refresh(Request())
-                    print(f"[{self.node_id}] Credentials refreshed successfully")
-                else:
+                    try:
+                        print(f"[{self.node_id}] Refreshing expired credentials")
+                        creds.refresh(Request())
+                        print(f"[{self.node_id}] Credentials refreshed successfully")
+                    except Exception as e:
+                        print(f"[{self.node_id}] Error refreshing credentials: {str(e)}")
+                        print(f"[{self.node_id}] Will start new OAuth flow")
+                        creds = None
+                        # Delete invalid token file if it exists
+                        if os.path.exists(TOKEN_FILE):
+                            os.remove(TOKEN_FILE)
+                            print(f"[{self.node_id}] Deleted invalid token file")
+                
+                if not creds:
                     print(f"[{self.node_id}] Starting new OAuth flow with client ID: {CLIENT_ID[:10]}...")
                     client_config = {
                         "installed": {
@@ -180,8 +195,14 @@ class LLMNode:
                             scopes=SCOPES
                         )
                         print(f"[{self.node_id}] OAuth flow created successfully")
+                        
+                        # Generate the authorization URL and open it in a web browser
+                        auth_url, _ = flow.authorization_url(prompt='consent')
+                        print(f"[{self.node_id}] Opening authorization URL in browser: {auth_url[:60]}...")
+                        webbrowser.open(auth_url)
+                        
                         print(f"[{self.node_id}] Running local server for authentication on port 8080...")
-                        print(f"[{self.node_id}] Please check your browser. If no browser opens, go to http://localhost:8080")
+                        print(f"[{self.node_id}] Please complete the authorization in your browser")
                         creds = flow.run_local_server(port=8080)
                         print(f"[{self.node_id}] Authentication successful")
                     except Exception as e:
@@ -248,8 +269,7 @@ class LLMNode:
 
     # Replace the local meeting scheduling with Google Calendar version
     def schedule_meeting(self, project_id: str, participants: list):
-        """Updated to use Google Calendar"""
-        # If calendar service is not available, fall back to local scheduling
+        """Updated to use Google Calendar with proper current time"""
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, using local scheduling")
             self._fallback_schedule_meeting(project_id, participants)
@@ -257,15 +277,19 @@ class LLMNode:
             
         meeting_description = f"Meeting for project '{project_id}'"
         
-        # Create event
+        # Use current time properly
+        start_time = datetime.now() + timedelta(days=1)
+        end_time = start_time + timedelta(hours=1)
+        
+        # Create event with proper time format
         event = {
             'summary': meeting_description,
             'start': {
-                'dateTime': (datetime.now() + timedelta(days=1)).isoformat(),
+                'dateTime': start_time.isoformat(),
                 'timeZone': 'UTC',
             },
             'end': {
-                'dateTime': (datetime.now() + timedelta(days=1, hours=1)).isoformat(),
+                'dateTime': end_time.isoformat(),
                 'timeZone': 'UTC',
             },
             'attendees': [{'email': f'{p}@example.com'} for p in participants],
@@ -284,13 +308,14 @@ class LLMNode:
 
             # Notify other participants
             for p in participants:
-                if p in self.network.nodes:
+                if p != self.node_id and p in self.network.nodes:
                     self.network.nodes[p].calendar.append({
                         'project_id': project_id,
                         'meeting_info': meeting_description,
                         'event_id': event['id']
                     })
-                    print(f"[{self.node_id}] Notified {p} about meeting for project '{project_id}'.")
+                    notification = f"New meeting: '{meeting_description}' scheduled by {self.node_id} for {start_time.strftime('%Y-%m-%d %H:%M')}"
+                    self.network.send_message(self.node_id, p, notification)
         except Exception as e:
             print(f"[{self.node_id}] Failed to create calendar event: {e}")
             # Fallback to local calendar
@@ -317,23 +342,29 @@ class LLMNode:
                 print(f"[{self.node_id}] Notified {p} about meeting for project '{project_id}'.")
 
     def receive_message(self, message: str, sender_id: str):
-        """
-        Receives a message from another node or user. We only generate an LLM reply
-        if the sender is the CLI user (i.e., "cli_user"). This prevents node-to-node
-        loops of "Goodbye".
-        """
+        """More dynamic message handling with conversation state"""
         print(f"[{self.node_id}] Received from {sender_id}: {message}")
 
-        # Check if this is a message from the CLI user
+        # Check if we're in the middle of gathering meeting information
+        if hasattr(self, 'meeting_context') and self.meeting_context.get('active'):
+            self._continue_meeting_creation(message, sender_id)
+            return
+
+        # Regular message handling
         if sender_id == "cli_user":
-            # Use LLM to determine if this is a calendar-related command
+            # Detect calendar intent
             calendar_intent = self._detect_calendar_intent(message)
             
             if calendar_intent.get("is_calendar_command", False):
                 action = calendar_intent.get("action")
+                missing_info = calendar_intent.get("missing_info", [])
                 
                 if action == "schedule_meeting":
-                    self._handle_meeting_creation(message)
+                    # Initialize meeting creation flow if information is missing
+                    if missing_info:
+                        self._start_meeting_creation(message, missing_info)
+                    else:
+                        self._handle_meeting_creation(message)
                     return
                 elif action == "cancel_meeting":
                     self._handle_meeting_cancellation(message)
@@ -345,34 +376,23 @@ class LLMNode:
                     self._handle_meeting_rescheduling(message)
                     return
 
-        # Record the incoming user message in the conversation history
+        # Regular message handling (unchanged)
         self.conversation_history.append({"role": "user", "content": f"{sender_id} says: {message}"})
-
-        # Only respond with LLM if the message came directly from the CLI user.
         if sender_id == "cli_user":
             response = self.query_llm(self.conversation_history)
             self.conversation_history.append({"role": "assistant", "content": response})
-            # Just print the response instead of trying to send it back
             print(f"[{self.node_id}] Response: {response}")
 
     def _detect_calendar_intent(self, message):
-        """Use LLM to detect calendar-related intents in natural language"""
+        """Simplified calendar intent detection"""
         prompt = f"""
         Analyze this message and determine if it's a calendar-related command:
-        
         "{message}"
         
-        Return a JSON object with these fields:
-        - is_calendar_command: boolean (true if this is a calendar command, false otherwise)
-        - action: string (one of: "schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or null if not calendar-related)
-        - confidence: number between 0 and 1 indicating confidence in this classification
-        
-        Examples of calendar commands:
-        - "Schedule a meeting with marketing tomorrow"
-        - "Cancel my meeting with engineering"
-        - "Show me my upcoming meetings"
-        - "Move the design review to Friday"
-        - "Set up a project kickoff next week"
+        Return JSON with:
+        - is_calendar_command: boolean
+        - action: string ("schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or null)
+        - missing_info: array of strings (what information is missing: "time", "participants", "date", "title")
         """
         
         try:
@@ -382,16 +402,226 @@ class LLMNode:
                 response_format={"type": "json_object"}
             )
             
-            intent_data = json.loads(response.choices[0].message.content)
-            
-            # Only process as calendar command if confidence is high enough
-            if intent_data.get("confidence", 0) < 0.7:
-                intent_data["is_calendar_command"] = False
-            
-            return intent_data
+            return json.loads(response.choices[0].message.content)
         except Exception as e:
-            print(f"[{self.node_id}] Error detecting calendar intent: {str(e)}")
-            return {"is_calendar_command": False, "action": None, "confidence": 0}
+            print(f"[{self.node_id}] Error detecting intent: {str(e)}")
+            return {"is_calendar_command": False, "action": None, "missing_info": []}
+
+    def _start_meeting_creation(self, initial_message, missing_info):
+        """Start the meeting creation flow by asking for missing information"""
+        # Initialize meeting context
+        self.meeting_context = {
+            'active': True,
+            'initial_message': initial_message,
+            'missing_info': missing_info.copy(),
+            'collected_info': {}
+        }
+        
+        # Ask for the first missing piece of information
+        self._ask_for_next_meeting_info()
+
+    def _ask_for_next_meeting_info(self):
+        """Ask user for the next piece of missing meeting information"""
+        if not self.meeting_context['missing_info']:
+            # We have all the information, proceed with meeting creation
+            combined_message = self._construct_complete_meeting_message()
+            self._handle_meeting_creation(combined_message)
+            self.meeting_context['active'] = False
+            return
+        
+        next_info = self.meeting_context['missing_info'][0]
+        
+        # Improved questions with better guidance
+        questions = {
+            'time': "What time should the meeting be scheduled? (Please use HH:MM format in 24-hour time, e.g., 14:30)",
+            'date': "On what date should the meeting be scheduled? (Please use YYYY-MM-DD format, e.g., 2023-12-31)",
+            'participants': "Who should attend the meeting? Please list all participants.",
+            'title': "What is the title or topic of the meeting?"
+        }
+        
+        # Add context if rescheduling
+        context = ""
+        if self.meeting_context.get('is_rescheduling', False):
+            context = " for rescheduling"
+        elif next_info in ['date', 'time'] and 'date' in self.meeting_context['missing_info'] and 'time' in self.meeting_context['missing_info']:
+            context = " (please ensure it's a future date and time)"
+        
+        response = questions.get(next_info, f"Please provide the {next_info} for the meeting") + context
+        print(f"[{self.node_id}] Response: {response}")
+
+    def _continue_meeting_creation(self, message, sender_id):
+        """Process user's response to our question about meeting details"""
+        if not self.meeting_context['missing_info']:
+            # Shouldn't happen, but just in case
+            self.meeting_context['active'] = False
+            return
+        
+        current_info = self.meeting_context['missing_info'].pop(0)
+        self.meeting_context['collected_info'][current_info] = message
+        
+        if self.meeting_context['missing_info']:
+            # Still need more information
+            self._ask_for_next_meeting_info()
+        else:
+            # We have all the information
+            if self.meeting_context.get('is_rescheduling', False) and 'target_event_id' in self.meeting_context:
+                # Handle rescheduling completion
+                self._complete_meeting_rescheduling()
+            else:
+                # Handle regular meeting creation
+                combined_message = self._construct_complete_meeting_message()
+                self._handle_meeting_creation(combined_message)
+            
+            self.meeting_context['active'] = False
+            print(f"[{self.node_id}] Response: Meeting {'rescheduled' if self.meeting_context.get('is_rescheduling') else 'scheduled'} successfully with all required information.")
+
+    def _construct_complete_meeting_message(self):
+        """Combine initial message with collected information into a complete instruction"""
+        initial = self.meeting_context['initial_message']
+        collected = self.meeting_context['collected_info']
+        
+        # Create a complete message with all the information
+        complete_message = f"{initial} "
+        if 'title' in collected:
+            complete_message += f"Title: {collected['title']}. "
+        if 'date' in collected:
+            complete_message += f"Date: {collected['date']}. "
+        if 'time' in collected:
+            complete_message += f"Time: {collected['time']}. "
+        if 'participants' in collected:
+            complete_message += f"Participants: {collected['participants']}."
+        
+        return complete_message
+
+    def _handle_meeting_creation(self, message):
+        """Meeting creation with improved time validation and interaction"""
+        # Extract meeting details
+        meeting_data = self._extract_meeting_details(message)
+        
+        # Validate that we have all required information
+        required_fields = ['title', 'participants']
+        missing = [field for field in required_fields if not meeting_data.get(field)]
+        
+        if missing:
+            print(f"[{self.node_id}] Cannot schedule meeting: missing {', '.join(missing)}")
+            return
+        
+        # Process participants
+        participants = []
+        for p in meeting_data.get("participants", []):
+            p_lower = p.lower().strip()
+            if p_lower in ["ceo", "marketing", "engineering", "design"]:
+                participants.append(p_lower)
+        
+        # Ensure we have participants
+        if not participants:
+            print(f"[{self.node_id}] Cannot schedule meeting: no valid participants")
+            return
+            
+        # Add the current node if not already included
+        if self.node_id not in participants:
+            participants.append(self.node_id)
+        
+        # Process date/time
+        meeting_date = meeting_data.get("date", datetime.now().strftime("%Y-%m-%d"))
+        meeting_time = meeting_data.get("time", (datetime.now() + timedelta(hours=1)).strftime("%H:%M"))
+        
+        try:
+            # Validate date format 
+            try:
+                start_datetime = datetime.strptime(f"{meeting_date} {meeting_time}", "%Y-%m-%d %H:%M")
+                
+                # Check if date is in the past
+                current_time = datetime.now()
+                if start_datetime < current_time:
+                    # Instead of automatically adjusting, ask the user for a valid time
+                    print(f"[{self.node_id}] Response: The meeting time {meeting_date} at {meeting_time} is in the past. Please provide a future date and time.")
+                    
+                    # Store context for follow-up
+                    self.meeting_context = {
+                        'active': True,
+                        'collected_info': {
+                            'title': meeting_data.get("title"),
+                            'participants': meeting_data.get("participants", [])
+                        },
+                        'missing_info': ['date', 'time'],
+                        'is_rescheduling': False
+                    }
+                    
+                    # Ask for new date and time
+                    self._ask_for_next_meeting_info()
+                    return
+                
+            except ValueError:
+                # If date parsing fails, notify user instead of auto-fixing
+                print(f"[{self.node_id}] Response: I couldn't understand the date/time format. Please provide the date in YYYY-MM-DD format and time in HH:MM format.")
+                
+                # Store context for follow-up
+                self.meeting_context = {
+                    'active': True,
+                    'collected_info': {
+                        'title': meeting_data.get("title"),
+                        'participants': meeting_data.get("participants", [])
+                    },
+                    'missing_info': ['date', 'time'],
+                    'is_rescheduling': False
+                }
+                
+                # Ask for new date and time
+                self._ask_for_next_meeting_info()
+                return
+            
+            duration_mins = int(meeting_data.get("duration", 60))
+            end_datetime = start_datetime + timedelta(minutes=duration_mins)
+            
+            # Create a unique ID and get title
+            meeting_id = f"meeting_{int(datetime.now().timestamp())}"
+            meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
+            
+            # Schedule the meeting
+            self._create_calendar_meeting(meeting_id, meeting_title, participants, start_datetime, end_datetime)
+            
+            # Confirm to user with reliable times
+            print(f"[{self.node_id}] Meeting '{meeting_title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}")
+        except Exception as e:
+            print(f"[{self.node_id}] Error creating meeting: {str(e)}")
+
+    def _extract_meeting_details(self, message):
+        """Extract meeting details with improved accuracy and defaulting to current time"""
+        prompt = f"""
+        Extract complete meeting details from: "{message}"
+        
+        Return JSON with:
+        - title: meeting title
+        - participants: array of participants (use only: ceo, marketing, engineering, design)
+        - date: meeting date (YYYY-MM-DD format, leave empty to use current date)
+        - time: meeting time (HH:MM format, leave empty to use current time + 1 hour)
+        - duration: duration in minutes (default 60)
+        
+        If any information is missing, leave the field empty (don't guess).
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            
+            result = json.loads(response.choices[0].message.content)
+            
+            # Use current date if not specified
+            if not result.get("date"):
+                result["date"] = datetime.now().strftime("%Y-%m-%d")
+            
+            # Use current time + 1 hour if not specified
+            if not result.get("time"):
+                result["time"] = (datetime.now() + timedelta(hours=1)).strftime("%H:%M")
+            
+            return result
+        except Exception as e:
+            print(f"[{self.node_id}] Error extracting meeting details: {str(e)}")
+            return {}
 
     def _handle_list_meetings(self):
         """Handle request to list upcoming meetings"""
@@ -428,21 +658,35 @@ class LLMNode:
             print(f"[{self.node_id}] Error listing meetings: {str(e)}")
 
     def _handle_meeting_rescheduling(self, message):
-        """Handle natural language meeting rescheduling requests"""
+        """Handle meeting rescheduling with proper event updating"""
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, can't reschedule meetings")
             return
         
         try:
-            # Use OpenAI to extract rescheduling details
+            # Use OpenAI to extract rescheduling details with more explicit prompt
             prompt = f"""
             Extract meeting rescheduling details from this message: "{message}"
             
+            Identify EXACTLY which meeting needs rescheduling by looking for:
+            1. Meeting title or topic (as a simple text string)
+            2. Participants involved (as names only)
+            3. Original date/time
+            
+            And what the new schedule should be:
+            1. New date (YYYY-MM-DD format)
+            2. New time (HH:MM format in 24-hour time)
+            3. New duration in minutes (as a number only)
+            
             Return a JSON object with these fields:
-            - meeting_identifier: Information to identify which meeting to reschedule (title, participants, or original date)
+            - meeting_identifier: A simple text string to identify which meeting to reschedule
+            - original_date: Original meeting date if mentioned (YYYY-MM-DD format or null)
             - new_date: New meeting date (YYYY-MM-DD format)
             - new_time: New meeting time (HH:MM format)
             - new_duration: New duration in minutes (or null to keep the same)
+            
+            IMPORTANT: ALL values must be simple strings or integers, not objects or arrays.
+            The meeting_identifier MUST be a simple string.
             """
             
             response = self.client.chat.completions.create(
@@ -451,89 +695,221 @@ class LLMNode:
                 response_format={"type": "json_object"}
             )
             
-            reschedule_data = json.loads(response.choices[0].message.content)
-            
-            # Get upcoming meetings
-            now = datetime.utcnow().isoformat() + 'Z'
-            events_result = self.calendar_service.events().list(
-                calendarId='primary',
-                timeMin=now,
-                maxResults=10,
-                singleEvents=True,
-                orderBy='startTime'
-            ).execute()
-            events = events_result.get('items', [])
-            
-            if not events:
-                print(f"[{self.node_id}] No upcoming meetings found to reschedule")
+            # Extract and validate the rescheduling data (keep existing code for this part)
+            response_content = response.choices[0].message.content
+            try:
+                reschedule_data = json.loads(response_content)
+            except json.JSONDecodeError as e:
+                print(f"[{self.node_id}] Error parsing rescheduling JSON: {e}")
                 return
             
-            # Find the meeting to reschedule
-            meeting_identifier = reschedule_data.get("meeting_identifier", "").lower()
-            target_event = None
+            # Defensive extraction of data with type checking (keep existing code)
+            meeting_identifier = ""
+            if "meeting_identifier" in reschedule_data:
+                if isinstance(reschedule_data["meeting_identifier"], str):
+                    meeting_identifier = reschedule_data["meeting_identifier"].lower()
+                else:
+                    meeting_identifier = str(reschedule_data["meeting_identifier"]).lower()
             
-            for event in events:
-                # Check if this event matches the identifier
-                if (meeting_identifier in event.get('summary', '').lower() or
-                    any(meeting_identifier in a.get('email', '').lower() for a in event.get('attendees', []))):
-                    target_event = event
-                    break
-                
-            if not target_event:
-                print(f"[{self.node_id}] Could not find a meeting matching '{meeting_identifier}'")
+            original_date = None
+            if "original_date" in reschedule_data and reschedule_data["original_date"]:
+                original_date = str(reschedule_data["original_date"])
+            
+            new_date = None
+            if "new_date" in reschedule_data and reschedule_data["new_date"]:
+                new_date = str(reschedule_data["new_date"])
+            
+            new_time = "10:00"  # Default time
+            if "new_time" in reschedule_data and reschedule_data["new_time"]:
+                new_time = str(reschedule_data["new_time"])
+            
+            new_duration = None
+            if "new_duration" in reschedule_data and reschedule_data["new_duration"]:
+                try:
+                    new_duration = int(reschedule_data["new_duration"])
+                except (ValueError, TypeError):
+                    new_duration = None
+            
+            # Validation checks (keep existing code)
+            if not meeting_identifier:
+                print(f"[{self.node_id}] Could not determine which meeting to reschedule")
                 return
-            
-            # Get the new date and time
-            new_date = reschedule_data.get("new_date")
-            new_time = reschedule_data.get("new_time", "10:00")
             
             if not new_date:
                 print(f"[{self.node_id}] No new date specified for rescheduling")
                 return
             
-            # Create datetime objects for the new start and end times
-            new_start_datetime = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
+            # Get upcoming meetings
+            try:
+                now = datetime.utcnow().isoformat() + 'Z'
+                events_result = self.calendar_service.events().list(
+                    calendarId='primary',
+                    timeMin=now,
+                    maxResults=20,
+                    singleEvents=True,
+                    orderBy='startTime'
+                ).execute()
+                events = events_result.get('items', [])
+            except Exception as e:
+                print(f"[{self.node_id}] Error fetching calendar events: {str(e)}")
+                return
             
-            # Calculate new end time
-            original_start = datetime.fromisoformat(target_event['start'].get('dateTime').replace('Z', '+00:00'))
-            original_end = datetime.fromisoformat(target_event['end'].get('dateTime').replace('Z', '+00:00'))
-            original_duration = (original_end - original_start).total_seconds() / 60
+            if not events:
+                print(f"[{self.node_id}] No upcoming meetings found to reschedule")
+                return
             
-            new_duration = reschedule_data.get("new_duration", original_duration)
-            new_end_datetime = new_start_datetime + timedelta(minutes=new_duration)
+            # Find the meeting to reschedule (keep scoring system code)
+            target_event = None
+            best_match_score = 0
             
-            # Update the event
-            target_event['start']['dateTime'] = new_start_datetime.isoformat()
-            target_event['end']['dateTime'] = new_end_datetime.isoformat()
-            
-            updated_event = self.calendar_service.events().update(
-                calendarId='primary',
-                eventId=target_event['id'],
-                body=target_event
-            ).execute()
-            
-            print(f"[{self.node_id}] Meeting '{updated_event.get('summary')}' rescheduled to {new_date} at {new_time}")
-            
-            # Update local calendar
-            for meeting in self.calendar:
-                if meeting.get('event_id') == updated_event['id']:
-                    meeting['meeting_info'] = f"{updated_event.get('summary')} (Rescheduled to {new_date} at {new_time})"
-            
-            # Notify participants
-            for attendee in updated_event.get('attendees', []):
-                attendee_id = attendee.get('email', '').split('@')[0]
-                if attendee_id in self.network.nodes:
-                    # Update their local calendar
-                    for meeting in self.network.nodes[attendee_id].calendar:
-                        if meeting.get('event_id') == updated_event['id']:
-                            meeting['meeting_info'] = f"{updated_event.get('summary')} (Rescheduled to {new_date} at {new_time})"
+            for event in events:
+                score = 0
+                
+                # Check title match
+                event_title = event.get('summary', '').lower()
+                if meeting_identifier in event_title:
+                    score += 3
+                elif any(word in event_title for word in meeting_identifier.split()):
+                    score += 1
+                
+                # Check attendees match
+                attendees = []
+                for attendee in event.get('attendees', []):
+                    email = attendee.get('email', '')
+                    if isinstance(email, str):
+                        attendees.append(email.lower())
+                    else:
+                        attendees.append(str(email).lower())
                     
-                    # Notify them
-                    notification = f"Meeting '{updated_event.get('summary')}' has been rescheduled by {self.node_id} to {new_date} at {new_time}"
-                    self.network.send_message(self.node_id, attendee_id, notification)
+                if any(meeting_identifier in attendee for attendee in attendees):
+                    score += 2
+                
+                # Check date match if original date was specified
+                if original_date:
+                    start_time = event['start'].get('dateTime', event['start'].get('date', ''))
+                    if isinstance(start_time, str) and original_date in start_time:
+                        score += 4
+                
+                # Update best match if this is better
+                if score > best_match_score:
+                    best_match_score = score
+                    target_event = event
+            
+            # Require a minimum matching score
+            if best_match_score < 1:
+                print(f"[{self.node_id}] Could not find a meeting matching '{meeting_identifier}'")
+                return
+            
+            if not target_event:
+                print(f"[{self.node_id}] No matching meeting found for '{meeting_identifier}'")
+                return
+            
+            # Validate the new date and time
+            try:
+                # Parse new date and time
+                new_start_datetime = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
+                
+                # Check if date is in the past
+                if new_start_datetime < datetime.now():
+                    print(f"[{self.node_id}] Response: The rescheduled time {new_date} at {new_time} is in the past. Please provide a future date and time.")
+                    
+                    # Ask for new date and time
+                    self.meeting_context = {
+                        'active': True,
+                        'collected_info': {
+                            'title': target_event.get('summary', 'Meeting'),  # Keep original title
+                            'participants': []  # We'll keep the same participants
+                        },
+                        'missing_info': ['date', 'time'],
+                        'is_rescheduling': True,
+                        'target_event_id': target_event['id'],
+                        'target_event': target_event  # Store the whole event to preserve details
+                    }
+                    
+                    self._ask_for_next_meeting_info()
+                    return
+            except ValueError:
+                print(f"[{self.node_id}] Response: I couldn't understand the date/time format. Please provide the date in YYYY-MM-DD format and time in HH:MM format.")
+                
+                # Ask for new date and time
+                self.meeting_context = {
+                    'active': True,
+                    'collected_info': {
+                        'title': target_event.get('summary', 'Meeting'),  # Keep original title
+                        'participants': []  # We'll keep the same participants
+                    },
+                    'missing_info': ['date', 'time'],
+                    'is_rescheduling': True,
+                    'target_event_id': target_event['id'],
+                    'target_event': target_event  # Store the whole event to preserve details
+                }
+                
+                self._ask_for_next_meeting_info()
+                return
+            
+            # Calculate new end time based on original duration
+            try:
+                # Extract original start and end times
+                original_start = datetime.fromisoformat(target_event['start'].get('dateTime').replace('Z', '+00:00'))
+                original_end = datetime.fromisoformat(target_event['end'].get('dateTime').replace('Z', '+00:00'))
+                original_duration = (original_end - original_start).total_seconds() / 60
+                
+                # Use new duration if specified, otherwise keep original duration
+                if new_duration is not None and new_duration > 0:
+                    duration_to_use = new_duration
+                else:
+                    duration_to_use = original_duration
+                    
+                new_end_datetime = new_start_datetime + timedelta(minutes=duration_to_use)
+                
+                # Update the event with all original data preserved
+                target_event['start']['dateTime'] = new_start_datetime.isoformat()
+                target_event['end']['dateTime'] = new_end_datetime.isoformat()
+                
+                # Update event in Google Calendar
+                updated_event = self.calendar_service.events().update(
+                    calendarId='primary',
+                    eventId=target_event['id'],
+                    body=target_event
+                ).execute()
+                
+                # Print success message with user-friendly time format
+                meeting_title = updated_event.get('summary', 'Untitled meeting')
+                formatted_time = new_start_datetime.strftime("%I:%M %p")  # 12-hour format with AM/PM
+                formatted_date = new_start_datetime.strftime("%B %d, %Y")  # Month day, year
+                
+                print(f"[{self.node_id}] Response: Meeting '{meeting_title}' has been rescheduled to {formatted_date} at {formatted_time}.")
+                
+                # Update local calendar records
+                for meeting in self.calendar:
+                    if meeting.get('event_id') == updated_event['id']:
+                        meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {new_date} at {formatted_time})"
+                
+                # Notify participants
+                attendees = updated_event.get('attendees', [])
+                for attendee in attendees:
+                    attendee_id = attendee.get('email', '').split('@')[0]
+                    if attendee_id in self.network.nodes:
+                        # Update their local calendar
+                        for meeting in self.network.nodes[attendee_id].calendar:
+                            if meeting.get('event_id') == updated_event['id']:
+                                meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {new_date} at {formatted_time})"
+                        
+                        # Send notification
+                        notification = (
+                            f"Your meeting '{meeting_title}' has been rescheduled by {self.node_id}.\n"
+                            f"New date: {formatted_date}\n"
+                            f"New time: {formatted_time}\n"
+                            f"Duration: {int(duration_to_use)} minutes"
+                        )
+                        self.network.send_message(self.node_id, attendee_id, notification)
+                
+            except Exception as e:
+                print(f"[{self.node_id}] Error updating the meeting: {str(e)}")
+                print(f"[{self.node_id}] Response: There was an error rescheduling the meeting. Please try again.")
             
         except Exception as e:
-            print(f"[{self.node_id}] Error rescheduling meeting: {str(e)}")
+            print(f"[{self.node_id}] General error in meeting rescheduling: {str(e)}")
 
     def send_message(self, recipient_id: str, content: str):
         if not self.network:
@@ -718,7 +1094,7 @@ class LLMNode:
             
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-4o",  # Using a more capable model for task generation
+                    model="gpt-4o",
                     messages=[{"role": "user", "content": prompt}],
                     tools=functions,
                     tool_choice={"type": "function", "function": {"name": "create_task"}}
@@ -768,67 +1144,6 @@ class LLMNode:
             result += f"   Description: {task.description}\n"
             
         return result
-
-    def _handle_meeting_creation(self, message):
-        """Handle natural language meeting creation requests"""
-        # Use OpenAI to extract meeting details
-        prompt = f"""
-        Extract meeting details from this message: "{message}"
-        
-        Return a JSON object with these fields:
-        - title: The meeting title or topic
-        - participants: Array of participants (use only: ceo, marketing, engineering, design)
-        - date: Meeting date (YYYY-MM-DD format) or "tomorrow" if not specified
-        - time: Meeting time (HH:MM format) or "10:00" if not specified
-        - duration: Duration in minutes (default to 60 if not specified)
-        
-        Only include participants that are explicitly mentioned or clearly implied.
-        """
-        
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
-            )
-            
-            meeting_data = json.loads(response.choices[0].message.content)
-            
-            # Process participants
-            participants = []
-            for p in meeting_data.get("participants", []):
-                p_lower = p.lower().strip()
-                if p_lower in ["ceo", "marketing", "engineering", "design"]:
-                    participants.append(p_lower)
-            
-            # Add the current node if not already included
-            if self.node_id not in participants:
-                participants.append(self.node_id)
-            
-            # Process date/time
-            meeting_date = meeting_data.get("date", "tomorrow")
-            if meeting_date == "tomorrow":
-                meeting_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-            
-            meeting_time = meeting_data.get("time", "10:00")
-            duration_mins = int(meeting_data.get("duration", 60))
-            
-            # Create datetime objects
-            start_datetime = datetime.strptime(f"{meeting_date} {meeting_time}", "%Y-%m-%d %H:%M")
-            end_datetime = start_datetime + timedelta(minutes=duration_mins)
-            
-            # Create a unique project ID for this meeting
-            meeting_id = f"meeting_{int(datetime.now().timestamp())}"
-            meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
-            
-            # Schedule the meeting
-            self._create_calendar_meeting(meeting_id, meeting_title, participants, start_datetime, end_datetime)
-            
-            # Confirm to user
-            print(f"[{self.node_id}] Meeting '{meeting_title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}")
-            
-        except Exception as e:
-            print(f"[{self.node_id}] Error creating meeting: {str(e)}")
 
     def _handle_meeting_cancellation(self, message):
         """Handle natural language meeting cancellation requests"""
@@ -957,7 +1272,13 @@ class LLMNode:
 
         try:
             event = self.calendar_service.events().insert(calendarId='primary', body=event).execute()
+            
+            # Correctly format date and time for user display
+            meeting_date = start_datetime.strftime("%Y-%m-%d")
+            meeting_time = start_datetime.strftime("%H:%M")
+            
             print(f"[{self.node_id}] Meeting created: {event.get('htmlLink')}")
+            print(f"[{self.node_id}] Meeting '{title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}")
             
             # Store in local calendar as well
             self.calendar.append({
@@ -974,12 +1295,94 @@ class LLMNode:
                         'meeting_info': title,
                         'event_id': event['id']
                     })
-                    notification = f"New meeting: '{title}' scheduled by {self.node_id} for {start_datetime.strftime('%Y-%m-%d %H:%M')}"
+                    notification = f"New meeting: '{title}' scheduled by {self.node_id} for {meeting_date} at {meeting_time}"
                     self.network.send_message(self.node_id, p, notification)
         except Exception as e:
             print(f"[{self.node_id}] Failed to create calendar event: {e}")
             # Fallback to local calendar
             self._fallback_schedule_meeting(meeting_id, participants)
+
+    def _complete_meeting_rescheduling(self):
+        """Complete the meeting rescheduling with the collected information"""
+        if not hasattr(self, 'meeting_context') or not self.meeting_context.get('active'):
+            return
+        
+        # Get the new date and time
+        new_date = self.meeting_context['collected_info'].get('date')
+        new_time = self.meeting_context['collected_info'].get('time')
+        target_event_id = self.meeting_context.get('target_event_id')
+        
+        try:
+            # Get the full event
+            event = self.calendar_service.events().get(
+                calendarId='primary',
+                eventId=target_event_id
+            ).execute()
+            
+            # Parse the new date and time
+            new_start_datetime = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
+            
+            # Check if it's still in the past
+            if new_start_datetime < datetime.now():
+                print(f"[{self.node_id}] The provided time is still in the past. Adjusting to tomorrow at the same time.")
+                tomorrow = datetime.now() + timedelta(days=1)
+                new_start_datetime = datetime(
+                    tomorrow.year, tomorrow.month, tomorrow.day,
+                    new_start_datetime.hour, new_start_datetime.minute
+                )
+            
+            # Calculate end time based on original duration
+            original_start = datetime.fromisoformat(event['start'].get('dateTime').replace('Z', '+00:00'))
+            original_end = datetime.fromisoformat(event['end'].get('dateTime').replace('Z', '+00:00'))
+            original_duration = (original_end - original_start).total_seconds() / 60
+            
+            new_end_datetime = new_start_datetime + timedelta(minutes=original_duration)
+            
+            # Update the event times while preserving all other data
+            event['start']['dateTime'] = new_start_datetime.isoformat()
+            event['end']['dateTime'] = new_end_datetime.isoformat()
+            
+            # Update event in Google Calendar
+            updated_event = self.calendar_service.events().update(
+                calendarId='primary',
+                eventId=target_event_id,
+                body=event
+            ).execute()
+            
+            # Format date and time for user-friendly display
+            meeting_title = updated_event.get('summary', 'Untitled meeting')
+            formatted_time = new_start_datetime.strftime("%I:%M %p")
+            formatted_date = new_start_datetime.strftime("%B %d, %Y")
+            
+            # Success message
+            print(f"[{self.node_id}] Response: Meeting '{meeting_title}' has been rescheduled to {formatted_date} at {formatted_time}.")
+            
+            # Update local calendar records and notify participants
+            for meeting in self.calendar:
+                if meeting.get('event_id') == updated_event['id']:
+                    meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
+            
+            # Notify attendees
+            attendees = updated_event.get('attendees', [])
+            for attendee in attendees:
+                attendee_id = attendee.get('email', '').split('@')[0]
+                if attendee_id in self.network.nodes:
+                    # Update their local calendar
+                    for meeting in self.network.nodes[attendee_id].calendar:
+                        if meeting.get('event_id') == updated_event['id']:
+                            meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
+                    
+                    # Send notification
+                    notification = (
+                        f"Your meeting '{meeting_title}' has been rescheduled by {self.node_id}.\n"
+                        f"New date: {formatted_date}\n"
+                        f"New time: {formatted_time}"
+                    )
+                    self.network.send_message(self.node_id, attendee_id, notification)
+        
+        except Exception as e:
+            print(f"[{self.node_id}] Error completing meeting rescheduling: {str(e)}")
+            print(f"[{self.node_id}] Response: There was an error rescheduling the meeting. Please try again.")
 
 
 def run_cli(network):
@@ -1112,6 +1515,112 @@ def show_projects():
     
     return jsonify(all_projects)
 
+@app.route('/transcribe_audio', methods=['POST'])
+def transcribe_audio():
+    global network
+    if not network:
+        return jsonify({"error": "Network not initialized"}), 500
+    
+    data = request.json
+    node_id = data.get('node_id')
+    audio_data = data.get('audio_data')
+    
+    if not node_id or not audio_data:
+        return jsonify({"error": "Missing node_id or audio_data"}), 400
+    
+    if node_id not in network.nodes:
+        return jsonify({"error": f"Node {node_id} not found"}), 404
+    
+    # Decode the base64 audio data
+    try:
+        # Remove the data URL prefix if present
+        if 'base64,' in audio_data:
+            audio_data = audio_data.split('base64,')[1]
+        
+        audio_bytes = base64.b64decode(audio_data)
+        
+        # Save to a temporary file
+        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_file:
+            temp_file_path = temp_file.name
+            temp_file.write(audio_bytes)
+        
+        # Transcribe using OpenAI's Whisper API
+        with open(temp_file_path, 'rb') as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                language="en"  # Specify English
+            )
+        
+        # Clean up the temporary file
+        os.unlink(temp_file_path)
+        
+        command_text = transcript.text
+        
+        # Use the same process as sending a text message
+        response_collector = {"response": None, "terminal_output": []}
+        
+        # Override the print function temporarily to capture all output
+        original_print = print
+        
+        def custom_print(text):
+            if isinstance(text, str):
+                # Capture all terminal output
+                response_collector["terminal_output"].append(text)
+                
+                # Also capture the direct response
+                if text.startswith(f"[{node_id}] Response: "):
+                    response_collector["response"] = text.replace(f"[{node_id}] Response: ", "")
+            original_print(text)
+        
+        # Replace print function
+        import builtins
+        builtins.print = custom_print
+        
+        try:
+            # Send the message to the node
+            network.nodes[node_id].receive_message(command_text, "cli_user")
+            
+            # Restore original print function
+            builtins.print = original_print
+            
+            # Format terminal output for display
+            terminal_text = "\n".join(response_collector["terminal_output"])
+            
+            # Generate speech from the response
+            audio_response = None
+            if response_collector["response"]:
+                try:
+                    speech_response = client.audio.speech.create(
+                        model="tts-1",
+                        voice="alloy",
+                        input=response_collector["response"]
+                    )
+                    
+                    # Convert to base64 for sending to the client
+                    speech_response.stream_to_file("temp_speech.mp3")
+                    with open("temp_speech.mp3", "rb") as audio_file:
+                        audio_response = base64.b64encode(audio_file.read()).decode('utf-8')
+                    os.unlink("temp_speech.mp3")
+                except Exception as e:
+                    print(f"Error generating speech: {str(e)}")
+            
+            return jsonify({
+                "response": response_collector["response"],
+                "terminal_output": terminal_text,
+                "transcription": command_text,
+                "audio_response": audio_response
+            })
+            
+        except Exception as e:
+            # Restore original print function
+            builtins.print = original_print
+            return jsonify({"error": str(e)}), 500
+            
+    except Exception as e:
+        return jsonify({"error": f"Error processing audio: {str(e)}"}), 500
+
+# Update the existing send_message route to use the common function
 @app.route('/send_message', methods=['POST'])
 def send_message():
     global network
@@ -1128,44 +1637,7 @@ def send_message():
     if node_id not in network.nodes:
         return jsonify({"error": f"Node {node_id} not found"}), 404
     
-    # Create a response collector
-    response_collector = {"response": None, "terminal_output": []}
-    
-    # Override the print function temporarily to capture all output
-    original_print = print
-    
-    def custom_print(text):
-        if isinstance(text, str):
-            # Capture all terminal output
-            response_collector["terminal_output"].append(text)
-            
-            # Also capture the direct response
-            if text.startswith(f"[{node_id}] Response: "):
-                response_collector["response"] = text.replace(f"[{node_id}] Response: ", "")
-        original_print(text)
-    
-    # Replace print function
-    import builtins
-    builtins.print = custom_print
-    
-    try:
-        # Send the message to the node
-        network.nodes[node_id].receive_message(message, "cli_user")
-        
-        # Restore original print function
-        builtins.print = original_print
-        
-        # Format terminal output for display
-        terminal_text = "\n".join(response_collector["terminal_output"])
-        
-        return jsonify({
-            "response": response_collector["response"],
-            "terminal_output": terminal_text
-        })
-    except Exception as e:
-        # Restore original print function
-        builtins.print = original_print
-        return jsonify({"error": str(e)}), 500
+    return send_message_internal(node_id, message)
 
 def start_flask():
     # Try different ports if 5000 is in use

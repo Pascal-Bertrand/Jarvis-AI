@@ -3,279 +3,617 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM Network Dashboard</title>
+    <title>AI Secretary</title>
+    <!-- Add Google Fonts -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
+        :root {
+            --primary-color: #4361ee;
+            --primary-light: #4895ef;
+            --primary-dark: #3f37c9;
+            --success-color: #4CAF50;
+            --warning-color: #ff9800;
+            --danger-color: #f44336;
+            --text-dark: #333;
+            --text-light: #777;
+            --bg-light: #f8f9fa;
+            --bg-dark: #212529;
+            --border-color: #dee2e6;
+            --card-shadow: 0 4px 6px rgba(0,0,0,0.07);
+            --transition-speed: 0.3s;
         }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            line-height: 1.6;
+            padding: 0;
+            margin: 0;
+        }
+        
         .container {
             max-width: 1200px;
             margin: 0 auto;
+            padding: 20px;
         }
-        h1, h2 {
-            color: #333;
+        
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
         }
+        
+        .dashboard-header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--primary-dark);
+            margin: 0;
+        }
+        
+        .dashboard-subheader {
+            color: var(--text-light);
+            font-size: 15px;
+            margin-top: 5px;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+        
+        .dashboard-full {
+            grid-column: 1 / -1;
+        }
+        
         .card {
             background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-radius: 10px;
+            box-shadow: var(--card-shadow);
+            overflow: hidden;
+            transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+            border: 1px solid var(--border-color);
+        }
+        
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+        }
+        
+        .card-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #fafafa;
+        }
+        
+        .card-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin: 0;
+        }
+        
+        .card-body {
             padding: 20px;
-            margin-bottom: 20px;
         }
-        .task {
-            border-left: 4px solid #4CAF50;
-            padding-left: 10px;
-            margin-bottom: 10px;
-        }
-        .high { border-left-color: #f44336; }
-        .medium { border-left-color: #ff9800; }
-        .low { border-left-color: #4CAF50; }
+        
+        /* Node selector styles */
         .node-list {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             margin-bottom: 20px;
         }
+        
         .node-item {
-            background-color: #e0e0e0;
+            background-color: #f0f4f8;
             padding: 8px 16px;
-            border-radius: 16px;
+            border-radius: 20px;
             cursor: pointer;
-            transition: background-color 0.3s;
+            transition: all var(--transition-speed);
+            border: 1px solid #e9ecef;
+            font-weight: 500;
+            font-size: 14px;
         }
+        
         .node-item:hover {
-            background-color: #ccc;
+            background-color: #e9ecef;
+            border-color: #dee2e6;
         }
+        
         .node-item.active {
-            background-color: #4CAF50;
+            background-color: var(--primary-color);
             color: white;
+            border-color: var(--primary-dark);
         }
+        
+        /* Task card styles */
+        .task {
+            border-left: 4px solid var(--success-color);
+            padding: 15px;
+            margin-bottom: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: transform var(--transition-speed);
+        }
+        
+        .task:hover {
+            transform: translateX(3px);
+        }
+        
+        .task h3 {
+            font-size: 16px;
+            margin-bottom: 8px;
+            color: var(--text-dark);
+        }
+        
+        .task p {
+            font-size: 14px;
+            color: var(--text-light);
+            margin-bottom: 8px;
+        }
+        
+        .task-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-light);
+        }
+        
+        .high { border-left-color: var(--danger-color); }
+        .medium { border-left-color: var(--warning-color); }
+        .low { border-left-color: var(--success-color); }
+        
+        /* Project card styles */
+        .project {
+            padding: 15px;
+            margin-bottom: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .project h3 {
+            font-size: 16px;
+            margin-bottom: 8px;
+            color: var(--primary-dark);
+        }
+        
+        .project-participants {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        
+        .project-participant {
+            background-color: #e0e0e0;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        
+        /* Chat interface styles */
         .chat-container {
             display: flex;
             flex-direction: column;
-            height: 400px;
-            border: 1px solid #ddd;
+            height: 450px;
             border-radius: 8px;
             overflow: hidden;
+            background-color: white;
         }
+        
         .chat-messages {
             flex-grow: 1;
-            padding: 15px;
+            padding: 20px;
             overflow-y: auto;
             background-color: #f9f9f9;
+            display: flex;
+            flex-direction: column;
         }
+        
         .chat-input-container {
             display: flex;
-            padding: 10px;
-            background-color: #fff;
-            border-top: 1px solid #ddd;
+            padding: 15px;
+            background-color: white;
+            border-top: 1px solid var(--border-color);
         }
+        
         .chat-input {
             flex-grow: 1;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin-right: 10px;
+            padding: 12px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 30px;
+            outline: none;
+            font-size: 14px;
+            transition: border-color var(--transition-speed);
         }
+        
+        .chat-input:focus {
+            border-color: var(--primary-light);
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+        }
+        
         .chat-send-btn {
             padding: 10px 20px;
-            background-color: #4CAF50;
+            background-color: var(--primary-color);
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 30px;
             cursor: pointer;
+            margin-left: 10px;
+            font-weight: 500;
+            transition: background-color var(--transition-speed);
         }
+        
         .chat-send-btn:hover {
-            background-color: #45a049;
+            background-color: var(--primary-dark);
         }
+        
         .message {
-            margin-bottom: 10px;
-            padding: 10px;
-            border-radius: 8px;
+            margin-bottom: 15px;
+            padding: 12px 15px;
+            border-radius: 18px;
             max-width: 80%;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            position: relative;
+            animation: messageAppear 0.3s ease-out;
         }
+        
+        @keyframes messageAppear {
+            from { 
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to { 
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
         .user-message {
-            background-color: #DCF8C6;
+            background-color: #e3f2fd;
             align-self: flex-end;
             margin-left: auto;
+            border-bottom-right-radius: 4px;
         }
+        
         .agent-message {
-            background-color: #ECECEC;
+            background-color: white;
             align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            border: 1px solid #eaeaea;
         }
+        
+        /* Microphone button styles */
+        .mic-button {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background-color: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: all var(--transition-speed);
+            border: 1px solid var(--border-color);
+        }
+        
+        .mic-button:hover {
+            background-color: #e3e3e3;
+        }
+        
+        .mic-button.recording {
+            background-color: #ff4c4c;
+            animation: pulse 1.5s infinite;
+            border-color: #d63031;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 76, 76, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(255, 76, 76, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 76, 76, 0); }
+        }
+        
+        .mic-button i {
+            font-size: 18px;
+            color: #333;
+        }
+        
+        .mic-button.recording i {
+            color: white;
+        }
+        
+        .transcription {
+            font-style: italic;
+            color: var(--text-light);
+            margin: 10px 0;
+            font-size: 0.9em;
+            padding: 0 15px;
+        }
+        
+        /* Audio player styles */
+        .audio-player {
+            margin: 10px 0;
+            width: 100%;
+            background-color: #f0f0f0;
+            border-radius: 30px;
+            padding: 5px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .audio-player audio {
+            width: 100%;
+            height: 35px;
+        }
+        
+        /* Tabs styles */
+        .tabs {
+            display: flex;
+            margin-bottom: 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .tab {
+            padding: 12px 20px;
+            background-color: transparent;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--text-light);
+            transition: all var(--transition-speed);
+            position: relative;
+        }
+        
+        .tab.active {
+            color: var(--primary-color);
+        }
+        
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: var(--primary-color);
+        }
+        
         .tab-content {
             display: none;
         }
+        
         .tab-content.active {
             display: block;
         }
-        .tabs {
-            display: flex;
-            margin-bottom: 20px;
-        }
-        .tab {
-            padding: 10px 20px;
-            background-color: #e0e0e0;
-            cursor: pointer;
-            border-radius: 4px 4px 0 0;
-            margin-right: 5px;
-        }
-        .tab.active {
-            background-color: white;
-            border: 1px solid #ddd;
-            border-bottom: none;
-        }
+        
+        /* Terminal output styles */
         .terminal-message {
-            background-color: #2d2d2d;
+            background-color: var(--bg-dark);
             color: #f0f0f0;
             font-family: monospace;
             white-space: pre-wrap;
             align-self: stretch;
             max-width: 100%;
             overflow-x: auto;
+            border-radius: 6px;
+            padding: 10px;
+            margin: 10px 0;
         }
+        
         .terminal-toggle {
             background-color: #444;
             color: white;
             border: none;
-            padding: 5px 10px;
+            padding: 6px 12px;
             border-radius: 4px;
             cursor: pointer;
-            margin-bottom: 5px;
+            margin: 10px 0;
+            font-size: 12px;
+            transition: background-color var(--transition-speed);
         }
+        
+        .terminal-toggle:hover {
+            background-color: #555;
+        }
+        
         .terminal-content {
-            background-color: #2d2d2d;
+            background-color: var(--bg-dark);
             color: #f0f0f0;
             font-family: monospace;
             white-space: pre-wrap;
-            padding: 10px;
-            border-radius: 4px;
+            padding: 15px;
+            border-radius: 6px;
             overflow-x: auto;
             max-height: 300px;
             overflow-y: auto;
+            border: 1px solid #333;
+            animation: fadeIn 0.3s;
         }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
         .loading {
             opacity: 0.6;
         }
+        
         .debug-button-container {
             display: flex;
             flex-direction: column;
             align-items: center;
-            margin: 10px 0;
+            margin: 15px 0;
             width: 100%;
         }
-        .debug-button-container .terminal-toggle {
-            font-size: 0.8em;
+        
+        /* Loading indicator */
+        .loading-dots:after {
+            content: '.';
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+        
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60% { content: '...'; }
+            80%, 100% { content: ''; }
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .card-header h2 {
+                font-size: 16px;
+            }
+            
+            .message {
+                max-width: 90%;
+            }
+        }
+
+        /* Add this style for the audio level meter */
+        .audio-level-container {
+            height: 4px;
+            width: 100%;
+            background-color: #eee;
+            border-radius: 2px;
+            margin-top: 5px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .audio-level-meter {
+            height: 100%;
+            width: 0%;
+            background-color: #4361ee;
+            transition: width 0.1s ease;
+        }
+
+        .recording .audio-level-container {
+            display: block;
+        }
+
+        /* Add these styles to the existing CSS */
+        .task-completed-indicator {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            font-size: 12px;
             padding: 3px 8px;
+            border-radius: 12px;
+            margin-left: 10px;
+            animation: fadeIn 0.5s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Visual style for the "conversation ended" state */
+        .conversation-ended .audio-level-container {
+            background-color: #e9ecef;
+        }
+
+        .conversation-ended .mic-button {
+            position: relative;
+        }
+
+        .conversation-ended .mic-button::after {
+            content: '✓';
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>LLM Network Dashboard</h1>
-        
-        <div class="card">
-            <h2>Nodes</h2>
-            <div id="nodes" class="node-list">Loading...</div>
-        </div>
-        
-        <div class="card">
-            <h2>Chat</h2>
-            <div id="chat-tabs" class="tabs">
-                <!-- Tabs will be added here dynamically -->
-            </div>
-            <div id="chat-tab-contents">
-                <!-- Tab contents will be added here dynamically -->
+        <div class="dashboard-header">
+            <div>
+                <h1>LLM Network Dashboard</h1>
+                <div class="dashboard-subheader">Interactive AI agent communication platform</div>
             </div>
         </div>
         
-        <div class="card">
-            <h2>Projects</h2>
-            <div id="projects">Loading...</div>
+        <div class="dashboard-grid">
+            <div class="card dashboard-full">
+                <div class="card-header">
+                    <h2>Available Agents</h2>
+                </div>
+                <div class="card-body">
+                    <div id="nodes" class="node-list">Loading<span class="loading-dots"></span></div>
+                </div>
+            </div>
+            
+            <div class="card dashboard-full">
+                <div class="card-header">
+                    <h2>Agent Communication</h2>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <div id="chat-tabs" class="tabs">
+                        <!-- Tabs will be added here dynamically -->
+                    </div>
+                    <div id="chat-tab-contents">
+                        <!-- Tab contents will be added here dynamically -->
+                    </div>
+                </div>
+            </div>
         </div>
         
-        <div class="card">
-            <h2>Tasks</h2>
-            <div id="tasks">Loading...</div>
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Projects</h2>
+                </div>
+                <div class="card-body">
+                    <div id="projects">Loading<span class="loading-dots"></span></div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h2>Tasks</h2>
+                </div>
+                <div class="card-body">
+                    <div id="tasks">Loading<span class="loading-dots"></span></div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
         let activeNodeId = null;
         let nodes = [];
-        
-        // Fetch and display nodes
-        fetch('/nodes')
-            .then(response => response.json())
-            .then(nodeData => {
-                nodes = nodeData;
-                const nodesContainer = document.getElementById('nodes');
-                const chatTabsContainer = document.getElementById('chat-tabs');
-                const chatTabContentsContainer = document.getElementById('chat-tab-contents');
-                
-                if (nodes.length === 0) {
-                    nodesContainer.textContent = 'No nodes available.';
-                    return;
-                }
-                
-                nodesContainer.innerHTML = '';
-                chatTabsContainer.innerHTML = '';
-                chatTabContentsContainer.innerHTML = '';
-                
-                nodes.forEach(node => {
-                    // Create node item
-                    const nodeElement = document.createElement('div');
-                    nodeElement.className = 'node-item';
-                    nodeElement.textContent = node;
-                    nodeElement.onclick = () => setActiveNode(node);
-                    nodesContainer.appendChild(nodeElement);
-                    
-                    // Create chat tab
-                    const tabElement = document.createElement('div');
-                    tabElement.className = 'tab';
-                    tabElement.textContent = node;
-                    tabElement.dataset.nodeId = node;
-                    tabElement.onclick = () => activateTab(node);
-                    chatTabsContainer.appendChild(tabElement);
-                    
-                    // Create chat tab content
-                    const tabContentElement = document.createElement('div');
-                    tabContentElement.className = 'tab-content';
-                    tabContentElement.id = `chat-tab-${node}`;
-                    
-                    tabContentElement.innerHTML = `
-                        <div class="chat-container">
-                            <div class="chat-messages" id="chat-messages-${node}"></div>
-                            <div class="chat-input-container">
-                                <input type="text" class="chat-input" id="chat-input-${node}" placeholder="Type a message...">
-                                <button class="chat-send-btn" onclick="sendMessage('${node}')">Send</button>
-                            </div>
-                        </div>
-                    `;
-                    
-                    chatTabContentsContainer.appendChild(tabContentElement);
-                    
-                    // Add event listener for Enter key
-                    const inputElement = document.getElementById(`chat-input-${node}`);
-                    inputElement.addEventListener('keypress', function(event) {
-                        if (event.key === 'Enter') {
-                            sendMessage(node);
-                        }
-                    });
-                });
-                
-                // Activate the first tab by default
-                if (nodes.length > 0) {
-                    activateTab(nodes[0]);
-                }
-            })
-            .catch(error => {
-                document.getElementById('nodes').textContent = 'Error loading nodes.';
-                console.error('Error fetching nodes:', error);
-            });
         
         function activateTab(nodeId) {
             // Deactivate all tabs
@@ -388,7 +726,7 @@
             const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
             const loadingElement = document.createElement('div');
             loadingElement.className = 'message agent-message loading';
-            loadingElement.textContent = 'Thinking...';
+            loadingElement.innerHTML = 'Thinking<span class="loading-dots"></span>';
             loadingElement.id = 'loading-' + Date.now();
             chatMessagesElement.appendChild(loadingElement);
             
@@ -446,6 +784,540 @@
             
             // Scroll to bottom
             chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+        }
+        
+        // Audio recording functionality with pause detection
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let activeRecordingNode = null;
+        let silenceDetector = null;
+        let audioContext = null;
+        let silenceTimer = null;
+        let lastAudioLevel = 0;
+        const silenceThreshold = 0.01; // Adjust based on testing
+        const silenceDuration = 2000; // Silence duration in ms before sending (2 seconds)
+        
+        function toggleRecording(nodeId) {
+            const micButton = document.getElementById(`mic-button-${nodeId}`);
+            const transcriptionDiv = document.getElementById(`transcription-${nodeId}`);
+            
+            if (isRecording) {
+                // Stop recording if already recording
+                stopRecording();
+            } else {
+                // Check if we're already recording for another node
+                if (activeRecordingNode && activeRecordingNode !== nodeId) {
+                    const prevMicButton = document.getElementById(`mic-button-${activeRecordingNode}`);
+                    prevMicButton.classList.remove('recording');
+                    if (mediaRecorder) {
+                        stopRecording();
+                    }
+                }
+                
+                // Start new recording
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                        audioChunks = [];
+                        mediaRecorder = new MediaRecorder(stream);
+                        
+                        mediaRecorder.addEventListener('dataavailable', event => {
+                            audioChunks.push(event.data);
+                        });
+                        
+                        mediaRecorder.addEventListener('stop', () => {
+                            // Process the recording
+                            if (audioChunks.length > 0) {
+                                processAudioRecording(nodeId);
+                            }
+                            
+                            // Stop all audio tracks to release the microphone
+                            stream.getTracks().forEach(track => track.stop());
+                            
+                            // Clean up silence detector
+                            if (silenceDetector) {
+                                if (audioContext && audioContext.state !== 'closed') {
+                                    silenceDetector.disconnect();
+                                }
+                                silenceDetector = null;
+                            }
+                            if (audioContext && audioContext.state !== 'closed') {
+                                audioContext.close();
+                            }
+                            if (silenceTimer) {
+                                clearTimeout(silenceTimer);
+                                silenceTimer = null;
+                            }
+                        });
+                        
+                        // Start recording
+                        mediaRecorder.start();
+                        isRecording = true;
+                        activeRecordingNode = nodeId;
+                        micButton.classList.add('recording');
+                        transcriptionDiv.textContent = "Recording... (Will automatically detect pauses)";
+                        
+                        // Setup silence detection
+                        setupSilenceDetection(stream, nodeId);
+                    })
+                    .catch(error => {
+                        console.error('Error accessing microphone:', error);
+                        transcriptionDiv.textContent = "Error: Could not access microphone. Please check permissions.";
+                    });
+            }
+        }
+        
+        function setupSilenceDetection(stream, nodeId) {
+            // Create audio context and analyzer
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            silenceDetector = audioContext.createAnalyser();
+            silenceDetector.fftSize = 256;
+            silenceDetector.smoothingTimeConstant = 0.8;
+            source.connect(silenceDetector);
+            
+            const bufferLength = silenceDetector.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            // Function to check audio levels
+            function checkAudioLevel() {
+                if (!isRecording || !silenceDetector) return;
+                
+                silenceDetector.getByteFrequencyData(dataArray);
+                
+                // Calculate average level
+                let sum = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    sum += dataArray[i];
+                }
+                const averageLevel = sum / bufferLength / 255; // Normalize to 0-1
+                
+                // Update visual indicator
+                const meter = document.getElementById(`audio-level-meter-${nodeId}`);
+                if (meter) {
+                    // Scale for better visual effect (0-100%)
+                    const scaledLevel = Math.min(100, averageLevel * 400);
+                    meter.style.width = `${scaledLevel}%`;
+                    
+                    // Change color based on level
+                    if (scaledLevel > 70) {
+                        meter.style.backgroundColor = '#ff4c4c'; // Red for loud
+                    } else if (scaledLevel > 30) {
+                        meter.style.backgroundColor = '#4361ee'; // Blue for normal
+                    } else {
+                        meter.style.backgroundColor = '#4CAF50'; // Green for quiet
+                    }
+                }
+                
+                lastAudioLevel = averageLevel;
+                
+                // Detect silence
+                if (averageLevel < silenceThreshold) {
+                    if (!silenceTimer) {
+                        silenceTimer = setTimeout(() => {
+                            console.log("Silence detected, stopping recording");
+                            const transcriptionDiv = document.getElementById(`transcription-${nodeId}`);
+                            transcriptionDiv.textContent = "Pause detected, processing...";
+                            stopRecording();
+                        }, silenceDuration);
+                    }
+                } else {
+                    // Reset timer if sound is detected
+                    if (silenceTimer) {
+                        clearTimeout(silenceTimer);
+                        silenceTimer = null;
+                    }
+                }
+                
+                // Continue checking while recording
+                if (isRecording) {
+                    requestAnimationFrame(checkAudioLevel);
+                }
+            }
+            
+            // Start monitoring
+            checkAudioLevel();
+        }
+        
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+                
+                const micButton = document.getElementById(`mic-button-${activeRecordingNode}`);
+                if (micButton) {
+                    micButton.classList.remove('recording');
+                }
+            }
+        }
+        
+        function processAudioRecording(nodeId) {
+            const transcriptionDiv = document.getElementById(`transcription-${nodeId}`);
+            
+            // Create audio blob
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            
+            // Only process if we have actual audio data
+            if (audioBlob.size <= 44) { // Typically empty audio files are around 44 bytes
+                transcriptionDiv.textContent = "No speech detected, try again.";
+                return;
+            }
+            
+            // Convert to base64
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = function() {
+                const base64Audio = reader.result;
+                
+                transcriptionDiv.textContent = "Processing audio...";
+                
+                // Send to server for transcription
+                fetch('/transcribe_audio', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        node_id: nodeId,
+                        audio_data: base64Audio
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Server responded with status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    // Show transcription
+                    transcriptionDiv.textContent = `I heard: ${data.transcription}`;
+                    
+                    // Add user message to chat
+                    addMessageToChat(nodeId, data.transcription, 'user');
+                    
+                    // Add agent response
+                    if (data.response) {
+                        addMessageToChat(nodeId, data.response, 'agent');
+                    }
+                    
+                    // Add debug button for terminal output
+                    if (data.terminal_output) {
+                        addDebugButton(nodeId, data.terminal_output);
+                    }
+                    
+                    // Play audio response if available
+                    if (data.audio_response) {
+                        playAudioResponse(nodeId, data.audio_response);
+                    }
+                    
+                    // Check if the task was completed successfully
+                    const taskCompleted = checkTaskCompletion(data.response, data.terminal_output);
+                    
+                    if (taskCompleted) {
+                        // If task completed, don't restart recording and show completion
+                        const micButton = document.getElementById(`mic-button-${nodeId}`);
+                        const chatContainer = document.getElementById(`chat-tab-${nodeId}`);
+                        
+                        if (micButton) {
+                            micButton.classList.remove('recording');
+                            micButton.classList.add('completed');
+                        }
+                        
+                        if (chatContainer) {
+                            chatContainer.classList.add('conversation-ended');
+                        }
+                        
+                        // Add visual completion indicator
+                        const completionIndicator = document.createElement('span');
+                        completionIndicator.className = 'task-completed-indicator';
+                        completionIndicator.textContent = 'Task Completed';
+                        transcriptionDiv.appendChild(completionIndicator);
+                        
+                        // Add completion message to chat
+                        const completionMessage = document.createElement('div');
+                        completionMessage.className = 'message system-message';
+                        completionMessage.textContent = "Task completed. Click the microphone to start a new conversation.";
+                        
+                        const chatMessages = document.getElementById(`chat-messages-${nodeId}`);
+                        if (chatMessages) {
+                            chatMessages.appendChild(completionMessage);
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        }
+                        
+                        console.log("Task completed, conversation ended");
+                    } else {
+                        // Only restart recording if task not completed
+                        setTimeout(() => {
+                            // Only restart if not already recording
+                            if (!isRecording) {
+                                toggleRecording(nodeId);
+                            }
+                        }, 500); // Short delay before restarting
+                    }
+                })
+                .catch(error => {
+                    console.error('Error transcribing audio:', error);
+                    transcriptionDiv.textContent = `Error: ${error.message}`;
+                });
+            };
+        }
+        
+        function playAudioResponse(nodeId, base64Audio) {
+            const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
+            
+            // Create audio element
+            const audioContainer = document.createElement('div');
+            audioContainer.className = 'audio-player';
+            
+            const audioElement = document.createElement('audio');
+            audioElement.controls = true;
+            audioElement.style.width = '100%';
+            
+            // Set the audio source
+            const audioSource = document.createElement('source');
+            audioSource.src = `data:audio/mp3;base64,${base64Audio}`;
+            audioSource.type = 'audio/mp3';
+            
+            audioElement.appendChild(audioSource);
+            audioContainer.appendChild(audioElement);
+            chatMessagesElement.appendChild(audioContainer);
+            
+            // Auto play the audio
+            audioElement.play().catch(e => {
+                console.warn('Auto-play prevented by browser:', e);
+            });
+            
+            // Scroll to bottom
+            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+        }
+        
+        // Update how we display projects
+        function loadProjects() {
+            fetch('/projects')
+                .then(response => response.json())
+                .then(projectData => {
+                    const projectsContainer = document.getElementById('projects');
+                    
+                    if (Object.keys(projectData).length === 0) {
+                        projectsContainer.innerHTML = '<div class="empty-state">No projects available. Start by planning a project with an agent.</div>';
+                        return;
+                    }
+                    
+                    projectsContainer.innerHTML = '';
+                    
+                    for (const [projectId, project] of Object.entries(projectData)) {
+                        const projectElement = document.createElement('div');
+                        projectElement.className = 'project';
+                        
+                        let participantsHtml = '';
+                        if (project.participants && project.participants.length > 0) {
+                            participantsHtml = '<div class="project-participants">';
+                            project.participants.forEach(participant => {
+                                participantsHtml += `<span class="project-participant">${participant}</span>`;
+                            });
+                            participantsHtml += '</div>';
+                        }
+                        
+                        projectElement.innerHTML = `
+                            <h3>${project.name || projectId}</h3>
+                            <div>Owner: ${project.owner}</div>
+                            ${participantsHtml}
+                        `;
+                        
+                        projectsContainer.appendChild(projectElement);
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('projects').innerHTML = 'Error loading projects.';
+                    console.error('Error fetching projects:', error);
+                });
+        }
+        
+        // Update how we display tasks
+        function loadTasks() {
+            fetch('/tasks')
+                .then(response => response.json())
+                .then(taskData => {
+                    const tasksContainer = document.getElementById('tasks');
+                    
+                    if (taskData.length === 0) {
+                        tasksContainer.innerHTML = '<div class="empty-state">No tasks available. Tasks will appear when created by agents.</div>';
+                        return;
+                    }
+                    
+                    tasksContainer.innerHTML = '';
+                    
+                    taskData.forEach(task => {
+                        const taskElement = document.createElement('div');
+                        taskElement.className = `task ${task.priority}`;
+                        
+                        // Format the due date
+                        const dueDate = new Date(task.due_date);
+                        const formattedDueDate = dueDate.toLocaleDateString();
+                        
+                        taskElement.innerHTML = `
+                            <h3>${task.title}</h3>
+                            <p>${task.description}</p>
+                            <div class="task-meta">
+                                <span>Due: ${formattedDueDate}</span>
+                                <span>Assigned to: ${task.assigned_to}</span>
+                            </div>
+                        `;
+                        
+                        tasksContainer.appendChild(taskElement);
+                    });
+                })
+                .catch(error => {
+                    document.getElementById('tasks').innerHTML = 'Error loading tasks.';
+                    console.error('Error fetching tasks:', error);
+                });
+        }
+        
+        // Update the loading indicator
+        function addLoadingIndicator(nodeId) {
+            const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
+            const loadingElement = document.createElement('div');
+            loadingElement.className = 'message agent-message loading';
+            loadingElement.innerHTML = 'Thinking<span class="loading-dots"></span>';
+            loadingElement.id = 'loading-' + Date.now();
+            chatMessagesElement.appendChild(loadingElement);
+            
+            // Scroll to bottom
+            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
+            
+            return loadingElement.id;
+        }
+        
+        // Enhance the node item creation
+        function updateNodeElements(nodes) {
+            const nodesContainer = document.getElementById('nodes');
+            const chatTabsContainer = document.getElementById('chat-tabs');
+            const chatTabContentsContainer = document.getElementById('chat-tab-contents');
+            
+            if (nodes.length === 0) {
+                nodesContainer.innerHTML = '<div class="empty-state">No agents available.</div>';
+                return;
+            }
+            
+            nodesContainer.innerHTML = '';
+            chatTabsContainer.innerHTML = '';
+            chatTabContentsContainer.innerHTML = '';
+            
+            nodes.forEach(node => {
+                // Create node item
+                const nodeElement = document.createElement('div');
+                nodeElement.className = 'node-item';
+                nodeElement.textContent = node;
+                nodeElement.onclick = () => setActiveNode(node);
+                nodesContainer.appendChild(nodeElement);
+                
+                // Create chat tab
+                const tabElement = document.createElement('div');
+                tabElement.className = 'tab';
+                tabElement.textContent = node;
+                tabElement.dataset.nodeId = node;
+                tabElement.onclick = () => activateTab(node);
+                chatTabsContainer.appendChild(tabElement);
+                
+                // Create chat tab content
+                const tabContentElement = document.createElement('div');
+                tabContentElement.className = 'tab-content';
+                tabContentElement.id = `chat-tab-${node}`;
+                
+                tabContentElement.innerHTML = `
+                    <div class="chat-container">
+                        <div class="chat-messages" id="chat-messages-${node}"></div>
+                        <div class="chat-input-container">
+                            <div class="mic-button" id="mic-button-${node}">
+                                <i class="fas fa-microphone"></i>
+                            </div>
+                            <input type="text" class="chat-input" id="chat-input-${node}" placeholder="Type a message...">
+                            <button class="chat-send-btn" onclick="sendMessage('${node}')">Send</button>
+                        </div>
+                        <div class="transcription" id="transcription-${node}"></div>
+                        <div class="audio-level-container" id="audio-level-container-${node}">
+                            <div class="audio-level-meter" id="audio-level-meter-${node}"></div>
+                        </div>
+                    </div>
+                `;
+                
+                chatTabContentsContainer.appendChild(tabContentElement);
+                
+                // Add event listener for Enter key
+                const inputElement = document.getElementById(`chat-input-${node}`);
+                inputElement.addEventListener('keypress', function(event) {
+                    if (event.key === 'Enter') {
+                        sendMessage(node);
+                    }
+                });
+                
+                // Add microphone functionality
+                const micButton = document.getElementById(`mic-button-${node}`);
+                if (micButton) {
+                    micButton.addEventListener('click', () => toggleRecording(node));
+                }
+            });
+        }
+
+        // Initial data loading
+        fetch('/nodes')
+            .then(response => response.json())
+            .then(nodeData => {
+                nodes = nodeData;
+                updateNodeElements(nodes);
+                
+                // Activate the first tab by default
+                if (nodes.length > 0) {
+                    activateTab(nodes[0]);
+                }
+                
+                // Load projects and tasks
+                loadProjects();
+                loadTasks();
+            })
+            .catch(error => {
+                document.getElementById('nodes').innerHTML = 'Error loading agents.';
+                console.error('Error fetching nodes:', error);
+            });
+
+        // Add a function to check if a task was completed based on the response
+        function checkTaskCompletion(response, terminalOutput) {
+            if (!response && !terminalOutput) return false;
+            
+            // Check for task completion indicators in the response
+            const completionPhrases = [
+                "successfully", "completed", "done", "scheduled", "created", 
+                "rescheduled", "cancelled", "task complete", "meeting scheduled",
+                "meeting rescheduled", "meeting cancelled"
+            ];
+            
+            // Check the response text
+            if (response) {
+                const responseLower = response.toLowerCase();
+                if (completionPhrases.some(phrase => responseLower.includes(phrase))) {
+                    return true;
+                }
+            }
+            
+            // Check terminal output for task completion indicators
+            if (terminalOutput) {
+                const outputLower = terminalOutput.toLowerCase();
+                
+                // Look for successful scheduling, rescheduling, or cancellation confirmation messages
+                if (outputLower.includes("meeting created") || 
+                    outputLower.includes("meeting") && outputLower.includes("scheduled") ||
+                    outputLower.includes("meeting") && outputLower.includes("rescheduled") ||
+                    outputLower.includes("cancelled") && outputLower.includes("meeting") ||
+                    outputLower.includes("task") && outputLower.includes("created")) {
+                    return true;
+                }
+            }
+            
+            return false;
         }
     </script>
 </body>
