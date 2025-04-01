@@ -493,24 +493,11 @@
 
         /* Add this style for the audio level meter */
         .audio-level-container {
-            height: 4px;
-            width: 100%;
-            background-color: #eee;
-            border-radius: 2px;
-            margin-top: 5px;
-            overflow: hidden;
-            display: none;
+            display: none; /* Hide completely */
         }
 
         .audio-level-meter {
-            height: 100%;
-            width: 0%;
-            background-color: #4361ee;
-            transition: width 0.1s ease;
-        }
-
-        .recording .audio-level-container {
-            display: block;
+            display: none; /* Hide completely */
         }
 
         /* Add these styles to the existing CSS */
@@ -531,10 +518,6 @@
         }
 
         /* Visual style for the "conversation ended" state */
-        .conversation-ended .audio-level-container {
-            background-color: #e9ecef;
-        }
-
         .conversation-ended .mic-button {
             position: relative;
         }
@@ -786,17 +769,11 @@
             chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
         }
         
-        // Audio recording functionality with pause detection
+        // Audio recording functionality with manual controls
         let mediaRecorder = null;
         let audioChunks = [];
         let isRecording = false;
         let activeRecordingNode = null;
-        let silenceDetector = null;
-        let audioContext = null;
-        let silenceTimer = null;
-        let lastAudioLevel = 0;
-        const silenceThreshold = 0.01; // Adjust based on testing
-        const silenceDuration = 2000; // Silence duration in ms before sending (2 seconds)
         
         function toggleRecording(nodeId) {
             const micButton = document.getElementById(`mic-button-${nodeId}`);
@@ -815,128 +792,72 @@
                     }
                 }
                 
-                // Start new recording
-                navigator.mediaDevices.getUserMedia({ audio: true })
+                // Start new recording with optimized settings for Whisper API
+                navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,    // Enable echo cancellation for Whisper
+                        noiseSuppression: true,    // Enable noise suppression for Whisper
+                        autoGainControl: true,     // Keep auto gain control for volume normalization
+                        sampleRate: 16000          // Use 16kHz which works well with Whisper
+                    } 
+                })
                     .then(stream => {
                         audioChunks = [];
-                        mediaRecorder = new MediaRecorder(stream);
+                        
+                        // Use appropriate audio encoding for Whisper
+                        const options = {};
+                        if (MediaRecorder.isTypeSupported('audio/mp3')) {
+                            options.mimeType = 'audio/mp3';
+                            console.log("Using MP3 format for recording");
+                        } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+                            options.mimeType = 'audio/webm;codecs=opus';
+                            console.log("Using Opus codec for recording");
+                        } else {
+                            console.log("Using default audio format");
+                        }
+                        
+                        // Add moderate bitrate for better quality
+                        if ('audioBitsPerSecond' in MediaRecorder) {
+                            options.audioBitsPerSecond = 128000;  // 128kbps is sufficient for speech
+                        }
+                        
+                        console.log("Creating MediaRecorder with options:", options);
+                        mediaRecorder = new MediaRecorder(stream, options);
                         
                         mediaRecorder.addEventListener('dataavailable', event => {
-                            audioChunks.push(event.data);
+                            if (event.data.size > 0) {
+                                audioChunks.push(event.data);
+                                console.log(`Received audio chunk: ${event.data.size} bytes`);
+                            }
                         });
                         
                         mediaRecorder.addEventListener('stop', () => {
                             // Process the recording
                             if (audioChunks.length > 0) {
+                                const totalSize = audioChunks.reduce((size, chunk) => size + chunk.size, 0);
+                                console.log(`Recording complete, total size: ${totalSize} bytes in ${audioChunks.length} chunks`);
                                 processAudioRecording(nodeId);
+                            } else {
+                                console.log("No audio chunks recorded");
+                                transcriptionDiv.textContent = "No audio recorded. Please try again.";
                             }
                             
                             // Stop all audio tracks to release the microphone
                             stream.getTracks().forEach(track => track.stop());
-                            
-                            // Clean up silence detector
-                            if (silenceDetector) {
-                                if (audioContext && audioContext.state !== 'closed') {
-                                    silenceDetector.disconnect();
-                                }
-                                silenceDetector = null;
-                            }
-                            if (audioContext && audioContext.state !== 'closed') {
-                                audioContext.close();
-                            }
-                            if (silenceTimer) {
-                                clearTimeout(silenceTimer);
-                                silenceTimer = null;
-                            }
                         });
                         
-                        // Start recording
-                        mediaRecorder.start();
+                        // Collect data frequently for better continuity
+                        mediaRecorder.start(100); // Collect data every 100ms
                         isRecording = true;
                         activeRecordingNode = nodeId;
                         micButton.classList.add('recording');
-                        transcriptionDiv.textContent = "Recording... (Will automatically detect pauses)";
-                        
-                        // Setup silence detection
-                        setupSilenceDetection(stream, nodeId);
+                        transcriptionDiv.textContent = "Recording... Click microphone again to stop and process";
                     })
                     .catch(error => {
                         console.error('Error accessing microphone:', error);
                         transcriptionDiv.textContent = "Error: Could not access microphone. Please check permissions.";
                     });
             }
-        }
-        
-        function setupSilenceDetection(stream, nodeId) {
-            // Create audio context and analyzer
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const source = audioContext.createMediaStreamSource(stream);
-            silenceDetector = audioContext.createAnalyser();
-            silenceDetector.fftSize = 256;
-            silenceDetector.smoothingTimeConstant = 0.8;
-            source.connect(silenceDetector);
-            
-            const bufferLength = silenceDetector.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            
-            // Function to check audio levels
-            function checkAudioLevel() {
-                if (!isRecording || !silenceDetector) return;
-                
-                silenceDetector.getByteFrequencyData(dataArray);
-                
-                // Calculate average level
-                let sum = 0;
-                for (let i = 0; i < bufferLength; i++) {
-                    sum += dataArray[i];
-                }
-                const averageLevel = sum / bufferLength / 255; // Normalize to 0-1
-                
-                // Update visual indicator
-                const meter = document.getElementById(`audio-level-meter-${nodeId}`);
-                if (meter) {
-                    // Scale for better visual effect (0-100%)
-                    const scaledLevel = Math.min(100, averageLevel * 400);
-                    meter.style.width = `${scaledLevel}%`;
-                    
-                    // Change color based on level
-                    if (scaledLevel > 70) {
-                        meter.style.backgroundColor = '#ff4c4c'; // Red for loud
-                    } else if (scaledLevel > 30) {
-                        meter.style.backgroundColor = '#4361ee'; // Blue for normal
-                    } else {
-                        meter.style.backgroundColor = '#4CAF50'; // Green for quiet
-                    }
-                }
-                
-                lastAudioLevel = averageLevel;
-                
-                // Detect silence
-                if (averageLevel < silenceThreshold) {
-                    if (!silenceTimer) {
-                        silenceTimer = setTimeout(() => {
-                            console.log("Silence detected, stopping recording");
-                            const transcriptionDiv = document.getElementById(`transcription-${nodeId}`);
-                            transcriptionDiv.textContent = "Pause detected, processing...";
-                            stopRecording();
-                        }, silenceDuration);
-                    }
-                } else {
-                    // Reset timer if sound is detected
-                    if (silenceTimer) {
-                        clearTimeout(silenceTimer);
-                        silenceTimer = null;
-                    }
-                }
-                
-                // Continue checking while recording
-                if (isRecording) {
-                    requestAnimationFrame(checkAudioLevel);
-                }
-            }
-            
-            // Start monitoring
-            checkAudioLevel();
         }
         
         function stopRecording() {
@@ -954,14 +875,20 @@
         function processAudioRecording(nodeId) {
             const transcriptionDiv = document.getElementById(`transcription-${nodeId}`);
             
-            // Create audio blob
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            // Create audio blob - prioritize formats for Whisper API
+            const mimeType = MediaRecorder.isTypeSupported('audio/mp3') ? 'audio/mp3' : 
+                             MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 
+                             'audio/webm';
+            const audioBlob = new Blob(audioChunks, { type: mimeType });
             
             // Only process if we have actual audio data
-            if (audioBlob.size <= 44) { // Typically empty audio files are around 44 bytes
-                transcriptionDiv.textContent = "No speech detected, try again.";
+            if (audioBlob.size <= 100) {
+                transcriptionDiv.textContent = "No speech detected or recording too short. Please try again.";
+                console.log("Audio blob size too small:", audioBlob.size, "bytes");
                 return;
             }
+            
+            console.log("Audio blob size:", audioBlob.size, "bytes", "type:", mimeType);
             
             // Convert to base64
             const reader = new FileReader();
@@ -969,7 +896,7 @@
             reader.onloadend = function() {
                 const base64Audio = reader.result;
                 
-                transcriptionDiv.textContent = "Processing audio...";
+                transcriptionDiv.textContent = "Processing audio with Whisper...";
                 
                 // Send to server for transcription
                 fetch('/transcribe_audio', {
@@ -1012,51 +939,6 @@
                     // Play audio response if available
                     if (data.audio_response) {
                         playAudioResponse(nodeId, data.audio_response);
-                    }
-                    
-                    // Check if the task was completed successfully
-                    const taskCompleted = checkTaskCompletion(data.response, data.terminal_output);
-                    
-                    if (taskCompleted) {
-                        // If task completed, don't restart recording and show completion
-                        const micButton = document.getElementById(`mic-button-${nodeId}`);
-                        const chatContainer = document.getElementById(`chat-tab-${nodeId}`);
-                        
-                        if (micButton) {
-                            micButton.classList.remove('recording');
-                            micButton.classList.add('completed');
-                        }
-                        
-                        if (chatContainer) {
-                            chatContainer.classList.add('conversation-ended');
-                        }
-                        
-                        // Add visual completion indicator
-                        const completionIndicator = document.createElement('span');
-                        completionIndicator.className = 'task-completed-indicator';
-                        completionIndicator.textContent = 'Task Completed';
-                        transcriptionDiv.appendChild(completionIndicator);
-                        
-                        // Add completion message to chat
-                        const completionMessage = document.createElement('div');
-                        completionMessage.className = 'message system-message';
-                        completionMessage.textContent = "Task completed. Click the microphone to start a new conversation.";
-                        
-                        const chatMessages = document.getElementById(`chat-messages-${nodeId}`);
-                        if (chatMessages) {
-                            chatMessages.appendChild(completionMessage);
-                            chatMessages.scrollTop = chatMessages.scrollHeight;
-                        }
-                        
-                        console.log("Task completed, conversation ended");
-                    } else {
-                        // Only restart recording if task not completed
-                        setTimeout(() => {
-                            // Only restart if not already recording
-                            if (!isRecording) {
-                                toggleRecording(nodeId);
-                            }
-                        }, 500); // Short delay before restarting
                     }
                 })
                 .catch(error => {
@@ -1232,16 +1114,13 @@
                     <div class="chat-container">
                         <div class="chat-messages" id="chat-messages-${node}"></div>
                         <div class="chat-input-container">
-                            <div class="mic-button" id="mic-button-${node}">
+                            <div class="mic-button" id="mic-button-${node}" title="Click once to start recording, click again to stop">
                                 <i class="fas fa-microphone"></i>
                             </div>
                             <input type="text" class="chat-input" id="chat-input-${node}" placeholder="Type a message...">
                             <button class="chat-send-btn" onclick="sendMessage('${node}')">Send</button>
                         </div>
                         <div class="transcription" id="transcription-${node}"></div>
-                        <div class="audio-level-container" id="audio-level-container-${node}">
-                            <div class="audio-level-meter" id="audio-level-meter-${node}"></div>
-                        </div>
                     </div>
                 `;
                 

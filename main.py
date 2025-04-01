@@ -33,7 +33,10 @@ if not client.api_key:
     raise ValueError("Please set OPENAI_API_KEY in environment variables or .env file")
 
 # Add these constants at the top level
-SCOPES = ['https://www.googleapis.com/auth/calendar']
+SCOPES = [
+    'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/gmail.modify'  # Upgrade to allow reading, message modification, but not account management
+]
 CLIENT_ID = '473172815719-uqsf1bv6rior1ctebkernlnamca3mv3e.apps.googleusercontent.com'
 TOKEN_FILE = 'token.pickle'
 
@@ -127,20 +130,24 @@ class LLMNode:
 
         # Calendar for meeting scheduling
         self.calendar = []
-        # Uncomment calendar service initialization
-        self.calendar_service = self._get_calendar_service()
+        # Initialize Google services
+        self.google_services = self._initialize_google_services()
+        self.calendar_service = self.google_services.get('calendar')
+        self.gmail_service = self.google_services.get('gmail')
 
         self.network: Optional[Network] = None
 
-    def _get_calendar_service(self):
-        """Initialize Google Calendar service with improved error handling"""
-        print(f"[{self.node_id}] Initializing Google Calendar service...")
+    def _initialize_google_services(self):
+        """Initialize Google services (Calendar and Gmail) with shared authentication"""
+        print(f"[{self.node_id}] Initializing Google services...")
+        
+        services = {'calendar': None, 'gmail': None}
         
         # Check if client secret is available
         client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
         if not client_secret:
             print(f"[{self.node_id}] ERROR: GOOGLE_CLIENT_SECRET environment variable not found")
-            return None
+            return services
         
         print(f"[{self.node_id}] Client secret found: {client_secret[:5]}...")
         
@@ -208,7 +215,7 @@ class LLMNode:
                     except Exception as e:
                         print(f"[{self.node_id}] Authentication error: {str(e)}")
                         print(f"[{self.node_id}] Full error details: {repr(e)}")
-                        return None
+                        return services
 
                 print(f"[{self.node_id}] Saving credentials to token file: {TOKEN_FILE}")
                 try:
@@ -218,19 +225,35 @@ class LLMNode:
                 except Exception as e:
                     print(f"[{self.node_id}] Error saving credentials: {str(e)}")
 
-            print(f"[{self.node_id}] Building calendar service...")
-            service = build('calendar', 'v3', credentials=creds)
+            # Initialize Calendar service
+            try:
+                print(f"[{self.node_id}] Building calendar service...")
+                calendar_service = build('calendar', 'v3', credentials=creds)
+                
+                # Test the calendar service with a simple API call
+                calendar_list = calendar_service.calendarList().list().execute()
+                print(f"[{self.node_id}] Calendar service working! Found {len(calendar_list.get('items', []))} calendars")
+                services['calendar'] = calendar_service
+            except Exception as e:
+                print(f"[{self.node_id}] Failed to initialize Calendar service: {str(e)}")
             
-            # Test the service with a simple API call
-            print(f"[{self.node_id}] Testing calendar service with calendarList.list()...")
-            calendar_list = service.calendarList().list().execute()
-            print(f"[{self.node_id}] Calendar service working! Found {len(calendar_list.get('items', []))} calendars")
+            # Initialize Gmail service
+            try:
+                print(f"[{self.node_id}] Building Gmail service...")
+                gmail_service = build('gmail', 'v1', credentials=creds)
+                
+                # Test the Gmail service with a simple API call
+                profile = gmail_service.users().getProfile(userId='me').execute()
+                print(f"[{self.node_id}] Gmail service working! Connected to {profile.get('emailAddress')}")
+                services['gmail'] = gmail_service
+            except Exception as e:
+                print(f"[{self.node_id}] Failed to initialize Gmail service: {str(e)}")
             
-            return service
+            return services
+            
         except Exception as e:
-            print(f"[{self.node_id}] Failed to build or test calendar service: {str(e)}")
-            print(f"[{self.node_id}] Full error details: {repr(e)}")
-            return None
+            print(f"[{self.node_id}] Failed to initialize Google services: {str(e)}")
+            return services
 
     # Uncomment the calendar reminder method
     def create_calendar_reminder(self, task: Task):
@@ -375,6 +398,15 @@ class LLMNode:
                 elif action == "reschedule_meeting":
                     self._handle_meeting_rescheduling(message)
                     return
+            
+            # Check if this is an email-related command using advanced detection
+            email_analysis = self._analyze_email_command(message)
+            
+            if email_analysis.get("action") != "none":
+                # Process email command with advanced handling
+                response = self.process_advanced_email_command(message)
+                print(f"[{self.node_id}] Response: {response}")
+                return
 
         # Regular message handling (unchanged)
         self.conversation_history.append({"role": "user", "content": f"{sender_id} says: {message}"})
@@ -1384,6 +1416,361 @@ class LLMNode:
             print(f"[{self.node_id}] Error completing meeting rescheduling: {str(e)}")
             print(f"[{self.node_id}] Response: There was an error rescheduling the meeting. Please try again.")
 
+    def fetch_emails(self, max_results=10, query=None):
+        """Fetch emails from Gmail with optional query parameters"""
+        if not self.gmail_service:
+            print(f"[{self.node_id}] Gmail service not available")
+            return []
+        
+        try:
+            # Default query to get recent emails
+            query_string = query if query else ""
+            
+            # Get list of messages matching the query
+            results = self.gmail_service.users().messages().list(
+                userId='me',
+                q=query_string,
+                maxResults=max_results
+            ).execute()
+            
+            messages = results.get('messages', [])
+            
+            if not messages:
+                print(f"[{self.node_id}] No emails found matching query: {query_string}")
+                return []
+            
+            # Fetch full details for each message
+            emails = []
+            for message in messages:
+                msg_id = message['id']
+                msg = self.gmail_service.users().messages().get(
+                    userId='me', 
+                    id=msg_id, 
+                    format='full'
+                ).execute()
+                
+                # Extract header information
+                headers = msg['payload']['headers']
+                subject = next((h['value'] for h in headers if h['name'] == 'Subject'), '(No subject)')
+                sender = next((h['value'] for h in headers if h['name'] == 'From'), '(Unknown sender)')
+                date = next((h['value'] for h in headers if h['name'] == 'Date'), '')
+                
+                # Extract body content
+                body = self._extract_email_body(msg['payload'])
+                
+                # Add email data to list
+                emails.append({
+                    'id': msg_id,
+                    'subject': subject,
+                    'sender': sender,
+                    'date': date,
+                    'body': body,
+                    'snippet': msg.get('snippet', ''),
+                    'labelIds': msg.get('labelIds', [])
+                })
+            
+            print(f"[{self.node_id}] Fetched {len(emails)} emails")
+            return emails
+        
+        except Exception as e:
+            print(f"[{self.node_id}] Error fetching emails: {str(e)}")
+            return []
+    
+    def _extract_email_body(self, payload):
+        """Helper function to extract email body text from the payload"""
+        if 'body' in payload and payload['body'].get('data'):
+            # Base64 decode the body
+            body_data = payload['body']['data']
+            body_bytes = base64.urlsafe_b64decode(body_data)
+            return body_bytes.decode('utf-8')
+        
+        # If the payload has parts (multipart email), recursively extract from parts
+        if 'parts' in payload:
+            text_parts = []
+            for part in payload['parts']:
+                # Focus on text/plain parts first, fall back to HTML if needed
+                if part['mimeType'] == 'text/plain':
+                    text_parts.append(self._extract_email_body(part))
+                elif part['mimeType'] == 'text/html' and not text_parts:
+                    text_parts.append(self._extract_email_body(part))
+                elif part['mimeType'].startswith('multipart/'):
+                    text_parts.append(self._extract_email_body(part))
+            
+            return '\n'.join(text_parts)
+        
+        return "(No content)"
+    
+    def summarize_emails(self, emails, summary_type="concise"):
+        """Summarize a list of emails using the LLM"""
+        if not emails:
+            return "No emails to summarize."
+        
+        # Prepare the email data for the LLM
+        email_texts = []
+        for i, email in enumerate(emails, 1):
+            email_texts.append(
+                f"Email {i}:\n"
+                f"From: {email['sender']}\n"
+                f"Subject: {email['subject']}\n"
+                f"Date: {email['date']}\n"
+                f"Snippet: {email['snippet']}\n"
+            )
+        
+        emails_content = "\n\n".join(email_texts)
+        
+        # Choose prompt based on summary type
+        if summary_type == "detailed":
+            prompt = f"""
+            Please provide a detailed summary of the following emails:
+            {emails_content}
+            
+            For each email, include:
+            1. The sender
+            2. The subject
+            3. Key points from the email
+            4. Any action items or important deadlines
+            """
+        else:
+            # Default to concise summary
+            prompt = f"""
+            Please provide a concise summary of the following emails:
+            {emails_content}
+            
+            Keep your summary brief and focus on the most important information.
+            """
+        
+        # Get summary from the LLM
+        response = self.query_llm([{"role": "user", "content": prompt}])
+        return response
+    
+    def process_email_command(self, command):
+        """Process natural language commands related to emails"""
+        # First, detect the intent of the email command
+        intent = self._detect_email_intent(command)
+        
+        action = intent.get("action")
+        
+        if action == "fetch_recent":
+            # Get recent emails
+            count = intent.get("count", 5)
+            emails = self.fetch_emails(max_results=count)
+            if not emails:
+                return "I couldn't find any recent emails."
+            
+            summary_type = intent.get("summary_type", "concise")
+            return self.summarize_emails(emails, summary_type)
+            
+        elif action == "search":
+            # Search emails with query
+            query = intent.get("query", "")
+            count = intent.get("count", 5)
+            
+            if not query:
+                return "I need a search query to find emails. Please specify what you're looking for."
+            
+            emails = self.fetch_emails(max_results=count, query=query)
+            if not emails:
+                return f"I couldn't find any emails matching '{query}'."
+            
+            summary_type = intent.get("summary_type", "concise")
+            return self.summarize_emails(emails, summary_type)
+            
+        else:
+            return "I'm not sure what you want to do with your emails. Try asking for recent emails or searching for specific emails."
+    
+    def _detect_email_intent(self, message):
+        """Detect the intent of an email-related command"""
+        prompt = f"""
+        Analyze this message and determine what email action is being requested:
+        "{message}"
+        
+        Return JSON with these fields:
+        - action: string ("fetch_recent", "search", "none")
+        - count: integer (number of emails to fetch/search, default 5)
+        - query: string (search query if applicable)
+        - summary_type: string ("concise" or "detailed")
+        
+        Only extract information explicitly mentioned in the message.
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"[{self.node_id}] Error detecting email intent: {str(e)}")
+            # Default fallback
+            return {"action": "none", "count": 5, "query": "", "summary_type": "concise"}
+
+    def fetch_emails_with_advanced_query(self, criteria):
+        """Fetch emails with advanced filtering criteria"""
+        if not self.gmail_service:
+            return []
+            
+        # Build Gmail query string from criteria
+        query_parts = []
+        
+        # Add filters for common criteria
+        if criteria.get('from'):
+            query_parts.append(f"from:{criteria['from']}")
+        
+        if criteria.get('to'):
+            query_parts.append(f"to:{criteria['to']}")
+            
+        if criteria.get('subject'):
+            query_parts.append(f"subject:{criteria['subject']}")
+            
+        if criteria.get('has_attachment', False):
+            query_parts.append("has:attachment")
+            
+        if criteria.get('label'):
+            query_parts.append(f"label:{criteria['label']}")
+            
+        if criteria.get('is_unread', False):
+            query_parts.append("is:unread")
+            
+        # Handle date ranges
+        if criteria.get('after'):
+            query_parts.append(f"after:{criteria['after']}")
+            
+        if criteria.get('before'):
+            query_parts.append(f"before:{criteria['before']}")
+            
+        # Add keywords/content search
+        if criteria.get('keywords'):
+            if isinstance(criteria['keywords'], list):
+                query_parts.append(" ".join(criteria['keywords']))
+            else:
+                query_parts.append(criteria['keywords'])
+        
+        # Combine all parts into a single query
+        query = " ".join(query_parts)
+        max_results = criteria.get('max_results', 10)
+        
+        print(f"[{self.node_id}] Fetching emails with query: {query}")
+        return self.fetch_emails(max_results=max_results, query=query)
+    
+    def get_email_labels(self):
+        """Get available email labels/categories"""
+        if not self.gmail_service:
+            print(f"[{self.node_id}] Gmail service not available")
+            return []
+            
+        try:
+            results = self.gmail_service.users().labels().list(userId='me').execute()
+            labels = results.get('labels', [])
+            
+            # Format labels for user-friendly display
+            formatted_labels = []
+            for label in labels:
+                formatted_labels.append({
+                    'id': label['id'],
+                    'name': label['name'],
+                    'type': label['type']  # 'system' or 'user'
+                })
+                
+            return formatted_labels
+            
+        except Exception as e:
+            print(f"[{self.node_id}] Error fetching email labels: {str(e)}")
+            return []
+            
+    def process_advanced_email_command(self, command):
+        """Process complex email commands with more advanced functionality"""
+        # First analyze the command to extract detailed intent and parameters
+        analysis = self._analyze_email_command(command)
+        
+        action = analysis.get('action', 'none')
+        
+        if action == 'list_labels':
+            # Get and format available labels
+            labels = self.get_email_labels()
+            if not labels:
+                return "I couldn't retrieve your email labels."
+                
+            # Format response with label categories
+            system_labels = [l for l in labels if l['type'] == 'system']
+            user_labels = [l for l in labels if l['type'] == 'user']
+            
+            response = "Here are your email labels:\n\n"
+            
+            if system_labels:
+                response += "System Labels:\n"
+                for label in system_labels:
+                    response += f"- {label['name']}\n"
+            
+            if user_labels:
+                response += "\nCustom Labels:\n"
+                for label in user_labels:
+                    response += f"- {label['name']}\n"
+                    
+            return response
+            
+        elif action == 'advanced_search':
+            # Extract search criteria from analysis
+            criteria = analysis.get('criteria', {})
+            
+            if not criteria:
+                return "I couldn't understand your search criteria. Please try again with more specific details."
+                
+            # Fetch emails matching criteria
+            emails = self.fetch_emails_with_advanced_query(criteria)
+            
+            if not emails:
+                return "I couldn't find any emails matching your criteria."
+                
+            # Summarize emails with requested format
+            summary_type = analysis.get('summary_type', 'concise')
+            return self.summarize_emails(emails, summary_type)
+            
+        else:
+            # Fall back to basic email processing
+            return self.process_email_command(command)
+    
+    def _analyze_email_command(self, command):
+        """Analyze a complex email command to extract detailed intent and parameters"""
+        prompt = f"""
+        Analyze this email-related command in detail:
+        "{command}"
+        
+        Return a JSON object with the following structure:
+        {{
+            "action": "list_labels" | "advanced_search" | "fetch_recent" | "search" | "none",
+            "criteria": {{
+                "from": "sender email or name",
+                "to": "recipient email",
+                "subject": "subject text",
+                "keywords": ["word1", "word2"],
+                "has_attachment": true/false,
+                "is_unread": true/false,
+                "label": "label name",
+                "after": "YYYY/MM/DD",
+                "before": "YYYY/MM/DD",
+                "max_results": 10
+            }},
+            "summary_type": "concise" | "detailed"
+        }}
+        
+        Include only the fields that are explicitly mentioned or clearly implied in the command.
+        Convert date references like "yesterday", "last week", "2 days ago" to YYYY/MM/DD format.
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"[{self.node_id}] Error analyzing email command: {str(e)}")
+            return {"action": "none", "criteria": {}, "summary_type": "concise"}
+
 
 def run_cli(network):
     print("Commands:\n"
@@ -1539,24 +1926,31 @@ def transcribe_audio():
         
         audio_bytes = base64.b64decode(audio_data)
         
-        # Save to a temporary file
-        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_file:
+        # Save to a temporary file with mp3 extension
+        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_file:
             temp_file_path = temp_file.name
             temp_file.write(audio_bytes)
         
-        # Transcribe using OpenAI's Whisper API
+        print(f"[DEBUG] Audio file saved to {temp_file_path} with size {len(audio_bytes)} bytes")
+    
+        
+        # Use Whisper API for transcription
         with open(temp_file_path, 'rb') as audio_file:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
                 file=audio_file,
-                language="en"  # Specify English
+                language="en",
+                response_format="text"
             )
         
         # Clean up the temporary file
         os.unlink(temp_file_path)
         
-        command_text = transcript.text
+        # Log the transcript for debugging
+        print(f"[DEBUG] Whisper transcription: {transcript.text}")
         
+        command_text = transcript
+    
         # Use the same process as sending a text message
         response_collector = {"response": None, "terminal_output": []}
         
@@ -1598,7 +1992,7 @@ def transcribe_audio():
                     )
                     
                     # Convert to base64 for sending to the client
-                    speech_response.stream_to_file("temp_speech.mp3")
+                    speech_response.with_streaming_response.method("temp_speech.mp3")
                     with open("temp_speech.mp3", "rb") as audio_file:
                         audio_response = base64.b64encode(audio_file.read()).decode('utf-8')
                     os.unlink("temp_speech.mp3")
@@ -1618,6 +2012,7 @@ def transcribe_audio():
             return jsonify({"error": str(e)}), 500
             
     except Exception as e:
+        print(f"[DEBUG] Error in audio processing: {str(e)}")
         return jsonify({"error": f"Error processing audio: {str(e)}"}), 500
 
 # Update the existing send_message route to use the common function
@@ -1638,6 +2033,48 @@ def send_message():
         return jsonify({"error": f"Node {node_id} not found"}), 404
     
     return send_message_internal(node_id, message)
+
+def send_message_internal(node_id, message):
+    """Process a message sent to a node and return captured response"""
+    # Collector for response and terminal output
+    response_collector = {"response": None, "terminal_output": []}
+    
+    # Override the print function temporarily to capture output
+    original_print = print
+    
+    def custom_print(text):
+        if isinstance(text, str):
+            # Capture all terminal output
+            response_collector["terminal_output"].append(text)
+            
+            # Also capture the direct response
+            if text.startswith(f"[{node_id}] Response: "):
+                response_collector["response"] = text.replace(f"[{node_id}] Response: ", "")
+        original_print(text)
+    
+    # Replace print function
+    import builtins
+    builtins.print = custom_print
+    
+    try:
+        # Send the message to the node
+        network.nodes[node_id].receive_message(message, "cli_user")
+        
+        # Restore original print function
+        builtins.print = original_print
+        
+        # Format terminal output for display
+        terminal_text = "\n".join(response_collector["terminal_output"])
+        
+        return jsonify({
+            "response": response_collector["response"],
+            "terminal_output": terminal_text
+        })
+        
+    except Exception as e:
+        # Restore original print function
+        builtins.print = original_print
+        return jsonify({"error": str(e)}), 500
 
 def start_flask():
     # Try different ports if 5000 is in use
