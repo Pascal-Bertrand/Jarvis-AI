@@ -1,0 +1,6 @@
+Flask
+python-docx
+pandas
+nltk
+beautifulsoup4
+requests

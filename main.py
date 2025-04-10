@@ -17,6 +17,9 @@ import tempfile
 import re # Added import
 from flask_socketio import SocketIO
 
+# --- Add CV Parser Import ---
+from src.cv_parser.parser import CVParser 
+
 # Initialize the OpenAI client with your API key
 try:
     # Try loading from .env file first
@@ -2015,7 +2018,7 @@ def transcribe_audio():
         os.unlink(temp_file_path)
         
         # Log the transcript for debugging
-        print(f"[DEBUG] Whisper transcription: {transcript.text}")
+        print(f"[DEBUG] Whisper transcription: {transcript}")
         
         command_text = transcript
     
@@ -2060,7 +2063,8 @@ def transcribe_audio():
                     )
                     
                     # Convert to base64 for sending to the client
-                    speech_response.with_streaming_response.method("temp_speech.mp3")
+                    speech_response.write_to_file("temp_speech.mp3") 
+                    
                     with open("temp_speech.mp3", "rb") as audio_file:
                         audio_response = base64.b64encode(audio_file.read()).decode('utf-8')
                     os.unlink("temp_speech.mp3")
@@ -2240,3 +2244,62 @@ if __name__ == "__main__":
 
     # Start the CLI
     run_cli(network)
+
+# --- Add CV Upload Route ---
+@app.route('/upload_cv', methods=['POST'])
+def upload_cv_route():
+    if 'cv_file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    
+    file = request.files['cv_file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    
+    # Ensure the filename ends with .pdf (case-insensitive)
+    if file and '.' in file.filename and file.filename.rsplit('.', 1)[1].lower() == 'pdf':
+        temp_file_path = None # Initialize path variable
+        try:
+            # Create a temporary file to store the PDF
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
+                file.save(temp_pdf.name)
+                temp_file_path = temp_pdf.name
+            
+            print(f"[CV Parser] Temporary file saved at: {temp_file_path}")
+
+            # Instantiate the parser and parse the CV
+            # Ensure OPENAI_API_KEY is available in the environment where CVParser runs
+            parser = CVParser() 
+            cv_data = parser.parse_cv(temp_file_path)
+            
+            # Check if parsing was successful
+            if cv_data is None:
+                print("[CV Parser] Parsing failed, cv_data is None.")
+                return jsonify({"error": "Could not parse CV file. Check server logs for details."}), 500
+            
+            # Return the extracted data successfully
+            print("[CV Parser] Parsing successful.")
+            return jsonify({
+                'success': True, 
+                'summary': cv_data # Contains name, email, phone, education, work_experience, skills
+            }), 200
+
+        except Exception as e:
+            # Log the error for debugging
+            print(f"[CV Parser] Error processing CV: {str(e)}")
+            # Return a generic error message to the client
+            return jsonify({'error': f"An unexpected error occurred while processing the CV."}), 500
+        finally:
+            # --- Ensure temporary file cleanup --- 
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                    print(f"[CV Parser] Temporary file deleted: {temp_file_path}")
+                except Exception as cleanup_e:
+                    # Log cleanup error but don't necessarily fail the request
+                    print(f"[CV Parser] Error deleting temp file during cleanup: {cleanup_e}")
+            # --- End cleanup --- 
+        
+    else:
+        # File is not a PDF or has no extension
+        return jsonify({"error": "Invalid file type. Please upload a PDF file."}), 400
+# --- End CV Upload Route ---

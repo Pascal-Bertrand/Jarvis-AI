@@ -537,13 +537,65 @@
             align-items: center;
             justify-content: center;
         }
+
+        /* CV Upload Styles */
+        #cvFileInput {
+            display: block;
+            margin-bottom: 15px;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+
+        #uploadCvButton {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color var(--transition-speed);
+        }
+
+        #uploadCvButton:hover {
+            background-color: var(--primary-dark);
+        }
+
+        #uploadCvButton:disabled {
+            background-color: var(--text-light);
+            cursor: not-allowed;
+        }
+
+        #cvResults {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            min-height: 50px; /* Ensure it's visible even when empty */
+            white-space: pre-wrap; /* Preserve formatting in results */
+            word-wrap: break-word;
+        }
+
+        #cvResults .error {
+            color: var(--danger-color);
+            font-weight: 500;
+        }
+        #cvResults .success {
+             color: var(--success-color);
+             font-weight: 500;
+        }
+        #cvResults ul, #cvResults li {
+            margin-left: 20px; /* Indent lists */
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="dashboard-header">
             <div>
-                <h1>LLM Network Dashboard</h1>
+                <h1>User Dashboard</h1>
                 <div class="dashboard-subheader">Interactive AI agent communication platform</div>
             </div>
         </div>
@@ -571,6 +623,24 @@
                     </div>
                 </div>
             </div>
+
+            <!-- CV Upload Card -->
+            <div class="card dashboard-full">
+                <div class="card-header">
+                    <h2><i class="fas fa-file-alt"></i> Upload & Parse CV</h2>
+                </div>
+                <div class="card-body">
+                    <p style="color: var(--text-light); margin-bottom: 15px;">Select a PDF file to extract key information.</p>
+                    <input type="file" id="cvFileInput" accept=".pdf">
+                    <button id="uploadCvButton">Upload & Parse</button>
+                    <div id="cvResults">
+                        <!-- Results will be displayed here -->
+                        Select a PDF file and click Upload.
+                    </div>
+                </div>
+            </div>
+            <!-- End CV Upload Card -->
+
         </div>
         
         <div class="dashboard-grid">
@@ -1201,18 +1271,158 @@
             return false;
         }
 
-        // Assuming you have functions like fetchProjects() and fetchTasks()
-        // that update the UI
+        // Wait for the DOM to be fully loaded before running scripts
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOM fully loaded and parsed."); // DEBUG
 
-        socket.on('update_projects', () => {
-            console.log('Received update_projects event');
-            fetchProjects(); // Call your function to refresh the projects list
-        });
+            /* --- Temporarily Commented Out Socket.IO Logic ---
+            console.log("Setting up Socket.IO Logic..."); // DEBUG
+            const socket = io(); 
 
-        socket.on('update_tasks', () => {
-            console.log('Received update_tasks event');
-            fetchTasks(); // Call your function to refresh the tasks list
-        });
+            socket.on('connect', () => {
+                console.log('Socket.IO connected');
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Socket.IO disconnected');
+            });
+
+            // !!! Ensure these functions are defined or remove the calls !!!
+            function fetchProjects() { console.log("fetchProjects called (Placeholder)"); }
+            function fetchTasks() { console.log("fetchTasks called (Placeholder)"); }
+
+            socket.on('update_projects', () => {
+                console.log('Received update_projects event');
+                fetchProjects(); 
+            });
+
+            socket.on('update_tasks', () => {
+                console.log('Received update_tasks event');
+                fetchTasks(); 
+            });
+            --- End Temporarily Commented Out Socket.IO Logic --- */
+
+            // --- CV Upload Logic --- 
+            console.log("Setting up CV Upload Logic..."); // DEBUG
+            const cvFileInput = document.getElementById('cvFileInput');
+            const uploadCvButton = document.getElementById('uploadCvButton');
+            const cvResultsDiv = document.getElementById('cvResults');
+
+            // Check if elements exist before adding listener
+            if (uploadCvButton && cvFileInput && cvResultsDiv) {
+                console.log("CV Upload elements found:", { cvFileInput, uploadCvButton, cvResultsDiv }); // DEBUG
+                
+                uploadCvButton.addEventListener('click', () => {
+                    console.log("Upload CV button clicked."); // DEBUG
+                    const file = cvFileInput.files[0];
+
+                    if (!file) {
+                        console.log("No file selected."); // DEBUG
+                        cvResultsDiv.innerHTML = '<p class="error">Please select a file first.</p>';
+                        return;
+                    }
+                    console.log("File selected:", file.name, file.type); // DEBUG
+
+                    if (file.type !== 'application/pdf') {
+                        console.log("Invalid file type selected."); // DEBUG
+                        cvResultsDiv.innerHTML = '<p class="error">Invalid file type. Only PDF files are allowed.</p>';
+                        return;
+                    }
+
+                    const formData = new FormData();
+                    formData.append('cv_file', file);
+
+                    // Disable button and show processing message
+                    uploadCvButton.disabled = true;
+                    uploadCvButton.textContent = 'Processing...';
+                    cvResultsDiv.innerHTML = '<p>Processing CV, please wait...</p>';
+                    console.log("Starting fetch to /upload_cv"); // DEBUG
+
+                    fetch('/upload_cv', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => {
+                        console.log("Fetch response received:", response.status, response.statusText); // DEBUG
+                        // Check if response is ok (status in the range 200-299)
+                        if (!response.ok) {
+                           console.log("Fetch response not OK. Status:", response.status); // DEBUG
+                           // Attempt to parse JSON error response from backend
+                           return response.json().then(errData => {
+                               throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+                           }).catch(() => {
+                               // Fallback if error response isn't JSON
+                               throw new Error(`HTTP error! status: ${response.status}`);
+                           });
+                        }
+                        return response.json(); 
+                    })
+                    .then(data => {
+                        console.log("Parsed JSON data:", data); // DEBUG
+                        if (data.success && data.summary) {
+                            console.log("Upload successful. Displaying summary."); // DEBUG
+                            // Format the summary for display
+                            let summaryHTML = '<p class="success">CV Parsed Successfully:</p>';
+                            summaryHTML += `<strong>Name:</strong> ${data.summary.name || 'N/A'}<br>`;
+                            summaryHTML += `<strong>Email:</strong> ${data.summary.email || 'N/A'}<br>`;
+                            summaryHTML += `<strong>Phone:</strong> ${data.summary.phone || 'N/A'}<br><br>`;
+                            
+                            summaryHTML += '<strong>Education:</strong><br>';
+                            if (data.summary.education && data.summary.education.length > 0) {
+                                summaryHTML += '<ul>';
+                                data.summary.education.forEach(edu => { summaryHTML += `<li>${edu}</li>`; });
+                                summaryHTML += '</ul>';
+                            } else {
+                                summaryHTML += 'N/A<br>';
+                            }
+                            summaryHTML += '<br>';
+
+                            summaryHTML += '<strong>Experience:</strong><br>';
+                            if (data.summary.work_experience && data.summary.work_experience.length > 0) {
+                                summaryHTML += '<ul>';
+                                data.summary.work_experience.forEach(exp => { summaryHTML += `<li>${exp}</li>`; });
+                                summaryHTML += '</ul>';
+                            } else {
+                                summaryHTML += 'N/A<br>';
+                            }
+                            summaryHTML += '<br>';
+
+                            summaryHTML += '<strong>Skills:</strong><br>';
+                            if (data.summary.skills && data.summary.skills.length > 0) {
+                                summaryHTML += '<ul>';
+                                data.summary.skills.forEach(skill => { summaryHTML += `<li>${skill}</li>`; });
+                                summaryHTML += '</ul>';
+                            } else {
+                                summaryHTML += 'N/A<br>';
+                            }
+
+                            cvResultsDiv.innerHTML = summaryHTML;
+                        } else {
+                            // Handle errors reported by the backend (already parsed as JSON)
+                            console.log("Backend reported error:", data.error); // DEBUG
+                            cvResultsDiv.innerHTML = `<p class="error">Error: ${data.error || 'Unknown error occurred.'}</p>`;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Catch block: Error uploading CV:', error); // DEBUG
+                        cvResultsDiv.innerHTML = `<p class="error">An error occurred: ${error.message}. Check the console.</p>`;
+                    })
+                    .finally(() => {
+                        console.log("Fetch process finished (finally block)."); // DEBUG
+                        // Re-enable button and reset text
+                        uploadCvButton.disabled = false;
+                        uploadCvButton.textContent = 'Upload & Parse';
+                        // Clear the file input for the next upload
+                        cvFileInput.value = ''; 
+                    });
+                });
+                console.log("Event listener added to upload button."); // DEBUG
+            } else {
+                console.error('CV Upload Error: One or more required HTML elements not found.'); // DEBUG
+            }
+            // --- End CV Upload Logic ---
+
+        }); // End DOMContentLoaded listener
     </script>
 </body>
 </html>
