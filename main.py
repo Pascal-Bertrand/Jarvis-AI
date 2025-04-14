@@ -74,6 +74,15 @@ class Task:
         return f"{self.title} - Due: {self.due_date.strftime('%Y-%m-%d')} - Assigned to: {self.assigned_to}"
 
 class Network:
+    """
+    Represents a network that connects various agents and manages communication and task distribution between them.
+    
+    Attributes:
+        nodes (Dict[str, LLMNode]): A dictionary that maps node IDs to node instances.
+        log_file (Optional[str]): Path to a log file where messages will be recorded. If None, logging is disabled.
+        tasks (List[Task]): A list that stores tasks assigned to nodes.
+    """
+
     def __init__(self, log_file: Optional[str] = None):
         self.nodes: Dict[str, LLMNode] = {}
         self.log_file = log_file

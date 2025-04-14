@@ -1,14 +1,6 @@
-# LLM Network with Calendar Integration
+# JarvisAI
 
-A multi-agent system that uses LLMs to create project plans, generate tasks, and schedule meetings with Google Calendar integration.
-
-## Features
-
-- Multiple AI agents with different roles (CEO, Marketing, Engineering, Design)
-- Project planning with automatic task generation
-- Google Calendar integration for meetings and task reminders
-- Natural language meeting scheduling and cancellation
-- Web dashboard to view projects, tasks, and team members
+An allround AI Secretary and network communication program to kill admin work in Big Corporate
 
 ## Setup
 
@@ -19,9 +11,10 @@ A multi-agent system that uses LLMs to create project plans, generate tasks, and
    - `GOOGLE_CLIENT_SECRET`: Your Google API client secret
 4. Run the application: `python main.py`
 
-## Usage
 
-- Create a project plan: `ceo: plan project_name = objective`
-- Schedule a meeting: `ceo: schedule a meeting with marketing tomorrow at 2pm`
-- Cancel a meeting: `ceo: cancel the marketing meeting`
-- List tasks: `ceo: tasks` 
+## Feature
+- Schedule, move or cancel meetings (via Google Calendar)
+- Summarize incoming mails (via Gmail)
+- Plan new projects (command: plan XXX = [project description]) including stakeholders, timeline and cost estimate
+- Plan, assign and view tasks 
+- Do all of the above via audio
