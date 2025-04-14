@@ -18,7 +18,7 @@ import re # Added import
 from flask_socketio import SocketIO
 
 # --- Add CV Parser Import ---
-from src.cv_parser.parser import CVParser 
+#from src.cv_parser.parser import CVParser 
 
 # Initialize the OpenAI client with your API key
 try:
@@ -131,7 +131,7 @@ class LLMNode:
 
         # Tuning LLM params for concise answers
         self.llm_params = llm_params if llm_params else {
-            "model": "gpt-4o",
+            "model": "gpt-4.1",
             "temperature": 0.1,
             "max_tokens": 1000
         }
@@ -1929,7 +1929,7 @@ def run_cli(network):
 
 
 # Modify the Flask app initialization
-app = Flask(__name__)
+app = Flask(__name__, template_folder='UI')
 CORS(app)  # Enable CORS for all routes
 
 # Initialize SocketIO, allowing connections from any origin for development
@@ -2275,21 +2275,21 @@ def upload_cv_route():
             
             print(f"[CV Parser] Temporary file saved at: {temp_file_path}")
 
-            # Instantiate the parser and parse the CV
+            #Instantiate the parser and parse the CV
             # Ensure OPENAI_API_KEY is available in the environment where CVParser runs
-            parser = CVParser() 
-            cv_data = parser.parse_cv(temp_file_path)
-            
+            #parser = CVParser() 
+            #cv_data = parser.parse_cv(temp_file_path)
+        
             # Check if parsing was successful
-            if cv_data is None:
-                print("[CV Parser] Parsing failed, cv_data is None.")
-                return jsonify({"error": "Could not parse CV file. Check server logs for details."}), 500
+            #if cv_data is None:
+            #    print("[CV Parser] Parsing failed, cv_data is None.")
+            #    return jsonify({"error": "Could not parse CV file. Check server logs for details."}), 500
             
             # Return the extracted data successfully
             print("[CV Parser] Parsing successful.")
             return jsonify({
                 'success': True, 
-                'summary': cv_data # Contains name, email, phone, education, work_experience, skills
+            #    'summary': cv_data # Contains name, email, phone, education, work_experience, skills
             }), 200
 
         except Exception as e:
