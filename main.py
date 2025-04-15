@@ -216,52 +216,87 @@ class LLMNode:
     def __init__(self, node_id: str, knowledge: str = "",
                  llm_api_key: str = "", llm_params: dict = None):
         """
-        Node representing a user/agent, each with its own knowledge and mini-world (projects, calendar, etc.).
+        Initialize a new LLMNode instance.
+        
+        Each node represents an independent user/agent with its own knowledge base,
+        project and calendar information, and configuration for the language model.
+        
+        Args:
+            node_id (str): Unique identifier for this node.
+            knowledge (str): Initial knowledge or context for the node.
+            llm_api_key (str): API key for accessing the LLM. If empty, uses a shared client.
+            llm_params (dict): Dictionary of LLM parameters such as model, temperature, and max_tokens.
+            
+        The constructor sets up:
+          - Node identifier and base knowledge.
+          - The LLM client (either shared or private based on API key).
+          - Default LLM parameters if not provided.
+          - Structures for conversation history, projects, calendar, and Google services.
+          - A placeholder for network connection.
         """
+                     
         self.node_id = node_id
         self.knowledge = knowledge
 
-        # If each node can have its own API key, set it here. Otherwise, use the shared client.
+        # If an individual LLM API key is provided, initialize a new client using that key;
+        # otherwise, fall back to a shared global 'client'
         self.llm_api_key = llm_api_key
         self.client = client if not self.llm_api_key else openai.OpenAI(api_key=self.llm_api_key)
 
-        # Tuning LLM params for concise answers
+        # Set LLM parameters with default values if none are provided
         self.llm_params = llm_params if llm_params else {
             "model": "gpt-4o",
             "temperature": 0.1,
             "max_tokens": 1000
         }
 
-        # Store conversation if needed
+        # Initialize an empty conversation history list to store chat messages
         self.conversation_history = []
 
-        # For multiple projects, store them in a dict: { project_id: {...}, ... }
+        # Dictionary to store information about multiple projects; key is project ID (i.e. { project_id: {...}, ... })
         self.projects = {}
 
-        # Calendar for meeting scheduling
+        # Local calendar list to store meeting information as dictionaries
         self.calendar = []
-        # Initialize Google services
+                     
+        # Initialize Google services (Calendar, Gmail) using a helper function
         self.google_services = self._initialize_google_services()
         self.calendar_service = self.google_services.get('calendar')
         self.gmail_service = self.google_services.get('gmail')
 
+        # Placeholder for network, set when the node is registered with a Network instance
         self.network: Optional[Network] = None
 
     def _initialize_google_services(self):
-        """Initialize Google services (Calendar and Gmail) with shared authentication"""
+        """
+        Initialize Google services (Calendar and Gmail) with shared authentication.
+        
+        This function performs the following steps:
+          1. Check for a client secret in the environment.
+          2. Attempt to load credentials from a token file.
+          3. Refresh credentials if expired, or start a new OAuth flow if necessary.
+          4. Save the new credentials.
+          5. Build and test Google Calendar and Gmail services.
+          
+        Returns:
+            dict: A dictionary with service objects for 'calendar' and 'gmail'. 
+                  If initialization fails, the corresponding service remains None.
+        """
+        
         print(f"[{self.node_id}] Initializing Google services...")
         
         services = {'calendar': None, 'gmail': None}
         
-        # Check if client secret is available
+        # Check for Google client secret from environment variables
         client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
         if not client_secret:
             print(f"[{self.node_id}] ERROR: GOOGLE_CLIENT_SECRET environment variable not found")
-            return services
+            return services    # Cannot proceed without client secret
         
         print(f"[{self.node_id}] Client secret found: {client_secret[:5]}...")
         
         creds = None
+        # Attempt to load stored credentials from TOKEN_FILE, if available
         if os.path.exists(TOKEN_FILE):
             print(f"[{self.node_id}] Found existing token file")
             try:
@@ -270,7 +305,7 @@ class LLMNode:
                 print(f"[{self.node_id}] Successfully loaded credentials from token file")
             except Exception as e:
                 print(f"[{self.node_id}] Error loading token file: {str(e)}")
-                # Delete invalid token file
+                # Remove the token file if it cannot be loaded
                 os.remove(TOKEN_FILE)
                 print(f"[{self.node_id}] Deleted invalid token file")
                 creds = None
@@ -278,6 +313,7 @@ class LLMNode:
             print(f"[{self.node_id}] No token file found at {TOKEN_FILE}")
         
         try:
+            # Refresh credentials if needed
             if not creds or not creds.valid:
                 if creds and creds.expired and creds.refresh_token:
                     try:
@@ -288,11 +324,11 @@ class LLMNode:
                         print(f"[{self.node_id}] Error refreshing credentials: {str(e)}")
                         print(f"[{self.node_id}] Will start new OAuth flow")
                         creds = None
-                        # Delete invalid token file if it exists
                         if os.path.exists(TOKEN_FILE):
                             os.remove(TOKEN_FILE)
                             print(f"[{self.node_id}] Deleted invalid token file")
-                
+
+                # If no valid credentials exist, start a new OAuth flow
                 if not creds:
                     print(f"[{self.node_id}] Starting new OAuth flow with client ID: {CLIENT_ID[:10]}...")
                     client_config = {
@@ -313,7 +349,7 @@ class LLMNode:
                         )
                         print(f"[{self.node_id}] OAuth flow created successfully")
                         
-                        # Generate the authorization URL and open it in a web browser
+                        # Open authorization URL for user consent in a web browser
                         auth_url, _ = flow.authorization_url(prompt='consent')
                         print(f"[{self.node_id}] Opening authorization URL in browser: {auth_url[:60]}...")
                         webbrowser.open(auth_url)
@@ -327,6 +363,7 @@ class LLMNode:
                         print(f"[{self.node_id}] Full error details: {repr(e)}")
                         return services
 
+                # Save the credentials for future use
                 print(f"[{self.node_id}] Saving credentials to token file: {TOKEN_FILE}")
                 try:
                     with open(TOKEN_FILE, 'wb') as token:
@@ -335,24 +372,24 @@ class LLMNode:
                 except Exception as e:
                     print(f"[{self.node_id}] Error saving credentials: {str(e)}")
 
-            # Initialize Calendar service
+            # Initialize the Google Calendar service
             try:
                 print(f"[{self.node_id}] Building calendar service...")
                 calendar_service = build('calendar', 'v3', credentials=creds)
                 
-                # Test the calendar service with a simple API call
+                # Test the calendar service by fetching the calendar list
                 calendar_list = calendar_service.calendarList().list().execute()
                 print(f"[{self.node_id}] Calendar service working! Found {len(calendar_list.get('items', []))} calendars")
                 services['calendar'] = calendar_service
             except Exception as e:
                 print(f"[{self.node_id}] Failed to initialize Calendar service: {str(e)}")
             
-            # Initialize Gmail service
+            # Initialize the Gmail service
             try:
                 print(f"[{self.node_id}] Building Gmail service...")
                 gmail_service = build('gmail', 'v1', credentials=creds)
                 
-                # Test the Gmail service with a simple API call
+                # Test the Gmail service by fetching the user's profile
                 profile = gmail_service.users().getProfile(userId='me').execute()
                 print(f"[{self.node_id}] Gmail service working! Connected to {profile.get('emailAddress')}")
                 services['gmail'] = gmail_service
@@ -365,14 +402,25 @@ class LLMNode:
             print(f"[{self.node_id}] Failed to initialize Google services: {str(e)}")
             return services
 
-    # Uncomment the calendar reminder method
     def create_calendar_reminder(self, task: Task):
-        """Create a Google Calendar reminder for a task"""
+        """
+        Create a Google Calendar reminder for a given task.
+        
+        This method builds an event from the task details (title, due date, description, priority, etc.)
+        and inserts the event using the calendar service.
+        
+        Args:
+            task (Task): Task object with attributes: title, description, due_date, priority, project_id, assigned_to.
+            
+        If the calendar service is not available, it will log that and skip reminder creation.
+        """
+        
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, skipping reminder creation")
             return
             
         try:
+            # Construct the event details in the format expected by Google Calendar
             event = {
                 'summary': f"TASK: {task.title}",
                 'description': f"{task.description}\n\nPriority: {task.priority}\nProject: {task.project_id}",
@@ -393,7 +441,8 @@ class LLMNode:
                     ]
                 }
             }
-            
+
+            # Insert the event into the primary calendar
             event = self.calendar_service.events().insert(calendarId='primary', body=event).execute()
             print(f"[{self.node_id}] Task reminder created: {event.get('htmlLink')}")
             
@@ -402,7 +451,19 @@ class LLMNode:
 
     # Replace the local meeting scheduling with Google Calendar version
     def schedule_meeting(self, project_id: str, participants: list):
-        """Updated to use Google Calendar with proper current time"""
+        """
+        Schedule a meeting using Google Calendar.
+        
+        If the Google Calendar service is available, the meeting event is created with start and end times.
+        If not, the method falls back to local scheduling.
+        
+        Args:
+            project_id (str): Identifier for the project this meeting is associated with.
+            participants (list): List of participant identifiers (usually email prefixes).
+            
+        The method also notifies other participants by adding the event to their local calendars and sending messages.
+        """
+        
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, using local scheduling")
             self._fallback_schedule_meeting(project_id, participants)
@@ -410,11 +471,11 @@ class LLMNode:
             
         meeting_description = f"Meeting for project '{project_id}'"
         
-        # Use current time properly
+        # Schedule meeting for one day later, for a duration of one hour
         start_time = datetime.now() + timedelta(days=1)
         end_time = start_time + timedelta(hours=1)
         
-        # Create event with proper time format
+        # Build the meeting event structure
         event = {
             'summary': meeting_description,
             'start': {
@@ -429,17 +490,18 @@ class LLMNode:
         }
 
         try:
+            # Insert the meeting event into the calendar and capture the response event
             event = self.calendar_service.events().insert(calendarId='primary', body=event).execute()
             print(f"[{self.node_id}] Meeting created: {event.get('htmlLink')}")
             
-            # Store in local calendar as well
+            # Add meeting details to the node's local calendar
             self.calendar.append({
                 'project_id': project_id,
                 'meeting_info': meeting_description,
                 'event_id': event['id']
             })
 
-            # Notify other participants
+            # Notify each participant (except self) by adding event details to their local calendar and sending a message
             for p in participants:
                 if p != self.node_id and p in self.network.nodes:
                     self.network.nodes[p].calendar.append({
@@ -451,12 +513,21 @@ class LLMNode:
                     self.network.send_message(self.node_id, p, notification)
         except Exception as e:
             print(f"[{self.node_id}] Failed to create calendar event: {e}")
-            # Fallback to local calendar
+            # If creation fails, revert to local scheduling
             self._fallback_schedule_meeting(project_id, participants)
     
     # Uncomment the fallback method
     def _fallback_schedule_meeting(self, project_id: str, participants: list):
-        """Local fallback for scheduling when Google Calendar fails"""
+        """
+        Fallback method to locally schedule a meeting when Google Calendar is unavailable.
+        
+        This method simply creates a textual record of the meeting and notifies participants.
+        
+        Args:
+            project_id (str): Identifier for the project related to the meeting.
+            participants (list): List of participant identifiers.
+        """
+        
         meeting_info = f"Meeting for project '{project_id}' scheduled for {datetime.now() + timedelta(days=1)}"
         self.calendar.append({
             'project_id': project_id,
@@ -465,7 +536,7 @@ class LLMNode:
         
         print(f"[{self.node_id}] Scheduled local meeting: {meeting_info}")
         
-        # Notify other participants
+        # Notify every participant in the network about the meeting
         for p in participants:
             if p in self.network.nodes:
                 self.network.nodes[p].calendar.append({
@@ -475,45 +546,53 @@ class LLMNode:
                 print(f"[{self.node_id}] Notified {p} about meeting for project '{project_id}'.")
 
     def receive_message(self, message: str, sender_id: str):
-        """More dynamic message handling with conversation state"""
+        """
+        Process an incoming message to the node.
+        
+        This method handles various kinds of messages:
+          - Direct messages and commands coming from the CLI (sender_id "cli_user").
+          - Ongoing meeting scheduling context.
+          - Regular conversation handling via the LLM.
+        
+        Args:
+            message (str): The incoming message content.
+            sender_id (str): The identifier of the sender.
+        """
+        
         print(f"[{self.node_id}] Received from {sender_id}: {message}")
 
         # --- Start: Added Command Parsing for UI/CLI ---
         if sender_id == "cli_user":
-            # Check for "tasks" command
+            # If message equals "tasks", list tasks and return immediately
             if message.strip().lower() == "tasks":
                 tasks_list = self.list_tasks()
                 # Ensure the response format matches what the UI expects
                 print(f"[{self.node_id}] Response: {tasks_list}") 
                 return # Stop further processing
 
-            # Check for "plan" command (e.g., "plan p1 = objective")
+            # Check for "plan" command using regex (e.g., "plan p1 = objective")
             plan_match = re.match(r"^\s*plan\s+([\w-]+)\s*=\s*(.+)$", message.strip(), re.IGNORECASE)
             if plan_match:
                 project_id = plan_match.group(1).strip()
                 objective = plan_match.group(2).strip()
-                # plan_project already prints output which will be captured
                 self.plan_project(project_id, objective) 
-                # Optionally add a confirmation response if plan_project doesn't provide one suitable for UI
-                # print(f"[{self.node_id}] Response: Project '{project_id}' planning initiated.")
-                return # Stop further processing
-        # --- End: Added Command Parsing ---
+                return # Stop further processing after initiating the project plan
+        # --- End: Command Parsing ---
 
-        # Check if we're in the middle of gathering meeting information
+        # If a meeting information-gathering is in progress, continue collecting meeting info
         if hasattr(self, 'meeting_context') and self.meeting_context.get('active'):
             self._continue_meeting_creation(message, sender_id)
 
-        # Regular message handling
+        # Regular message processing
         if sender_id == "cli_user":
-            # Detect calendar intent
+            # Attempt to detect if the message is intended as a calendar command
             calendar_intent = self._detect_calendar_intent(message)
-            
             if calendar_intent.get("is_calendar_command", False):
                 action = calendar_intent.get("action")
                 missing_info = calendar_intent.get("missing_info", [])
                 
                 if action == "schedule_meeting":
-                    # Initialize meeting creation flow if information is missing
+                    # If additional info is needed, start meeting creation flow
                     if missing_info:
                         self._start_meeting_creation(message, missing_info)
                     else:
@@ -538,9 +617,10 @@ class LLMNode:
                 print(f"[{self.node_id}] Response: {response}")
                 return
 
-        # Regular message handling (unchanged)
+        # Record message in conversation history
         self.conversation_history.append({"role": "user", "content": f"{sender_id} says: {message}"})
         if sender_id == "cli_user":
+            # Query the LLM using conversation history and log both user and assistant messages
             response = self.query_llm(self.conversation_history)
             self.conversation_history.append({"role": "assistant", "content": response})
             print(f"[{self.node_id}] Response: {response}")
