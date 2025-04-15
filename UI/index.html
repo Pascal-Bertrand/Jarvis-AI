@@ -1,7 +1,6 @@
-
-    <meta charset="UTF-8">
+<meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Secretary</title>
+    <title>Jarvis AI</title>
     <!-- Add Google Fonts -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -361,45 +360,6 @@
             height: 35px;
         }
         
-        /* Tabs styles */
-        .tabs {
-            display: flex;
-            margin-bottom: 0;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .tab {
-            padding: 12px 20px;
-            background-color: transparent;
-            cursor: pointer;
-            font-weight: 500;
-            color: var(--text-light);
-            transition: all var(--transition-speed);
-            position: relative;
-        }
-        
-        .tab.active {
-            color: var(--primary-color);
-        }
-        
-        .tab.active::after {
-            content: '';
-            position: absolute;
-            bottom: -1px;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background-color: var(--primary-color);
-        }
-        
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
         /* Terminal output styles */
         .terminal-message {
             background-color: var(--bg-dark);
@@ -536,109 +496,29 @@
             justify-content: center;
         }
 
-        /* CV Upload Styles */
-        #cvFileInput {
-            display: block;
-            margin-bottom: 15px;
-            padding: 8px;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-        }
-
-        #uploadCvButton {
-            background-color: var(--primary-color);
-            color: white;
-            padding: 10px 18px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: background-color var(--transition-speed);
-        }
-
-        #uploadCvButton:hover {
-            background-color: var(--primary-dark);
-        }
-
-        #uploadCvButton:disabled {
-            background-color: var(--text-light);
-            cursor: not-allowed;
-        }
-
-        #cvResults {
-            margin-top: 20px;
-            padding: 15px;
-            border: 1px solid var(--border-color);
-            border-radius: 5px;
-            background-color: #f9f9f9;
-            min-height: 50px; /* Ensure it's visible even when empty */
-            white-space: pre-wrap; /* Preserve formatting in results */
-            word-wrap: break-word;
-        }
-
-        #cvResults .error {
-            color: var(--danger-color);
-            font-weight: 500;
-        }
-        #cvResults .success {
-             color: var(--success-color);
-             font-weight: 500;
-        }
-        #cvResults ul, #cvResults li {
-            margin-left: 20px; /* Indent lists */
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="dashboard-header">
             <div>
-                <h1>User Dashboard</h1>
-                <div class="dashboard-subheader">Interactive AI agent communication platform</div>
+                <h1>Jarvis AI</h1>
+                <div class="dashboard-subheader">Your all-round work companion</div>
             </div>
         </div>
+        <div id="nodes" class="node-list" style="display: none;">Loading<span class="loading-dots"></span></div>
         
         <div class="dashboard-grid">
-            <div class="card dashboard-full">
-                <div class="card-header">
-                    <h2>Available Agents</h2>
-                </div>
-                <div class="card-body">
-                    <div id="nodes" class="node-list">Loading<span class="loading-dots"></span></div>
-                </div>
-            </div>
-            
             <div class="card dashboard-full">
                 <div class="card-header">
                     <h2>Agent Communication</h2>
                 </div>
                 <div class="card-body" style="padding: 0;">
-                    <div id="chat-tabs" class="tabs">
-                        <!-- Tabs will be added here dynamically -->
-                    </div>
                     <div id="chat-tab-contents">
-                        <!-- Tab contents will be added here dynamically -->
+                        <!-- Chat contents will be added here dynamically -->
                     </div>
                 </div>
             </div>
-
-            <!-- CV Upload Card -->
-            <div class="card dashboard-full">
-                <div class="card-header">
-                    <h2><i class="fas fa-file-alt"></i> Upload & Parse CV</h2>
-                </div>
-                <div class="card-body">
-                    <p style="color: var(--text-light); margin-bottom: 15px;">Select a PDF file to extract key information.</p>
-                    <input type="file" id="cvFileInput" accept=".pdf">
-                    <button id="uploadCvButton">Upload & Parse</button>
-                    <div id="cvResults">
-                        <!-- Results will be displayed here -->
-                        Select a PDF file and click Upload.
-                    </div>
-                </div>
-            </div>
-            <!-- End CV Upload Card -->
-
         </div>
         
         <div class="dashboard-grid">
@@ -693,18 +573,21 @@
         }
         
         function setActiveNode(nodeId) {
-            // Update active node
             document.querySelectorAll('.node-item').forEach(node => {
                 node.classList.remove('active');
             });
-            
             document.querySelectorAll('.node-item').forEach(node => {
                 if (node.textContent === nodeId) {
                     node.classList.add('active');
                 }
             });
-            
             activeNodeId = nodeId;
+            // Show only the selected chat content
+            document.querySelectorAll('.chat-content-single').forEach(div => {
+                div.style.display = 'none';
+            });
+            const selected = document.getElementById(`chat-content-${nodeId}`);
+            if (selected) selected.style.display = 'block';
         }
         
         function sendMessage(nodeId) {
@@ -1129,25 +1012,9 @@
                 });
         }
         
-        // Update the loading indicator
-        function addLoadingIndicator(nodeId) {
-            const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
-            const loadingElement = document.createElement('div');
-            loadingElement.className = 'message agent-message loading';
-            loadingElement.innerHTML = 'Thinking<span class="loading-dots"></span>';
-            loadingElement.id = 'loading-' + Date.now();
-            chatMessagesElement.appendChild(loadingElement);
-            
-            // Scroll to bottom
-            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
-            
-            return loadingElement.id;
-        }
-        
         // Enhance the node item creation
         function updateNodeElements(nodes) {
             const nodesContainer = document.getElementById('nodes');
-            const chatTabsContainer = document.getElementById('chat-tabs');
             const chatTabContentsContainer = document.getElementById('chat-tab-contents');
             
             if (nodes.length === 0) {
@@ -1156,10 +1023,9 @@
             }
             
             nodesContainer.innerHTML = '';
-            chatTabsContainer.innerHTML = '';
             chatTabContentsContainer.innerHTML = '';
             
-            nodes.forEach(node => {
+            nodes.forEach((node, idx) => {
                 // Create node item
                 const nodeElement = document.createElement('div');
                 nodeElement.className = 'node-item';
@@ -1167,20 +1033,12 @@
                 nodeElement.onclick = () => setActiveNode(node);
                 nodesContainer.appendChild(nodeElement);
                 
-                // Create chat tab
-                const tabElement = document.createElement('div');
-                tabElement.className = 'tab';
-                tabElement.textContent = node;
-                tabElement.dataset.nodeId = node;
-                tabElement.onclick = () => activateTab(node);
-                chatTabsContainer.appendChild(tabElement);
-                
-                // Create chat tab content
-                const tabContentElement = document.createElement('div');
-                tabContentElement.className = 'tab-content';
-                tabContentElement.id = `chat-tab-${node}`;
-                
-                tabContentElement.innerHTML = `
+                // Create chat content (no tabs)
+                const chatContentElement = document.createElement('div');
+                chatContentElement.className = 'chat-content-single';
+                chatContentElement.id = `chat-content-${node}`;
+                chatContentElement.style.display = idx === 0 ? 'block' : 'none';
+                chatContentElement.innerHTML = `
                     <div class="chat-container">
                         <div class="chat-messages" id="chat-messages-${node}"></div>
                         <div class="chat-input-container">
@@ -1193,22 +1051,24 @@
                         <div class="transcription" id="transcription-${node}"></div>
                     </div>
                 `;
-                
-                chatTabContentsContainer.appendChild(tabContentElement);
+                chatTabContentsContainer.appendChild(chatContentElement);
                 
                 // Add event listener for Enter key
-                const inputElement = document.getElementById(`chat-input-${node}`);
-                inputElement.addEventListener('keypress', function(event) {
-                    if (event.key === 'Enter') {
-                        sendMessage(node);
+                setTimeout(() => {
+                    const inputElement = document.getElementById(`chat-input-${node}`);
+                    if (inputElement) {
+                        inputElement.addEventListener('keypress', function(event) {
+                            if (event.key === 'Enter') {
+                                sendMessage(node);
+                            }
+                        });
                     }
-                });
-                
-                // Add microphone functionality
-                const micButton = document.getElementById(`mic-button-${node}`);
-                if (micButton) {
-                    micButton.addEventListener('click', () => toggleRecording(node));
-                }
+                    // Add microphone functionality
+                    const micButton = document.getElementById(`mic-button-${node}`);
+                    if (micButton) {
+                        micButton.addEventListener('click', () => toggleRecording(node));
+                    }
+                }, 0);
             });
         }
 
@@ -1218,13 +1078,10 @@
             .then(nodeData => {
                 nodes = nodeData;
                 updateNodeElements(nodes);
-                
-                // Activate the first tab by default
+                // Show first agent's chat by default
                 if (nodes.length > 0) {
-                    activateTab(nodes[0]);
+                    setActiveNode(nodes[0]);
                 }
-                
-                // Load projects and tasks
                 loadProjects();
                 loadTasks();
             })
@@ -1273,7 +1130,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             console.log("DOM fully loaded and parsed."); // DEBUG
 
-            /* --- Temporarily Commented Out Socket.IO Logic ---
+            // --- Restored Socket.IO Logic ---
             console.log("Setting up Socket.IO Logic..."); // DEBUG
             const socket = io(); 
 
@@ -1285,140 +1142,96 @@
                 console.log('Socket.IO disconnected');
             });
 
-            // !!! Ensure these functions are defined or remove the calls !!!
-            function fetchProjects() { console.log("fetchProjects called (Placeholder)"); }
-            function fetchTasks() { console.log("fetchTasks called (Placeholder)"); }
+            // Ensure these functions are defined or remove the calls !!!
+            function loadProjects() { 
+                fetch('/projects')
+                    .then(response => response.json())
+                    .then(projectData => {
+                        const projectsContainer = document.getElementById('projects');
+                        
+                        if (Object.keys(projectData).length === 0) {
+                            projectsContainer.innerHTML = '<div class="empty-state">No projects available. Start by planning a project with an agent.</div>';
+                            return;
+                        }
+                        
+                        projectsContainer.innerHTML = '';
+                        
+                        for (const [projectId, project] of Object.entries(projectData)) {
+                            const projectElement = document.createElement('div');
+                            projectElement.className = 'project';
+                            
+                            let participantsHtml = '';
+                            if (project.participants && project.participants.length > 0) {
+                                participantsHtml = '<div class="project-participants">';
+                                project.participants.forEach(participant => {
+                                    participantsHtml += `<span class="project-participant">${participant}</span>`;
+                                });
+                                participantsHtml += '</div>';
+                            }
+                            
+                            projectElement.innerHTML = `
+                                <h3>${project.name || projectId}</h3>
+                                <div>Owner: ${project.owner}</div>
+                                ${participantsHtml}
+                            `;
+                            
+                            projectsContainer.appendChild(projectElement);
+                        }
+                    })
+                    .catch(error => {
+                        document.getElementById('projects').innerHTML = 'Error loading projects.';
+                        console.error('Error fetching projects:', error);
+                    });
+            }
+            function loadTasks() { 
+                fetch('/tasks')
+                    .then(response => response.json())
+                    .then(taskData => {
+                        const tasksContainer = document.getElementById('tasks');
+                        
+                        if (taskData.length === 0) {
+                            tasksContainer.innerHTML = '<div class="empty-state">No tasks available. Tasks will appear when created by agents.</div>';
+                            return;
+                        }
+                        
+                        tasksContainer.innerHTML = '';
+                        
+                        taskData.forEach(task => {
+                            const taskElement = document.createElement('div');
+                            taskElement.className = `task ${task.priority}`;
+                            
+                            // Format the due date
+                            const dueDate = new Date(task.due_date);
+                            const formattedDueDate = dueDate.toLocaleDateString();
+                            
+                            taskElement.innerHTML = `
+                                <h3>${task.title}</h3>
+                                <p>${task.description}</p>
+                                <div class="task-meta">
+                                    <span>Due: ${formattedDueDate}</span>
+                                    <span>Assigned to: ${task.assigned_to}</span>
+                                </div>
+                            `;
+                            
+                            tasksContainer.appendChild(taskElement);
+                        });
+                    })
+                    .catch(error => {
+                        document.getElementById('tasks').innerHTML = 'Error loading tasks.';
+                        console.error('Error fetching tasks:', error);
+                    });
+            }
 
             socket.on('update_projects', () => {
                 console.log('Received update_projects event');
-                fetchProjects(); 
+                loadProjects(); 
             });
 
             socket.on('update_tasks', () => {
                 console.log('Received update_tasks event');
-                fetchTasks(); 
+                loadTasks(); 
             });
-            --- End Temporarily Commented Out Socket.IO Logic --- */
-
-            // --- CV Upload Logic --- 
-            console.log("Setting up CV Upload Logic..."); // DEBUG
-            const cvFileInput = document.getElementById('cvFileInput');
-            const uploadCvButton = document.getElementById('uploadCvButton');
-            const cvResultsDiv = document.getElementById('cvResults');
-
-            // Check if elements exist before adding listener
-            if (uploadCvButton && cvFileInput && cvResultsDiv) {
-                console.log("CV Upload elements found:", { cvFileInput, uploadCvButton, cvResultsDiv }); // DEBUG
-                
-                uploadCvButton.addEventListener('click', () => {
-                    console.log("Upload CV button clicked."); // DEBUG
-                    const file = cvFileInput.files[0];
-
-                    if (!file) {
-                        console.log("No file selected."); // DEBUG
-                        cvResultsDiv.innerHTML = '<p class="error">Please select a file first.</p>';
-                        return;
-                    }
-                    console.log("File selected:", file.name, file.type); // DEBUG
-
-                    if (file.type !== 'application/pdf') {
-                        console.log("Invalid file type selected."); // DEBUG
-                        cvResultsDiv.innerHTML = '<p class="error">Invalid file type. Only PDF files are allowed.</p>';
-                        return;
-                    }
-
-                    const formData = new FormData();
-                    formData.append('cv_file', file);
-
-                    // Disable button and show processing message
-                    uploadCvButton.disabled = true;
-                    uploadCvButton.textContent = 'Processing...';
-                    cvResultsDiv.innerHTML = '<p>Processing CV, please wait...</p>';
-                    console.log("Starting fetch to /upload_cv"); // DEBUG
-
-                    fetch('/upload_cv', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => {
-                        console.log("Fetch response received:", response.status, response.statusText); // DEBUG
-                        // Check if response is ok (status in the range 200-299)
-                        if (!response.ok) {
-                           console.log("Fetch response not OK. Status:", response.status); // DEBUG
-                           // Attempt to parse JSON error response from backend
-                           return response.json().then(errData => {
-                               throw new Error(errData.error || `HTTP error! status: ${response.status}`);
-                           }).catch(() => {
-                               // Fallback if error response isn't JSON
-                               throw new Error(`HTTP error! status: ${response.status}`);
-                           });
-                        }
-                        return response.json(); 
-                    })
-                    .then(data => {
-                        console.log("Parsed JSON data:", data); // DEBUG
-                        if (data.success && data.summary) {
-                            console.log("Upload successful. Displaying summary."); // DEBUG
-                            // Format the summary for display
-                            let summaryHTML = '<p class="success">CV Parsed Successfully:</p>';
-                            summaryHTML += `<strong>Name:</strong> ${data.summary.name || 'N/A'}<br>`;
-                            summaryHTML += `<strong>Email:</strong> ${data.summary.email || 'N/A'}<br>`;
-                            summaryHTML += `<strong>Phone:</strong> ${data.summary.phone || 'N/A'}<br><br>`;
-                            
-                            summaryHTML += '<strong>Education:</strong><br>';
-                            if (data.summary.education && data.summary.education.length > 0) {
-                                summaryHTML += '<ul>';
-                                data.summary.education.forEach(edu => { summaryHTML += `<li>${edu}</li>`; });
-                                summaryHTML += '</ul>';
-                            } else {
-                                summaryHTML += 'N/A<br>';
-                            }
-                            summaryHTML += '<br>';
-
-                            summaryHTML += '<strong>Experience:</strong><br>';
-                            if (data.summary.work_experience && data.summary.work_experience.length > 0) {
-                                summaryHTML += '<ul>';
-                                data.summary.work_experience.forEach(exp => { summaryHTML += `<li>${exp}</li>`; });
-                                summaryHTML += '</ul>';
-                            } else {
-                                summaryHTML += 'N/A<br>';
-                            }
-                            summaryHTML += '<br>';
-
-                            summaryHTML += '<strong>Skills:</strong><br>';
-                            if (data.summary.skills && data.summary.skills.length > 0) {
-                                summaryHTML += '<ul>';
-                                data.summary.skills.forEach(skill => { summaryHTML += `<li>${skill}</li>`; });
-                                summaryHTML += '</ul>';
-                            } else {
-                                summaryHTML += 'N/A<br>';
-                            }
-
-                            cvResultsDiv.innerHTML = summaryHTML;
-                        } else {
-                            // Handle errors reported by the backend (already parsed as JSON)
-                            console.log("Backend reported error:", data.error); // DEBUG
-                            cvResultsDiv.innerHTML = `<p class="error">Error: ${data.error || 'Unknown error occurred.'}</p>`;
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Catch block: Error uploading CV:', error); // DEBUG
-                        cvResultsDiv.innerHTML = `<p class="error">An error occurred: ${error.message}. Check the console.</p>`;
-                    })
-                    .finally(() => {
-                        console.log("Fetch process finished (finally block)."); // DEBUG
-                        // Re-enable button and reset text
-                        uploadCvButton.disabled = false;
-                        uploadCvButton.textContent = 'Upload & Parse';
-                        // Clear the file input for the next upload
-                        cvFileInput.value = ''; 
-                    });
-                });
-                console.log("Event listener added to upload button."); // DEBUG
-            } else {
-                console.error('CV Upload Error: One or more required HTML elements not found.'); // DEBUG
-            }
-            // --- End CV Upload Logic ---
+            // --- End Restored Socket.IO Logic ---
 
         }); // End DOMContentLoaded listener
     </script>
