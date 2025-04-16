@@ -1,6 +1,3 @@
 """
-This will be responsible for all communication tasks like:
-  - Internal messages between nodes
-  - Sending emails
-  - etc.
+This will be responsible for all (non-internal) communication tasks.
 """
