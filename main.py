@@ -406,6 +406,12 @@ class LLMNode:
         # Check if we're in the middle of gathering meeting information
         if hasattr(self, 'meeting_context') and self.meeting_context.get('active'):
             self._continue_meeting_creation(message, sender_id)
+            return # Stop further processing
+
+        # Check if we're in the middle of email composition
+        if hasattr(self, 'email_context') and self.email_context.get('active'):
+            self._continue_email_composition(message, sender_id)
+            return # Stop further processing
 
         # Regular message handling
         if sender_id == "cli_user":
@@ -432,6 +438,20 @@ class LLMNode:
                 elif action == "reschedule_meeting":
                     self._handle_meeting_rescheduling(message)
                     return
+            
+            # Check if this is a send email request
+            email_intent = self._detect_send_email_intent(message)
+            
+            if email_intent.get("is_send_email", False):
+                missing_info = email_intent.get("missing_info", [])
+                
+                if missing_info:
+                    # Start the email composition flow
+                    self._start_email_composition(message, missing_info, email_intent)
+                else:
+                    # All information is already provided - show preview and ask for confirmation
+                    self._start_email_composition(message, [], email_intent)
+                return
             
             # Check if this is an email-related command using advanced detection
             email_analysis = self._analyze_email_command(message)
@@ -1809,6 +1829,10 @@ class LLMNode:
     
     def _analyze_email_command(self, command):
         """Analyze a complex email command to extract detailed intent and parameters"""
+        # If we're in email composition mode, skip this analysis
+        if hasattr(self, 'email_context') and self.email_context.get('active'):
+            return {"action": "none"}
+            
         prompt = f"""
         Analyze this email-related command in detail:
         "{command}"
@@ -1846,6 +1870,355 @@ class LLMNode:
         except Exception as e:
             print(f"[{self.node_id}] Error analyzing email command: {str(e)}")
             return {"action": "none", "criteria": {}, "summary_type": "concise"}
+
+    def send_email(self, to, subject, body):
+        """Send an email using Gmail API"""
+        if not self.gmail_service:
+            print(f"[{self.node_id}] Gmail service not available, can't send email")
+            return False
+            
+        try:
+            # Create the email message
+            message = {
+                'raw': self._create_message(to, subject, body)
+            }
+            
+            # Send the email
+            sent_message = self.gmail_service.users().messages().send(
+                userId='me',
+                body=message
+            ).execute()
+            
+            print(f"[{self.node_id}] Email sent successfully with message ID: {sent_message['id']}")
+            return True
+            
+        except Exception as e:
+            print(f"[{self.node_id}] Error sending email: {str(e)}")
+            return False
+    
+    def _create_message(self, to, subject, body):
+        """Create a base64url encoded email message with proper formatting"""
+        import base64
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        
+        message = MIMEMultipart()
+        message['to'] = to
+        message['subject'] = subject
+        
+        # Format the body to preserve line breaks
+        formatted_body = body
+        
+        # Add text body with proper content type to preserve formatting
+        msg = MIMEText(formatted_body, 'plain', 'utf-8')
+        message.attach(msg)
+        
+        # Encode the message
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+        return raw_message
+
+    def _send_email_after_confirmation(self):
+        """Send the email after user confirmation"""
+        recipient = self.email_context['collected_info'].get('recipient', '')
+        subject = self.email_context['collected_info'].get('subject', '')
+        body = self.email_context['collected_info'].get('body', '')
+        
+        # Validate that we have the minimum required information
+        if not recipient or not body:
+            print(f"[{self.node_id}] Response: Cannot send email - missing recipient or body content.")
+            self.email_context['active'] = False
+            return
+            
+        # If subject is empty, create a default one
+        if not subject:
+            # Use the first line of the body or a generic subject
+            first_line = body.split('\n')[0]
+            if len(first_line) > 5 and len(first_line) < 80:
+                subject = first_line
+            else:
+                subject = "Message from " + self.node_id
+        
+        # If recipient is a name without email, try to resolve it
+        if '@' not in recipient:
+            # Check if it's a node name
+            if recipient.lower() in ['ceo', 'marketing', 'engineering', 'design']:
+                recipient = f"{recipient.lower()}@example.com"
+            else:
+                # Try to make a reasonable guess
+                recipient = f"{recipient.replace(' ', '').lower()}@example.com"
+        
+        # Send the email
+        success = self.send_email(recipient, subject, body)
+        
+        if success:
+            print(f"[{self.node_id}] Response: Email sent successfully to {recipient}!")
+        else:
+            print(f"[{self.node_id}] Response: There was an error sending your email. Please try again later.")
+            
+        # Reset email context
+        self.email_context['active'] = False
+
+    def _detect_send_email_intent(self, message):
+        """Detect if the message is requesting to send an email"""
+        # Skip this detection if we're already in email composition mode
+        if hasattr(self, 'email_context') and self.email_context.get('active'):
+            return {"is_send_email": False}
+            
+        prompt = f"""
+        Analyze this message and determine if it's requesting to send an email:
+        "{message}"
+        
+        A message is considered an email sending request if:
+        1. It contains phrases like "send email", "write email", "send mail", "compose email", "draft email", etc.
+        2. There's a clear intention to create and send an email to someone
+
+        Return JSON with:
+        - is_send_email: boolean (true if the message is about sending an email)
+        - recipient: string (email address or name of recipient if specified, empty string if not)
+        - subject: string (email subject line if specified, empty string if not)
+        - body: string (email content if specified, empty string if not)
+        - missing_info: array of strings (what information is missing: "recipient", "subject", "body")
+
+        Notes:
+        - If the message contains phrases like "subject:" or "title:" followed by text, extract that as the subject
+        - If the message has text after keywords like "body:", "content:", or "message:", extract that as the body
+        - If it says "the subject is" or "subject is" followed by text, extract that as the subject
+        - If it says "the body is" or "message is" followed by text, extract that as the body
+        - If no explicit markers are present but there's a clear distinction between subject and body, make your best guess
+        - Look for paragraph breaks or sentence structure to identify where subject ends and body begins
+        - For recipient, extract just the name or email (don't include words like "to" or "for")
+        - If the message itself appears to be the content of the email, set body to the entire message excluding obvious command parts
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4.1",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            
+            result = json.loads(response.choices[0].message.content)
+            
+            # Determine what information is missing
+            missing = []
+            if not result.get('recipient'):
+                missing.append('recipient')
+            if not result.get('subject'):
+                missing.append('subject')
+            if not result.get('body'):
+                missing.append('body')
+                
+            result['missing_info'] = missing
+            
+            return result
+        except Exception as e:
+            print(f"[{self.node_id}] Error detecting send email intent: {str(e)}")
+            return {"is_send_email": False, "recipient": "", "subject": "", "body": "", "missing_info": []}
+
+    def _start_email_composition(self, initial_message, missing_info, email_data):
+        """Start the email composition flow by asking for missing information"""
+        # Initialize email context
+        self.email_context = {
+            'active': True,
+            'initial_message': initial_message,
+            'missing_info': missing_info.copy(),
+            'collected_info': {
+                'recipient': email_data.get('recipient', ''),
+                'subject': email_data.get('subject', ''),
+                'body': email_data.get('body', '')
+            },
+            'state': 'collecting_info'  # States: collecting_info, confirming, sending
+        }
+        
+        # Ask for the first missing piece of information
+        self._ask_for_next_email_info()
+        
+    def _ask_for_next_email_info(self):
+        """Ask user for the next piece of missing email information"""
+        if not self.email_context['missing_info']:
+            # We have all the information, proceed to confirmation
+            self._show_email_preview()
+            return
+        
+        next_info = self.email_context['missing_info'][0]
+        
+        # Questions for each type of missing information
+        questions = {
+            'recipient': "To whom would you like to send this email? (Please provide an email address or name)",
+            'subject': "What should be the subject of your email?",
+            'body': "Please write the content of your email. You can include multiple paragraphs."
+        }
+        
+        # Special case for subject when both subject and body are missing
+        if next_info == 'subject' and 'body' in self.email_context['missing_info']:
+            questions['subject'] = "What should be the subject and body of your email? You can provide both by saying something like 'The subject is X, body is Y'."
+        
+        response = questions.get(next_info, f"Please provide the {next_info} for the email")
+        print(f"[{self.node_id}] Response: {response}")
+        
+    def _continue_email_composition(self, message, sender_id):
+        """Process user's response to our question about email details"""
+        if not self.email_context.get('active', False):
+            return
+            
+        if not self.email_context.get('missing_info'):
+            # We should be in confirmation state
+            current_state = self.email_context.get('state', '')
+            
+            if current_state == 'confirming':
+                # Process confirmation response
+                if self._is_confirmation_positive(message):
+                    # User confirmed, send the email
+                    self._send_email_after_confirmation()
+                else:
+                    # User declined or response unclear
+                    print(f"[{self.node_id}] Response: Email sending cancelled. You can start over or modify your request.")
+                    self.email_context['active'] = False
+            return
+            
+        current_state = self.email_context.get('state', '')
+        
+        if current_state == 'collecting_info':
+            current_info = self.email_context['missing_info'].pop(0)
+            
+            # Special handling for different types of information
+            if current_info == 'subject':
+                # Check if the message includes both subject and body
+                if 'body:' in message.lower() or 'message:' in message.lower() or 'content:' in message.lower():
+                    # This response might contain both subject and body
+                    # Let's parse it properly
+                    parsed = self._parse_subject_and_body(message)
+                    
+                    # Store the parsed subject
+                    self.email_context['collected_info']['subject'] = parsed.get('subject', message)
+                    
+                    # If body was also included, store it and remove from missing info
+                    if parsed.get('body') and 'body' in self.email_context['missing_info']:
+                        self.email_context['collected_info']['body'] = parsed.get('body')
+                        self.email_context['missing_info'].remove('body')
+                else:
+                    # Just a simple subject
+                    self.email_context['collected_info']['subject'] = message
+            
+            elif current_info == 'body':
+                # Preserve formatting in the body
+                self.email_context['collected_info']['body'] = message
+            
+            else:
+                # Default handling for other fields
+                self.email_context['collected_info'][current_info] = message
+            
+            if self.email_context['missing_info']:
+                # Still need more information
+                self._ask_for_next_email_info()
+            else:
+                # We have all the information, show preview
+                self._show_email_preview()
+                
+        elif current_state == 'confirming':
+            # Process confirmation response
+            if self._is_confirmation_positive(message):
+                # User confirmed, send the email
+                self._send_email_after_confirmation()
+            else:
+                # User declined or response unclear
+                print(f"[{self.node_id}] Response: Email sending cancelled. You can start over or modify your request.")
+                self.email_context['active'] = False
+                
+    def _parse_subject_and_body(self, message):
+        """Parse a message that might contain both subject and body"""
+        # Check for common patterns first
+        subject_body_pattern = re.search(r"(?i)the\s+subject\s+is\s+[\"']?(.*?)[\"']?,?\s+(?:the\s+)?body(?:\s+message)?\s+is\s+[\"']?(.*?)[\"']?$", message)
+        if subject_body_pattern:
+            subject = subject_body_pattern.group(1).strip()
+            body = subject_body_pattern.group(2).strip()
+            return {'subject': subject, 'body': body}
+            
+        # Also check for subject: and body: pattern
+        if re.search(r"(?i)subject:", message) and re.search(r"(?i)body:", message):
+            parts = re.split(r"(?i)body:", message, 1)
+            subject_part = parts[0]
+            body_part = parts[1].strip()
+            
+            # Extract subject after "subject:"
+            subject_match = re.search(r"(?i)subject:(.*?)(?:$|,|\n)", subject_part)
+            if subject_match:
+                subject = subject_match.group(1).strip()
+                return {'subject': subject, 'body': body_part}
+        
+        # Use AI for more complex parsing if simple patterns don't match
+        prompt = f"""
+        Parse this message to extract the email subject and body:
+        "{message}"
+        
+        Look for patterns like:
+        - "Subject:" or "The subject is" followed by text (for subject)
+        - "Body:" or "Message:" or "Content:" followed by text (for body)
+        - Clear paragraph breaks or keywords indicating separate sections
+        
+        Return a JSON object with:
+        - subject: the extracted subject line
+        - body: the extracted email body
+        
+        If either cannot be clearly identified, return an empty string for that field.
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4.1",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.1  # Lower temperature for more consistent parsing
+            )
+            
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"[{self.node_id}] Error parsing subject and body: {str(e)}")
+            # If parsing fails, return the full message as subject
+            return {'subject': message, 'body': ''}
+
+    def _is_confirmation_positive(self, message):
+        """Check if the user's response is a confirmation to send the email"""
+        positive_indicators = [
+            'yes', 'yeah', 'yep', 'yup', 'sure', 'ok', 'okay', 'fine', 
+            'send', 'send it', 'send email', 'send the email',
+            'confirm', 'confirmed', 'confirmation', 'approve', 'approved',
+            'go ahead', 'proceed', 'do it', 'looks good'
+        ]
+        negative_indicators = [
+            'no', 'nope', 'don\'t', 'do not', 'cancel', 'stop', 'abort',
+            'don\'t send', 'do not send', 'wait', 'hold on', 'nevermind'
+        ]
+        
+        message_lower = message.lower().strip()
+        
+        # Check for explicit negative response first
+        if any(indicator in message_lower for indicator in negative_indicators):
+            return False
+            
+        # Then check for positive response
+        return any(indicator in message_lower for indicator in positive_indicators)
+                
+    def _show_email_preview(self):
+        """Show a preview of the email and ask for confirmation"""
+        self.email_context['state'] = 'confirming'
+        
+        recipient = self.email_context['collected_info'].get('recipient', '')
+        subject = self.email_context['collected_info'].get('subject', '')
+        body = self.email_context['collected_info'].get('body', '')
+        
+        # Format the preview nicely
+        preview = (
+            f"📧 Email Preview 📧\n\n"
+            f"To: {recipient}\n"
+            f"Subject: {subject or '(No subject)'}\n"
+            f"---\n"
+            f"{body}\n"
+            f"---\n\n"
+            f"Would you like me to send this email? (Yes/No)"
+        )
+        
+        print(f"[{self.node_id}] Response: {preview}")
 
 
 def run_cli(network):
