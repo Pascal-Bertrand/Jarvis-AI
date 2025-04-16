@@ -626,11 +626,24 @@ class LLMNode:
             print(f"[{self.node_id}] Response: {response}")
 
     def _detect_calendar_intent(self, message):
-        """Simplified calendar intent detection"""
-        prompt = f"""
-        Analyze this message and determine if it's a calendar-related command:
-        "{message}"
+        """
+        Detect if the incoming message is related to calendar commands.
         
+        The method constructs a prompt asking the LLM to analyze if the message is calendar related,
+        and what action is intended (e.g., scheduling, cancellation).
+        
+        Args:
+            message (str): The message to analyze.
+        
+        Returns:
+            dict: A JSON object that includes:
+                  - is_calendar_command (bool)
+                  - action (string: "schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or None)
+                  - missing_info (list of strings indicating any missing information)
+        """
+        
+        prompt = f"""
+        Analyze this message and determine if it's a calendar-related command: '{message}'
         Return JSON with:
         - is_calendar_command: boolean
         - action: string ("schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or null)
@@ -650,8 +663,18 @@ class LLMNode:
             return {"is_calendar_command": False, "action": None, "missing_info": []}
 
     def _start_meeting_creation(self, initial_message, missing_info):
-        """Start the meeting creation flow by asking for missing information"""
-        # Initialize meeting context
+        """
+        Initiate the meeting creation process by setting up a meeting context.
+        
+        This context holds the initial message and a list of missing pieces of information.
+        The process will prompt the user for the missing details.
+        
+        Args:
+            initial_message (str): The original message initiating the meeting creation.
+            missing_info (list): List of strings indicating which details are missing.
+        """
+        
+        # Initialize a dictionary to track meeting creation progress
         self.meeting_context = {
             'active': True,
             'initial_message': initial_message,
@@ -663,17 +686,24 @@ class LLMNode:
         self._ask_for_next_meeting_info()
 
     def _ask_for_next_meeting_info(self):
-        """Ask user for the next piece of missing meeting information"""
+        """
+        Ask the user for the next piece of required meeting information.
+        
+        If all information has been collected, the method proceeds to construct the complete meeting message.
+        Otherwise, it selects the next item from the missing_info list and prints a tailored question.
+        """
+        
         if not self.meeting_context['missing_info']:
-            # We have all the information, proceed with meeting creation
+            # All required info collected; create complete message and process meeting creation
             combined_message = self._construct_complete_meeting_message()
             self._handle_meeting_creation(combined_message)
             self.meeting_context['active'] = False
             return
-        
+
+        # Get the next missing information item
         next_info = self.meeting_context['missing_info'][0]
         
-        # Improved questions with better guidance
+        # Predefined questions for standard meeting details
         questions = {
             'time': "What time should the meeting be scheduled? (Please use HH:MM format in 24-hour time, e.g., 14:30)",
             'date': "On what date should the meeting be scheduled? (Please use YYYY-MM-DD format, e.g., 2023-12-31)",
@@ -681,7 +711,7 @@ class LLMNode:
             'title': "What is the title or topic of the meeting?"
         }
         
-        # Add context if rescheduling
+        # Optionally add context for rescheduling or validation
         context = ""
         if self.meeting_context.get('is_rescheduling', False):
             context = " for rescheduling"
@@ -692,25 +722,34 @@ class LLMNode:
         print(f"[{self.node_id}] Response: {response}")
 
     def _continue_meeting_creation(self, message, sender_id):
-        """Process user's response to our question about meeting details"""
+        """
+        Continue the meeting creation flow by processing the user's answer.
+        
+        The response is recorded for the current missing information item, and if additional info is needed,
+        the next prompt is issued. Otherwise, the complete meeting creation is triggered.
+        
+        Args:
+            message (str): The user's response for the current information query.
+            sender_id (str): The identifier for the sender.
+        """        
+        
         if not self.meeting_context['missing_info']:
             # Shouldn't happen, but just in case
             self.meeting_context['active'] = False
             return
-        
+
+        # Remove the first missing detail, and save the user's answer under that key
         current_info = self.meeting_context['missing_info'].pop(0)
         self.meeting_context['collected_info'][current_info] = message
         
         if self.meeting_context['missing_info']:
-            # Still need more information
+            # More details are still required; ask the next question
             self._ask_for_next_meeting_info()
         else:
-            # We have all the information
+            # All information collected: if rescheduling, call the respective handler; otherwise, proceed normally
             if self.meeting_context.get('is_rescheduling', False) and 'target_event_id' in self.meeting_context:
-                # Handle rescheduling completion
                 self._complete_meeting_rescheduling()
             else:
-                # Handle regular meeting creation
                 combined_message = self._construct_complete_meeting_message()
                 self._handle_meeting_creation(combined_message)
             
@@ -718,11 +757,17 @@ class LLMNode:
             print(f"[{self.node_id}] Response: Meeting {'rescheduled' if self.meeting_context.get('is_rescheduling') else 'scheduled'} successfully with all required information.")
 
     def _construct_complete_meeting_message(self):
-        """Combine initial message with collected information into a complete instruction"""
+        """
+        Construct a complete meeting instruction message by combining the initial command with the collected details.
+        
+        Returns:
+            str: A complete message string including title, date, time, and participants.
+        """
+        
         initial = self.meeting_context['initial_message']
         collected = self.meeting_context['collected_info']
         
-        # Create a complete message with all the information
+        # Concatenate all gathered meeting details with appropriate labels
         complete_message = f"{initial} "
         if 'title' in collected:
             complete_message += f"Title: {collected['title']}. "
@@ -736,11 +781,20 @@ class LLMNode:
         return complete_message
 
     def _handle_meeting_creation(self, message):
-        """Meeting creation with improved time validation and interaction"""
-        # Extract meeting details
+        """
+        Handle the complete meeting creation process.
+        
+        This method extracts meeting details from the combined message, validates them (including checking
+        date/time formats and future scheduling), and then attempts to schedule the meeting with Google Calendar.
+        
+        Args:
+            message (str): The complete meeting instruction that includes all necessary details.
+        """
+        
+        # Extract meeting details using an LLM-assisted helper method
         meeting_data = self._extract_meeting_details(message)
         
-        # Validate that we have all required information
+        # Validate that required fields such as title and participants are present
         required_fields = ['title', 'participants']
         missing = [field for field in required_fields if not meeting_data.get(field)]
         
@@ -748,14 +802,14 @@ class LLMNode:
             print(f"[{self.node_id}] Cannot schedule meeting: missing {', '.join(missing)}")
             return
         
-        # Process participants
+        # Process and normalize participant names
         participants = []
         for p in meeting_data.get("participants", []):
             p_lower = p.lower().strip()
             if p_lower in ["ceo", "marketing", "engineering", "design"]:
                 participants.append(p_lower)
         
-        # Ensure we have participants
+        # Ensure the current node is included among the participants
         if not participants:
             print(f"[{self.node_id}] Cannot schedule meeting: no valid participants")
             return
@@ -764,15 +818,14 @@ class LLMNode:
         if self.node_id not in participants:
             participants.append(self.node_id)
         
-        # Process date/time
+        # Process meeting date and time: use provided values or defaults
         meeting_date = meeting_data.get("date", datetime.now().strftime("%Y-%m-%d"))
         meeting_time = meeting_data.get("time", (datetime.now() + timedelta(hours=1)).strftime("%H:%M"))
         
         try:
-            # Validate date format 
+            # Validate date and time by attempting to parse them
             try:
                 start_datetime = datetime.strptime(f"{meeting_date} {meeting_time}", "%Y-%m-%d %H:%M")
-                
                 # Check if date is in the past
                 current_time = datetime.now()
                 if start_datetime < current_time:
@@ -797,7 +850,6 @@ class LLMNode:
             except ValueError:
                 # If date parsing fails, notify user instead of auto-fixing
                 print(f"[{self.node_id}] Response: I couldn't understand the date/time format. Please provide the date in YYYY-MM-DD format and time in HH:MM format.")
-                
                 # Store context for follow-up
                 self.meeting_context = {
                     'active': True,
@@ -812,15 +864,16 @@ class LLMNode:
                 # Ask for new date and time
                 self._ask_for_next_meeting_info()
                 return
-            
+
+            # Determine meeting duration (defaulting to 60 minutes if unspecified)
             duration_mins = int(meeting_data.get("duration", 60))
             end_datetime = start_datetime + timedelta(minutes=duration_mins)
             
-            # Create a unique ID and get title
+            # Generate a unique meeting ID and set a meeting title
             meeting_id = f"meeting_{int(datetime.now().timestamp())}"
             meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
             
-            # Schedule the meeting
+            # Schedule the meeting using the helper for creating calendar events
             self._create_calendar_meeting(meeting_id, meeting_title, participants, start_datetime, end_datetime)
             
             # Confirm to user with reliable times
@@ -829,9 +882,21 @@ class LLMNode:
             print(f"[{self.node_id}] Error creating meeting: {str(e)}")
 
     def _extract_meeting_details(self, message):
-        """Extract meeting details with improved accuracy and defaulting to current time"""
+        """
+        Extract detailed meeting information from the given message using LLM assistance.
+        
+        The function sends a prompt to the LLM to parse the meeting details and returns a structured JSON
+        with keys like title, participants, date, time, and duration.
+        
+        Args:
+            message (str): The input meeting instruction message.
+        
+        Returns:
+            dict: A dictionary with meeting details. Missing date/time fields are substituted with defaults.
+        """
+        
         prompt = f"""
-        Extract complete meeting details from: "{message}"
+        Extract complete meeting details from:'{message}'
         
         Return JSON with:
         - title: meeting title
@@ -852,7 +917,7 @@ class LLMNode:
             
             result = json.loads(response.choices[0].message.content)
             
-            # Use current date if not specified
+            # Set defaults if date or time are missing
             if not result.get("date"):
                 result["date"] = datetime.now().strftime("%Y-%m-%d")
             
@@ -866,7 +931,13 @@ class LLMNode:
             return {}
 
     def _handle_list_meetings(self):
-        """Handle request to list upcoming meetings"""
+        """
+        List upcoming meetings either from the Google Calendar service or the local calendar.
+        
+        This method retrieves events, formats their details (including title, date/time, and attendees),
+        and prints them in a user-friendly format.
+        """
+        
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, showing local meetings only")
             if not self.calendar:
@@ -874,7 +945,7 @@ class LLMNode:
                 return
             
         try:
-            # Get upcoming meetings from Google Calendar
+            # Retrieve current time in the required ISO format for querying events
             now = datetime.utcnow().isoformat() + 'Z'
             events_result = self.calendar_service.events().list(
                 calendarId='primary',
@@ -891,8 +962,10 @@ class LLMNode:
             
             print(f"[{self.node_id}] Upcoming meetings:")
             for event in events:
+                # Get start time from event details
                 start = event['start'].get('dateTime', event['start'].get('date'))
                 start_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                # Format attendee emails by extracting the user part
                 attendees = ", ".join([a.get('email', '').split('@')[0] for a in event.get('attendees', [])])
                 print(f"  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}")
             
@@ -900,15 +973,27 @@ class LLMNode:
             print(f"[{self.node_id}] Error listing meetings: {str(e)}")
 
     def _handle_meeting_rescheduling(self, message):
-        """Handle meeting rescheduling with proper event updating"""
+        """
+        Handle meeting rescheduling requests by extracting new scheduling details and updating the event.
+        
+        The method performs the following:
+          - Uses LLM to extract rescheduling details such as meeting identifier, original date, new date/time, and duration.
+          - Searches the Google Calendar for the meeting to be rescheduled using a simple scoring system.
+          - Validates the new date and time.
+          - Updates the event in Google Calendar and notifies participants.
+        
+        Args:
+            message (str): The message containing rescheduling instructions.
+        """
+        
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, can't reschedule meetings")
             return
         
         try:
-            # Use OpenAI to extract rescheduling details with more explicit prompt
+            # Construct a prompt instructing the LLM to extract detailed rescheduling data
             prompt = f"""
-            Extract meeting rescheduling details from this message: "{message}"
+            Extract meeting rescheduling details from this message: '{message}'
             
             Identify EXACTLY which meeting needs rescheduling by looking for:
             1. Meeting title or topic (as a simple text string)
@@ -937,7 +1022,6 @@ class LLMNode:
                 response_format={"type": "json_object"}
             )
             
-            # Extract and validate the rescheduling data (keep existing code for this part)
             response_content = response.choices[0].message.content
             try:
                 reschedule_data = json.loads(response_content)
@@ -945,14 +1029,14 @@ class LLMNode:
                 print(f"[{self.node_id}] Error parsing rescheduling JSON: {e}")
                 return
             
-            # Defensive extraction of data with type checking (keep existing code)
+            # Extract and normalize data from the JSON response
             meeting_identifier = ""
             if "meeting_identifier" in reschedule_data:
                 if isinstance(reschedule_data["meeting_identifier"], str):
                     meeting_identifier = reschedule_data["meeting_identifier"].lower()
                 else:
                     meeting_identifier = str(reschedule_data["meeting_identifier"]).lower()
-            
+
             original_date = None
             if "original_date" in reschedule_data and reschedule_data["original_date"]:
                 original_date = str(reschedule_data["original_date"])
@@ -972,7 +1056,7 @@ class LLMNode:
                 except (ValueError, TypeError):
                     new_duration = None
             
-            # Validation checks (keep existing code)
+            # Validate that a meeting identifier and new date are provided
             if not meeting_identifier:
                 print(f"[{self.node_id}] Could not determine which meeting to reschedule")
                 return
@@ -981,7 +1065,7 @@ class LLMNode:
                 print(f"[{self.node_id}] No new date specified for rescheduling")
                 return
             
-            # Get upcoming meetings
+            # Retrieve upcoming meetings to search for a matching event
             try:
                 now = datetime.utcnow().isoformat() + 'Z'
                 events_result = self.calendar_service.events().list(
@@ -1000,7 +1084,7 @@ class LLMNode:
                 print(f"[{self.node_id}] No upcoming meetings found to reschedule")
                 return
             
-            # Find the meeting to reschedule (keep scoring system code)
+            # Use a scoring system to find the best matching event based on title, attendees, and original date
             target_event = None
             best_match_score = 0
             
@@ -1046,7 +1130,7 @@ class LLMNode:
                 print(f"[{self.node_id}] No matching meeting found for '{meeting_identifier}'")
                 return
             
-            # Validate the new date and time
+            # Validate the new date and time format and ensure the new time is in the future
             try:
                 # Parse new date and time
                 new_start_datetime = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
@@ -1089,7 +1173,7 @@ class LLMNode:
                 self._ask_for_next_meeting_info()
                 return
             
-            # Calculate new end time based on original duration
+            # Determine the new end time using either the provided new duration or the event's original duration
             try:
                 # Extract original start and end times
                 original_start = datetime.fromisoformat(target_event['start'].get('dateTime').replace('Z', '+00:00'))
@@ -1104,7 +1188,7 @@ class LLMNode:
                     
                 new_end_datetime = new_start_datetime + timedelta(minutes=duration_to_use)
                 
-                # Update the event with all original data preserved
+                # Update the target event's start and end times
                 target_event['start']['dateTime'] = new_start_datetime.isoformat()
                 target_event['end']['dateTime'] = new_end_datetime.isoformat()
                 
@@ -1127,7 +1211,7 @@ class LLMNode:
                     if meeting.get('event_id') == updated_event['id']:
                         meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {new_date} at {formatted_time})"
                 
-                # Notify participants
+                # Notify all attendees about the rescheduled meeting
                 attendees = updated_event.get('attendees', [])
                 for attendee in attendees:
                     attendee_id = attendee.get('email', '').split('@')[0]
@@ -1137,7 +1221,7 @@ class LLMNode:
                             if meeting.get('event_id') == updated_event['id']:
                                 meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {new_date} at {formatted_time})"
                         
-                        # Send notification
+                        # Send notifications
                         notification = (
                             f"Your meeting '{meeting_title}' has been rescheduled by {self.node_id}.\n"
                             f"New date: {formatted_date}\n"
@@ -1154,11 +1238,22 @@ class LLMNode:
             print(f"[{self.node_id}] General error in meeting rescheduling: {str(e)}")
 
     def send_message(self, recipient_id: str, content: str):
+        """
+        Send a message from this node to another node via the network.
+        
+        If the recipient is 'cli_user', print the message directly.
+        Otherwise, use the network's send_message method.
+        
+        Args:
+            recipient_id (str): The target node identifier.
+            content (str): The content of the message.
+        """
+        
         if not self.network:
             print(f"[{self.node_id}] No network attached.")
             return
         
-        # Special case for CLI user
+        # Directly print messages to CLI user
         if recipient_id == "cli_user":
             print(f"[{self.node_id}] Response: {content}")
         else:
@@ -1166,8 +1261,17 @@ class LLMNode:
 
     def query_llm(self, messages):
         """
-        We'll use a system prompt that instructs the LLM to be short, direct, and not loop forever.
+        Query the language model with a list of messages.
+        
+        A system prompt is prepended to guide the LLM to be short and concise.
+        
+        Args:
+            messages (list): A list of message dictionaries (role and content).
+        
+        Returns:
+            str: The trimmed text response from the LLM.
         """
+        
         system_prompt = [{
             "role": "system",
             "content": (
