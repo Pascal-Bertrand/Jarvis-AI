@@ -17,6 +17,9 @@ import tempfile
 import re # Added import
 from flask_socketio import SocketIO
 
+# --- Add Logging Import ---
+from secretary.utilities.logging import log_user_message, log_agent_message, log_system_message, log_network_message, log_error, log_warning, log_api_request, log_api_response
+
 # --- Add CV Parser Import ---
 #from src.cv_parser.parser import CVParser 
 
@@ -36,6 +39,8 @@ except ImportError:
 client = openai.OpenAI(api_key=api_key)
 if not client.api_key:
     raise ValueError("Please set OPENAI_API_KEY in environment variables or .env file")
+    
+log_system_message("OpenAI client initialized successfully")
 
 # Add these constants at the top level
 SCOPES = [
@@ -160,10 +165,14 @@ class Network:
         If no log file is specified (i.e., log_file is None), the message is not logged.
         """
         
+        # Log using our new logging module
+        log_network_message(sender_id, recipient_id, content)
+        
+        # Also preserve original file logging if configured
         if self.log_file:
             # Open the log file in append mode with UTF-8 encoding to handle any special characters.
             with open(self.log_file, "a", encoding="utf-8") as f:
-                 # Write the message in a readable format.
+                # Write the message in a readable format.
                 f.write(f"From {sender_id} to {recipient_id}: {content}\n")
     
     def add_task(self, task: Task):
@@ -559,6 +568,12 @@ class LLMNode:
             sender_id (str): The identifier of the sender.
         """
         
+        # Log the incoming message
+        if sender_id == "cli_user":
+            log_user_message(sender_id, message)
+        else:
+            log_network_message(sender_id, self.node_id, message)
+            
         print(f"[{self.node_id}] Received from {sender_id}: {message}")
 
         # --- Start: Added Command Parsing for UI/CLI ---
@@ -1303,15 +1318,29 @@ class LLMNode:
 
         combined_messages = system_prompt + messages
         try:
+            # Log the API request
+            log_api_request("openai_chat", {"model": self.llm_params["model"], "messages": combined_messages})
+            
             completion = self.client.chat.completions.create(
                 model=self.llm_params["model"],
                 messages=combined_messages,
                 temperature=self.llm_params["temperature"],
                 max_tokens=self.llm_params["max_tokens"]
             )
-            return completion.choices[0].message.content.strip()
+            
+            response_content = completion.choices[0].message.content.strip()
+            
+            # Log the API response
+            log_api_response("openai_chat", {"response": response_content})
+            
+            # Log the agent's response
+            log_agent_message(self.node_id, response_content)
+            
+            return response_content
         except Exception as e:
-            print(f"[{self.node_id}] LLM query failed: {e}")
+            error_msg = f"LLM query failed: {e}"
+            print(f"[{self.node_id}] {error_msg}")
+            log_error(error_msg)
             return "LLM query failed."
 
     def plan_project(self, project_id: str, objective: str):
@@ -2318,7 +2347,9 @@ class LLMNode:
     def send_email(self, to, subject, body):
         """Send an email using Gmail API"""
         if not self.gmail_service:
-            print(f"[{self.node_id}] Gmail service not available, can't send email")
+            error_msg = f"{self.node_id} Gmail service not available, can't send email"
+            print(f"[{self.node_id}] {error_msg}")
+            log_error(error_msg)
             return False
             
         try:
@@ -2327,17 +2358,24 @@ class LLMNode:
                 'raw': self._create_message(to, subject, body)
             }
             
+            # Log the email sending attempt
+            log_system_message(f"Sending email from {self.node_id} to {to} with subject: {subject}")
+            
             # Send the email
             sent_message = self.gmail_service.users().messages().send(
                 userId='me',
                 body=message
             ).execute()
             
-            print(f"[{self.node_id}] Email sent successfully with message ID: {sent_message['id']}")
+            success_msg = f"Email sent successfully with message ID: {sent_message['id']}"
+            print(f"[{self.node_id}] {success_msg}")
+            log_system_message(success_msg)
             return True
             
         except Exception as e:
-            print(f"[{self.node_id}] Error sending email: {str(e)}")
+            error_msg = f"Error sending email: {str(e)}"
+            print(f"[{self.node_id}] {error_msg}")
+            log_error(error_msg)
             return False
     
     def _create_message(self, to, subject, body):

@@ -1,0 +1,8 @@
+2025-04-17 17:16:55,903 - INFO - ======= AgentAI Logging Started at 2025-04-17_17-16-55 =======
+2025-04-17 17:16:55,952 - INFO - SYSTEM: OpenAI client initialized successfully
+2025-04-17 17:17:02,963 - INFO - USER (cli_user): Hey
+2025-04-17 17:17:05,924 - DEBUG - API REQUEST (openai_chat): {'model': 'gpt-4.1', 'messages': [{'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes. End after conveying necessary information.'}, {'role': 'user', 'content': 'cli_user says: Hey'}]}
+2025-04-17 17:17:06,848 - DEBUG - API RESPONSE (openai_chat): {'response': 'Hello. How can I help you?'}
+2025-04-17 17:17:06,848 - INFO - AGENT (ceo): Hello. How can I help you?
+2025-04-17 17:17:41,181 - INFO - USER (cli_user): Send an email
+2025-04-17 17:17:55,184 - INFO - USER (cli_user): pbertrand@ethz.ch
