@@ -84,35 +84,131 @@ class Network:
     """
 
     def __init__(self, log_file: Optional[str] = None):
+        """
+        Initialize a new Network instance.
+        
+        Args:
+            log_file (Optional[str]): The file path for logging messages. If provided, every message
+                                      sent through the network will be appended to this file.
+                                      
+        The constructor sets up:
+         - an empty dictionary 'nodes' to store registered nodes,
+         - a log file path (if any),
+         - an empty list 'tasks' to track tasks in the network.
+        """
+        
         self.nodes: Dict[str, LLMNode] = {}
         self.log_file = log_file
         self.tasks: List[Task] = []
 
     def register_node(self, node: 'LLMNode'):
+        """
+        Register a node with the network.
+        
+        This method adds the node to the network's internal dictionary using the node's unique identifier.
+        It also sets the node's 'network' attribute to reference this Network instance, establishing a two-way link.
+        
+        Args:
+            node (LLMNode): The node instance to register. The node must have a 'node_id' attribute.
+            
+        After registration, the node can participate in messaging and task management within the network.
+        """
+        
         self.nodes[node.node_id] = node
         node.network = self
 
     def send_message(self, sender_id: str, recipient_id: str, content: str):
+        """
+        Send a message from one node to another.
+        
+        This function first logs the outgoing message by calling a private logging function.
+        Then, it checks if the recipient exists in the network's nodes dictionary:
+          - If the recipient exists, the message is delivered by invoking the recipient's 'receive_message' method.
+          - If the recipient does not exist, an error message is printed.
+        
+        Args:
+            sender_id (str): Identifier of the node sending the message.
+            recipient_id (str): Identifier of the recipient node.
+            content (str): The message content to be transmitted.
+            
+        The function ensures that every message is logged and that message delivery occurs only if the
+        target node is registered in the network.
+        """
+
+        # Log the message regardless of whether the recipient exists.
         self._log_message(sender_id, recipient_id, content)
 
+        # Send the message if the recipient exists in the network's node list.
         if recipient_id in self.nodes:
             self.nodes[recipient_id].receive_message(content, sender_id)
         else:
+            # Print an error message if recipient is not found.
             print(f"Node {recipient_id} not found in the network.")
 
     def _log_message(self, sender_id: str, recipient_id: str, content: str):
+        """
+        Log a message to a file if logging is enabled.
+        
+        This private helper method writes the details of the message in a formatted string to the
+        specified log file. It appends the message so that previous logs are preserved.
+        
+        Args:
+            sender_id (str): The identifier of the node that originated the message.
+            recipient_id (str): The identifier of the target node.
+            content (str): The textual content of the message.
+            
+        If no log file is specified (i.e., log_file is None), the message is not logged.
+        """
+        
         if self.log_file:
+            # Open the log file in append mode with UTF-8 encoding to handle any special characters.
             with open(self.log_file, "a", encoding="utf-8") as f:
+                 # Write the message in a readable format.
                 f.write(f"From {sender_id} to {recipient_id}: {content}\n")
     
     def add_task(self, task: Task):
-        self.tasks.append(task)
-        # Notify the assigned person
+        """
+        Add a new task to the network and notify the assigned node.
+        
+        The task is appended to the network's task list. If the task has an assigned node (its 'assigned_to' attribute
+        corresponds to a registered node), the method constructs a notification message detailing the task's title,
+        due date, and priority, and then sends this message from a system-generated sender.
+        
+        Args:
+            task (Task): A task object with at least the following attributes:
+                        - title (str): A brief description or title of the task.
+                        - due_date (datetime): A datetime object representing the task's deadline.
+                        - priority (Any): The priority level of the task.
+                        - assigned_to (str): The node ID of the node to which the task is assigned.
+                        
+        This approach immediately informs the responsible node of new task assignments, which is critical
+        for task management in networked applications.
+        """
+        
+        self.tasks.append(task) # Add the new task to the list.
+        
+        # Build a notification message with task details.
         if task.assigned_to in self.nodes:
             message = f"New task assigned: {task.title}. Due: {task.due_date.strftime('%Y-%m-%d')}. Priority: {task.priority}."
+
+            # Send the notification message from a system-originated sender.
             self.send_message("system", task.assigned_to, message)
     
     def get_tasks_for_node(self, node_id: str) -> List[Task]:
+        """
+        Retrieve all tasks assigned to a given node.
+        
+        This method filters the list of tasks and returns only those tasks where the 'assigned_to' attribute
+        matches the provided node_id. This allows a node (or any client) to query for tasks specifically targeted to it.
+        
+        Args:
+            node_id (str): The identifier of the node for which to fetch assigned tasks.
+        
+        Returns:
+            List[Task]: A list of task objects that have been assigned to the node with the given node_id.
+        """
+
+        # Use a list comprehension to filter tasks by comparing the assigned_to attribute.
         return [task for task in self.tasks if task.assigned_to == node_id]
 
 
@@ -120,52 +216,87 @@ class LLMNode:
     def __init__(self, node_id: str, knowledge: str = "",
                  llm_api_key: str = "", llm_params: dict = None):
         """
-        Node representing a user/agent, each with its own knowledge and mini-world (projects, calendar, etc.).
+        Initialize a new LLMNode instance.
+        
+        Each node represents an independent user/agent with its own knowledge base,
+        project and calendar information, and configuration for the language model.
+        
+        Args:
+            node_id (str): Unique identifier for this node.
+            knowledge (str): Initial knowledge or context for the node.
+            llm_api_key (str): API key for accessing the LLM. If empty, uses a shared client.
+            llm_params (dict): Dictionary of LLM parameters such as model, temperature, and max_tokens.
+            
+        The constructor sets up:
+          - Node identifier and base knowledge.
+          - The LLM client (either shared or private based on API key).
+          - Default LLM parameters if not provided.
+          - Structures for conversation history, projects, calendar, and Google services.
+          - A placeholder for network connection.
         """
+                     
         self.node_id = node_id
         self.knowledge = knowledge
 
-        # If each node can have its own API key, set it here. Otherwise, use the shared client.
+        # If an individual LLM API key is provided, initialize a new client using that key;
+        # otherwise, fall back to a shared global 'client'
         self.llm_api_key = llm_api_key
         self.client = client if not self.llm_api_key else openai.OpenAI(api_key=self.llm_api_key)
 
-        # Tuning LLM params for concise answers
+        # Set LLM parameters with default values if none are provided
         self.llm_params = llm_params if llm_params else {
             "model": "gpt-4.1",
             "temperature": 0.1,
             "max_tokens": 1000
         }
 
-        # Store conversation if needed
+        # Initialize an empty conversation history list to store chat messages
         self.conversation_history = []
 
-        # For multiple projects, store them in a dict: { project_id: {...}, ... }
+        # Dictionary to store information about multiple projects; key is project ID (i.e. { project_id: {...}, ... })
         self.projects = {}
 
-        # Calendar for meeting scheduling
+        # Local calendar list to store meeting information as dictionaries
         self.calendar = []
-        # Initialize Google services
+                     
+        # Initialize Google services (Calendar, Gmail) using a helper function
         self.google_services = self._initialize_google_services()
         self.calendar_service = self.google_services.get('calendar')
         self.gmail_service = self.google_services.get('gmail')
 
+        # Placeholder for network, set when the node is registered with a Network instance
         self.network: Optional[Network] = None
 
     def _initialize_google_services(self):
-        """Initialize Google services (Calendar and Gmail) with shared authentication"""
+        """
+        Initialize Google services (Calendar and Gmail) with shared authentication.
+        
+        This function performs the following steps:
+          1. Check for a client secret in the environment.
+          2. Attempt to load credentials from a token file.
+          3. Refresh credentials if expired, or start a new OAuth flow if necessary.
+          4. Save the new credentials.
+          5. Build and test Google Calendar and Gmail services.
+          
+        Returns:
+            dict: A dictionary with service objects for 'calendar' and 'gmail'. 
+                  If initialization fails, the corresponding service remains None.
+        """
+        
         print(f"[{self.node_id}] Initializing Google services...")
         
         services = {'calendar': None, 'gmail': None}
         
-        # Check if client secret is available
+        # Check for Google client secret from environment variables
         client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
         if not client_secret:
             print(f"[{self.node_id}] ERROR: GOOGLE_CLIENT_SECRET environment variable not found")
-            return services
+            return services    # Cannot proceed without client secret
         
         print(f"[{self.node_id}] Client secret found: {client_secret[:5]}...")
         
         creds = None
+        # Attempt to load stored credentials from TOKEN_FILE, if available
         if os.path.exists(TOKEN_FILE):
             print(f"[{self.node_id}] Found existing token file")
             try:
@@ -174,7 +305,7 @@ class LLMNode:
                 print(f"[{self.node_id}] Successfully loaded credentials from token file")
             except Exception as e:
                 print(f"[{self.node_id}] Error loading token file: {str(e)}")
-                # Delete invalid token file
+                # Remove the token file if it cannot be loaded
                 os.remove(TOKEN_FILE)
                 print(f"[{self.node_id}] Deleted invalid token file")
                 creds = None
@@ -182,6 +313,7 @@ class LLMNode:
             print(f"[{self.node_id}] No token file found at {TOKEN_FILE}")
         
         try:
+            # Refresh credentials if needed
             if not creds or not creds.valid:
                 if creds and creds.expired and creds.refresh_token:
                     try:
@@ -192,11 +324,11 @@ class LLMNode:
                         print(f"[{self.node_id}] Error refreshing credentials: {str(e)}")
                         print(f"[{self.node_id}] Will start new OAuth flow")
                         creds = None
-                        # Delete invalid token file if it exists
                         if os.path.exists(TOKEN_FILE):
                             os.remove(TOKEN_FILE)
                             print(f"[{self.node_id}] Deleted invalid token file")
-                
+
+                # If no valid credentials exist, start a new OAuth flow
                 if not creds:
                     print(f"[{self.node_id}] Starting new OAuth flow with client ID: {CLIENT_ID[:10]}...")
                     client_config = {
@@ -217,7 +349,7 @@ class LLMNode:
                         )
                         print(f"[{self.node_id}] OAuth flow created successfully")
                         
-                        # Generate the authorization URL and open it in a web browser
+                        # Open authorization URL for user consent in a web browser
                         auth_url, _ = flow.authorization_url(prompt='consent')
                         print(f"[{self.node_id}] Opening authorization URL in browser: {auth_url[:60]}...")
                         webbrowser.open(auth_url)
@@ -231,6 +363,7 @@ class LLMNode:
                         print(f"[{self.node_id}] Full error details: {repr(e)}")
                         return services
 
+                # Save the credentials for future use
                 print(f"[{self.node_id}] Saving credentials to token file: {TOKEN_FILE}")
                 try:
                     with open(TOKEN_FILE, 'wb') as token:
@@ -239,24 +372,24 @@ class LLMNode:
                 except Exception as e:
                     print(f"[{self.node_id}] Error saving credentials: {str(e)}")
 
-            # Initialize Calendar service
+            # Initialize the Google Calendar service
             try:
                 print(f"[{self.node_id}] Building calendar service...")
                 calendar_service = build('calendar', 'v3', credentials=creds)
                 
-                # Test the calendar service with a simple API call
+                # Test the calendar service by fetching the calendar list
                 calendar_list = calendar_service.calendarList().list().execute()
                 print(f"[{self.node_id}] Calendar service working! Found {len(calendar_list.get('items', []))} calendars")
                 services['calendar'] = calendar_service
             except Exception as e:
                 print(f"[{self.node_id}] Failed to initialize Calendar service: {str(e)}")
             
-            # Initialize Gmail service
+            # Initialize the Gmail service
             try:
                 print(f"[{self.node_id}] Building Gmail service...")
                 gmail_service = build('gmail', 'v1', credentials=creds)
                 
-                # Test the Gmail service with a simple API call
+                # Test the Gmail service by fetching the user's profile
                 profile = gmail_service.users().getProfile(userId='me').execute()
                 print(f"[{self.node_id}] Gmail service working! Connected to {profile.get('emailAddress')}")
                 services['gmail'] = gmail_service
@@ -269,14 +402,25 @@ class LLMNode:
             print(f"[{self.node_id}] Failed to initialize Google services: {str(e)}")
             return services
 
-    # Uncomment the calendar reminder method
     def create_calendar_reminder(self, task: Task):
-        """Create a Google Calendar reminder for a task"""
+        """
+        Create a Google Calendar reminder for a given task.
+        
+        This method builds an event from the task details (title, due date, description, priority, etc.)
+        and inserts the event using the calendar service.
+        
+        Args:
+            task (Task): Task object with attributes: title, description, due_date, priority, project_id, assigned_to.
+            
+        If the calendar service is not available, it will log that and skip reminder creation.
+        """
+        
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, skipping reminder creation")
             return
             
         try:
+            # Construct the event details in the format expected by Google Calendar
             event = {
                 'summary': f"TASK: {task.title}",
                 'description': f"{task.description}\n\nPriority: {task.priority}\nProject: {task.project_id}",
@@ -297,7 +441,8 @@ class LLMNode:
                     ]
                 }
             }
-            
+
+            # Insert the event into the primary calendar
             event = self.calendar_service.events().insert(calendarId='primary', body=event).execute()
             print(f"[{self.node_id}] Task reminder created: {event.get('htmlLink')}")
             
@@ -306,7 +451,19 @@ class LLMNode:
 
     # Replace the local meeting scheduling with Google Calendar version
     def schedule_meeting(self, project_id: str, participants: list):
-        """Updated to use Google Calendar with proper current time"""
+        """
+        Schedule a meeting using Google Calendar.
+        
+        If the Google Calendar service is available, the meeting event is created with start and end times.
+        If not, the method falls back to local scheduling.
+        
+        Args:
+            project_id (str): Identifier for the project this meeting is associated with.
+            participants (list): List of participant identifiers (usually email prefixes).
+            
+        The method also notifies other participants by adding the event to their local calendars and sending messages.
+        """
+        
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, using local scheduling")
             self._fallback_schedule_meeting(project_id, participants)
@@ -314,11 +471,11 @@ class LLMNode:
             
         meeting_description = f"Meeting for project '{project_id}'"
         
-        # Use current time properly
+        # Schedule meeting for one day later, for a duration of one hour
         start_time = datetime.now() + timedelta(days=1)
         end_time = start_time + timedelta(hours=1)
         
-        # Create event with proper time format
+        # Build the meeting event structure
         event = {
             'summary': meeting_description,
             'start': {
@@ -333,17 +490,18 @@ class LLMNode:
         }
 
         try:
+            # Insert the meeting event into the calendar and capture the response event
             event = self.calendar_service.events().insert(calendarId='primary', body=event).execute()
             print(f"[{self.node_id}] Meeting created: {event.get('htmlLink')}")
             
-            # Store in local calendar as well
+            # Add meeting details to the node's local calendar
             self.calendar.append({
                 'project_id': project_id,
                 'meeting_info': meeting_description,
                 'event_id': event['id']
             })
 
-            # Notify other participants
+            # Notify each participant (except self) by adding event details to their local calendar and sending a message
             for p in participants:
                 if p != self.node_id and p in self.network.nodes:
                     self.network.nodes[p].calendar.append({
@@ -355,12 +513,21 @@ class LLMNode:
                     self.network.send_message(self.node_id, p, notification)
         except Exception as e:
             print(f"[{self.node_id}] Failed to create calendar event: {e}")
-            # Fallback to local calendar
+            # If creation fails, revert to local scheduling
             self._fallback_schedule_meeting(project_id, participants)
     
     # Uncomment the fallback method
     def _fallback_schedule_meeting(self, project_id: str, participants: list):
-        """Local fallback for scheduling when Google Calendar fails"""
+        """
+        Fallback method to locally schedule a meeting when Google Calendar is unavailable.
+        
+        This method simply creates a textual record of the meeting and notifies participants.
+        
+        Args:
+            project_id (str): Identifier for the project related to the meeting.
+            participants (list): List of participant identifiers.
+        """
+        
         meeting_info = f"Meeting for project '{project_id}' scheduled for {datetime.now() + timedelta(days=1)}"
         self.calendar.append({
             'project_id': project_id,
@@ -369,7 +536,7 @@ class LLMNode:
         
         print(f"[{self.node_id}] Scheduled local meeting: {meeting_info}")
         
-        # Notify other participants
+        # Notify every participant in the network about the meeting
         for p in participants:
             if p in self.network.nodes:
                 self.network.nodes[p].calendar.append({
@@ -379,31 +546,40 @@ class LLMNode:
                 print(f"[{self.node_id}] Notified {p} about meeting for project '{project_id}'.")
 
     def receive_message(self, message: str, sender_id: str):
-        """More dynamic message handling with conversation state"""
+        """
+        Process an incoming message to the node.
+        
+        This method handles various kinds of messages:
+          - Direct messages and commands coming from the CLI (sender_id "cli_user").
+          - Ongoing meeting scheduling context.
+          - Regular conversation handling via the LLM.
+        
+        Args:
+            message (str): The incoming message content.
+            sender_id (str): The identifier of the sender.
+        """
+        
         print(f"[{self.node_id}] Received from {sender_id}: {message}")
 
         # --- Start: Added Command Parsing for UI/CLI ---
         if sender_id == "cli_user":
-            # Check for "tasks" command
+            # If message equals "tasks", list tasks and return immediately
             if message.strip().lower() == "tasks":
                 tasks_list = self.list_tasks()
                 # Ensure the response format matches what the UI expects
                 print(f"[{self.node_id}] Response: {tasks_list}") 
                 return # Stop further processing
 
-            # Check for "plan" command (e.g., "plan p1 = objective")
+            # Check for "plan" command using regex (e.g., "plan p1 = objective")
             plan_match = re.match(r"^\s*plan\s+([\w-]+)\s*=\s*(.+)$", message.strip(), re.IGNORECASE)
             if plan_match:
                 project_id = plan_match.group(1).strip()
                 objective = plan_match.group(2).strip()
-                # plan_project already prints output which will be captured
                 self.plan_project(project_id, objective) 
-                # Optionally add a confirmation response if plan_project doesn't provide one suitable for UI
-                # print(f"[{self.node_id}] Response: Project '{project_id}' planning initiated.")
-                return # Stop further processing
-        # --- End: Added Command Parsing ---
+                return # Stop further processing after initiating the project plan
+        # --- End: Command Parsing ---
 
-        # Check if we're in the middle of gathering meeting information
+        # If a meeting information-gathering is in progress, continue collecting meeting info
         if hasattr(self, 'meeting_context') and self.meeting_context.get('active'):
             self._continue_meeting_creation(message, sender_id)
             return # Stop further processing
@@ -413,17 +589,16 @@ class LLMNode:
             self._continue_email_composition(message, sender_id)
             return # Stop further processing
 
-        # Regular message handling
+        # Regular message processing
         if sender_id == "cli_user":
-            # Detect calendar intent
+            # Attempt to detect if the message is intended as a calendar command
             calendar_intent = self._detect_calendar_intent(message)
-            
             if calendar_intent.get("is_calendar_command", False):
                 action = calendar_intent.get("action")
                 missing_info = calendar_intent.get("missing_info", [])
                 
                 if action == "schedule_meeting":
-                    # Initialize meeting creation flow if information is missing
+                    # If additional info is needed, start meeting creation flow
                     if missing_info:
                         self._start_meeting_creation(message, missing_info)
                     else:
@@ -462,19 +637,33 @@ class LLMNode:
                 print(f"[{self.node_id}] Response: {response}")
                 return
 
-        # Regular message handling (unchanged)
+        # Record message in conversation history
         self.conversation_history.append({"role": "user", "content": f"{sender_id} says: {message}"})
         if sender_id == "cli_user":
+            # Query the LLM using conversation history and log both user and assistant messages
             response = self.query_llm(self.conversation_history)
             self.conversation_history.append({"role": "assistant", "content": response})
             print(f"[{self.node_id}] Response: {response}")
 
     def _detect_calendar_intent(self, message):
-        """Simplified calendar intent detection"""
-        prompt = f"""
-        Analyze this message and determine if it's a calendar-related command:
-        "{message}"
+        """
+        Detect if the incoming message is related to calendar commands.
         
+        The method constructs a prompt asking the LLM to analyze if the message is calendar related,
+        and what action is intended (e.g., scheduling, cancellation).
+        
+        Args:
+            message (str): The message to analyze.
+        
+        Returns:
+            dict: A JSON object that includes:
+                  - is_calendar_command (bool)
+                  - action (string: "schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or None)
+                  - missing_info (list of strings indicating any missing information)
+        """
+        
+        prompt = f"""
+        Analyze this message and determine if it's a calendar-related command: '{message}'
         Return JSON with:
         - is_calendar_command: boolean
         - action: string ("schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or null)
@@ -494,8 +683,18 @@ class LLMNode:
             return {"is_calendar_command": False, "action": None, "missing_info": []}
 
     def _start_meeting_creation(self, initial_message, missing_info):
-        """Start the meeting creation flow by asking for missing information"""
-        # Initialize meeting context
+        """
+        Initiate the meeting creation process by setting up a meeting context.
+        
+        This context holds the initial message and a list of missing pieces of information.
+        The process will prompt the user for the missing details.
+        
+        Args:
+            initial_message (str): The original message initiating the meeting creation.
+            missing_info (list): List of strings indicating which details are missing.
+        """
+        
+        # Initialize a dictionary to track meeting creation progress
         self.meeting_context = {
             'active': True,
             'initial_message': initial_message,
@@ -507,17 +706,24 @@ class LLMNode:
         self._ask_for_next_meeting_info()
 
     def _ask_for_next_meeting_info(self):
-        """Ask user for the next piece of missing meeting information"""
+        """
+        Ask the user for the next piece of required meeting information.
+        
+        If all information has been collected, the method proceeds to construct the complete meeting message.
+        Otherwise, it selects the next item from the missing_info list and prints a tailored question.
+        """
+        
         if not self.meeting_context['missing_info']:
-            # We have all the information, proceed with meeting creation
+            # All required info collected; create complete message and process meeting creation
             combined_message = self._construct_complete_meeting_message()
             self._handle_meeting_creation(combined_message)
             self.meeting_context['active'] = False
             return
-        
+
+        # Get the next missing information item
         next_info = self.meeting_context['missing_info'][0]
         
-        # Improved questions with better guidance
+        # Predefined questions for standard meeting details
         questions = {
             'time': "What time should the meeting be scheduled? (Please use HH:MM format in 24-hour time, e.g., 14:30)",
             'date': "On what date should the meeting be scheduled? (Please use YYYY-MM-DD format, e.g., 2023-12-31)",
@@ -525,7 +731,7 @@ class LLMNode:
             'title': "What is the title or topic of the meeting?"
         }
         
-        # Add context if rescheduling
+        # Optionally add context for rescheduling or validation
         context = ""
         if self.meeting_context.get('is_rescheduling', False):
             context = " for rescheduling"
@@ -536,25 +742,34 @@ class LLMNode:
         print(f"[{self.node_id}] Response: {response}")
 
     def _continue_meeting_creation(self, message, sender_id):
-        """Process user's response to our question about meeting details"""
+        """
+        Continue the meeting creation flow by processing the user's answer.
+        
+        The response is recorded for the current missing information item, and if additional info is needed,
+        the next prompt is issued. Otherwise, the complete meeting creation is triggered.
+        
+        Args:
+            message (str): The user's response for the current information query.
+            sender_id (str): The identifier for the sender.
+        """        
+        
         if not self.meeting_context['missing_info']:
             # Shouldn't happen, but just in case
             self.meeting_context['active'] = False
             return
-        
+
+        # Remove the first missing detail, and save the user's answer under that key
         current_info = self.meeting_context['missing_info'].pop(0)
         self.meeting_context['collected_info'][current_info] = message
         
         if self.meeting_context['missing_info']:
-            # Still need more information
+            # More details are still required; ask the next question
             self._ask_for_next_meeting_info()
         else:
-            # We have all the information
+            # All information collected: if rescheduling, call the respective handler; otherwise, proceed normally
             if self.meeting_context.get('is_rescheduling', False) and 'target_event_id' in self.meeting_context:
-                # Handle rescheduling completion
                 self._complete_meeting_rescheduling()
             else:
-                # Handle regular meeting creation
                 combined_message = self._construct_complete_meeting_message()
                 self._handle_meeting_creation(combined_message)
             
@@ -562,11 +777,17 @@ class LLMNode:
             print(f"[{self.node_id}] Response: Meeting {'rescheduled' if self.meeting_context.get('is_rescheduling') else 'scheduled'} successfully with all required information.")
 
     def _construct_complete_meeting_message(self):
-        """Combine initial message with collected information into a complete instruction"""
+        """
+        Construct a complete meeting instruction message by combining the initial command with the collected details.
+        
+        Returns:
+            str: A complete message string including title, date, time, and participants.
+        """
+        
         initial = self.meeting_context['initial_message']
         collected = self.meeting_context['collected_info']
         
-        # Create a complete message with all the information
+        # Concatenate all gathered meeting details with appropriate labels
         complete_message = f"{initial} "
         if 'title' in collected:
             complete_message += f"Title: {collected['title']}. "
@@ -580,11 +801,20 @@ class LLMNode:
         return complete_message
 
     def _handle_meeting_creation(self, message):
-        """Meeting creation with improved time validation and interaction"""
-        # Extract meeting details
+        """
+        Handle the complete meeting creation process.
+        
+        This method extracts meeting details from the combined message, validates them (including checking
+        date/time formats and future scheduling), and then attempts to schedule the meeting with Google Calendar.
+        
+        Args:
+            message (str): The complete meeting instruction that includes all necessary details.
+        """
+        
+        # Extract meeting details using an LLM-assisted helper method
         meeting_data = self._extract_meeting_details(message)
         
-        # Validate that we have all required information
+        # Validate that required fields such as title and participants are present
         required_fields = ['title', 'participants']
         missing = [field for field in required_fields if not meeting_data.get(field)]
         
@@ -592,14 +822,14 @@ class LLMNode:
             print(f"[{self.node_id}] Cannot schedule meeting: missing {', '.join(missing)}")
             return
         
-        # Process participants
+        # Process and normalize participant names
         participants = []
         for p in meeting_data.get("participants", []):
             p_lower = p.lower().strip()
             if p_lower in ["ceo", "marketing", "engineering", "design"]:
                 participants.append(p_lower)
         
-        # Ensure we have participants
+        # Ensure the current node is included among the participants
         if not participants:
             print(f"[{self.node_id}] Cannot schedule meeting: no valid participants")
             return
@@ -608,15 +838,14 @@ class LLMNode:
         if self.node_id not in participants:
             participants.append(self.node_id)
         
-        # Process date/time
+        # Process meeting date and time: use provided values or defaults
         meeting_date = meeting_data.get("date", datetime.now().strftime("%Y-%m-%d"))
         meeting_time = meeting_data.get("time", (datetime.now() + timedelta(hours=1)).strftime("%H:%M"))
         
         try:
-            # Validate date format 
+            # Validate date and time by attempting to parse them
             try:
                 start_datetime = datetime.strptime(f"{meeting_date} {meeting_time}", "%Y-%m-%d %H:%M")
-                
                 # Check if date is in the past
                 current_time = datetime.now()
                 if start_datetime < current_time:
@@ -641,7 +870,6 @@ class LLMNode:
             except ValueError:
                 # If date parsing fails, notify user instead of auto-fixing
                 print(f"[{self.node_id}] Response: I couldn't understand the date/time format. Please provide the date in YYYY-MM-DD format and time in HH:MM format.")
-                
                 # Store context for follow-up
                 self.meeting_context = {
                     'active': True,
@@ -656,15 +884,16 @@ class LLMNode:
                 # Ask for new date and time
                 self._ask_for_next_meeting_info()
                 return
-            
+
+            # Determine meeting duration (defaulting to 60 minutes if unspecified)
             duration_mins = int(meeting_data.get("duration", 60))
             end_datetime = start_datetime + timedelta(minutes=duration_mins)
             
-            # Create a unique ID and get title
+            # Generate a unique meeting ID and set a meeting title
             meeting_id = f"meeting_{int(datetime.now().timestamp())}"
             meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
             
-            # Schedule the meeting
+            # Schedule the meeting using the helper for creating calendar events
             self._create_calendar_meeting(meeting_id, meeting_title, participants, start_datetime, end_datetime)
             
             # Confirm to user with reliable times
@@ -673,9 +902,21 @@ class LLMNode:
             print(f"[{self.node_id}] Error creating meeting: {str(e)}")
 
     def _extract_meeting_details(self, message):
-        """Extract meeting details with improved accuracy and defaulting to current time"""
+        """
+        Extract detailed meeting information from the given message using LLM assistance.
+        
+        The function sends a prompt to the LLM to parse the meeting details and returns a structured JSON
+        with keys like title, participants, date, time, and duration.
+        
+        Args:
+            message (str): The input meeting instruction message.
+        
+        Returns:
+            dict: A dictionary with meeting details. Missing date/time fields are substituted with defaults.
+        """
+        
         prompt = f"""
-        Extract complete meeting details from: "{message}"
+        Extract complete meeting details from:'{message}'
         
         Return JSON with:
         - title: meeting title
@@ -696,7 +937,7 @@ class LLMNode:
             
             result = json.loads(response.choices[0].message.content)
             
-            # Use current date if not specified
+            # Set defaults if date or time are missing
             if not result.get("date"):
                 result["date"] = datetime.now().strftime("%Y-%m-%d")
             
@@ -710,7 +951,13 @@ class LLMNode:
             return {}
 
     def _handle_list_meetings(self):
-        """Handle request to list upcoming meetings"""
+        """
+        List upcoming meetings either from the Google Calendar service or the local calendar.
+        
+        This method retrieves events, formats their details (including title, date/time, and attendees),
+        and prints them in a user-friendly format.
+        """
+        
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, showing local meetings only")
             if not self.calendar:
@@ -718,7 +965,7 @@ class LLMNode:
                 return
             
         try:
-            # Get upcoming meetings from Google Calendar
+            # Retrieve current time in the required ISO format for querying events
             now = datetime.utcnow().isoformat() + 'Z'
             events_result = self.calendar_service.events().list(
                 calendarId='primary',
@@ -735,8 +982,10 @@ class LLMNode:
             
             print(f"[{self.node_id}] Upcoming meetings:")
             for event in events:
+                # Get start time from event details
                 start = event['start'].get('dateTime', event['start'].get('date'))
                 start_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                # Format attendee emails by extracting the user part
                 attendees = ", ".join([a.get('email', '').split('@')[0] for a in event.get('attendees', [])])
                 print(f"  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}")
             
@@ -744,15 +993,27 @@ class LLMNode:
             print(f"[{self.node_id}] Error listing meetings: {str(e)}")
 
     def _handle_meeting_rescheduling(self, message):
-        """Handle meeting rescheduling with proper event updating"""
+        """
+        Handle meeting rescheduling requests by extracting new scheduling details and updating the event.
+        
+        The method performs the following:
+          - Uses LLM to extract rescheduling details such as meeting identifier, original date, new date/time, and duration.
+          - Searches the Google Calendar for the meeting to be rescheduled using a simple scoring system.
+          - Validates the new date and time.
+          - Updates the event in Google Calendar and notifies participants.
+        
+        Args:
+            message (str): The message containing rescheduling instructions.
+        """
+        
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, can't reschedule meetings")
             return
         
         try:
-            # Use OpenAI to extract rescheduling details with more explicit prompt
+            # Construct a prompt instructing the LLM to extract detailed rescheduling data
             prompt = f"""
-            Extract meeting rescheduling details from this message: "{message}"
+            Extract meeting rescheduling details from this message: '{message}'
             
             Identify EXACTLY which meeting needs rescheduling by looking for:
             1. Meeting title or topic (as a simple text string)
@@ -781,7 +1042,6 @@ class LLMNode:
                 response_format={"type": "json_object"}
             )
             
-            # Extract and validate the rescheduling data (keep existing code for this part)
             response_content = response.choices[0].message.content
             try:
                 reschedule_data = json.loads(response_content)
@@ -789,14 +1049,14 @@ class LLMNode:
                 print(f"[{self.node_id}] Error parsing rescheduling JSON: {e}")
                 return
             
-            # Defensive extraction of data with type checking (keep existing code)
+            # Extract and normalize data from the JSON response
             meeting_identifier = ""
             if "meeting_identifier" in reschedule_data:
                 if isinstance(reschedule_data["meeting_identifier"], str):
                     meeting_identifier = reschedule_data["meeting_identifier"].lower()
                 else:
                     meeting_identifier = str(reschedule_data["meeting_identifier"]).lower()
-            
+
             original_date = None
             if "original_date" in reschedule_data and reschedule_data["original_date"]:
                 original_date = str(reschedule_data["original_date"])
@@ -816,7 +1076,7 @@ class LLMNode:
                 except (ValueError, TypeError):
                     new_duration = None
             
-            # Validation checks (keep existing code)
+            # Validate that a meeting identifier and new date are provided
             if not meeting_identifier:
                 print(f"[{self.node_id}] Could not determine which meeting to reschedule")
                 return
@@ -825,7 +1085,7 @@ class LLMNode:
                 print(f"[{self.node_id}] No new date specified for rescheduling")
                 return
             
-            # Get upcoming meetings
+            # Retrieve upcoming meetings to search for a matching event
             try:
                 now = datetime.utcnow().isoformat() + 'Z'
                 events_result = self.calendar_service.events().list(
@@ -844,7 +1104,7 @@ class LLMNode:
                 print(f"[{self.node_id}] No upcoming meetings found to reschedule")
                 return
             
-            # Find the meeting to reschedule (keep scoring system code)
+            # Use a scoring system to find the best matching event based on title, attendees, and original date
             target_event = None
             best_match_score = 0
             
@@ -890,7 +1150,7 @@ class LLMNode:
                 print(f"[{self.node_id}] No matching meeting found for '{meeting_identifier}'")
                 return
             
-            # Validate the new date and time
+            # Validate the new date and time format and ensure the new time is in the future
             try:
                 # Parse new date and time
                 new_start_datetime = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
@@ -933,7 +1193,7 @@ class LLMNode:
                 self._ask_for_next_meeting_info()
                 return
             
-            # Calculate new end time based on original duration
+            # Determine the new end time using either the provided new duration or the event's original duration
             try:
                 # Extract original start and end times
                 original_start = datetime.fromisoformat(target_event['start'].get('dateTime').replace('Z', '+00:00'))
@@ -948,7 +1208,7 @@ class LLMNode:
                     
                 new_end_datetime = new_start_datetime + timedelta(minutes=duration_to_use)
                 
-                # Update the event with all original data preserved
+                # Update the target event's start and end times
                 target_event['start']['dateTime'] = new_start_datetime.isoformat()
                 target_event['end']['dateTime'] = new_end_datetime.isoformat()
                 
@@ -971,7 +1231,7 @@ class LLMNode:
                     if meeting.get('event_id') == updated_event['id']:
                         meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {new_date} at {formatted_time})"
                 
-                # Notify participants
+                # Notify all attendees about the rescheduled meeting
                 attendees = updated_event.get('attendees', [])
                 for attendee in attendees:
                     attendee_id = attendee.get('email', '').split('@')[0]
@@ -981,7 +1241,7 @@ class LLMNode:
                             if meeting.get('event_id') == updated_event['id']:
                                 meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {new_date} at {formatted_time})"
                         
-                        # Send notification
+                        # Send notifications
                         notification = (
                             f"Your meeting '{meeting_title}' has been rescheduled by {self.node_id}.\n"
                             f"New date: {formatted_date}\n"
@@ -998,11 +1258,22 @@ class LLMNode:
             print(f"[{self.node_id}] General error in meeting rescheduling: {str(e)}")
 
     def send_message(self, recipient_id: str, content: str):
+        """
+        Send a message from this node to another node via the network.
+        
+        If the recipient is 'cli_user', print the message directly.
+        Otherwise, use the network's send_message method.
+        
+        Args:
+            recipient_id (str): The target node identifier.
+            content (str): The content of the message.
+        """
+        
         if not self.network:
             print(f"[{self.node_id}] No network attached.")
             return
         
-        # Special case for CLI user
+        # Directly print messages to CLI user
         if recipient_id == "cli_user":
             print(f"[{self.node_id}] Response: {content}")
         else:
@@ -1010,8 +1281,17 @@ class LLMNode:
 
     def query_llm(self, messages):
         """
-        We'll use a system prompt that instructs the LLM to be short, direct, and not loop forever.
+        Query the language model with a list of messages.
+        
+        A system prompt is prepended to guide the LLM to be short and concise.
+        
+        Args:
+            messages (list): A list of message dictionaries (role and content).
+        
+        Returns:
+            str: The trimmed text response from the LLM.
         """
+        
         system_prompt = [{
             "role": "system",
             "content": (
@@ -1036,8 +1316,16 @@ class LLMNode:
 
     def plan_project(self, project_id: str, objective: str):
         """
-        Create a detailed project plan, parse it, notify roles, then schedule a meeting for them.
+        Create a detailed project plan using the LLM.
+        
+        This method sends the project objective to the LLM to generate a plan in JSON format, parses
+        the resulting plan for stakeholders and steps, writes the plan to a file, and schedules a meeting.
+        
+        Args:
+            project_id (str): The identifier for the project.
+            objective (str): The objective or goal of the project.
         """
+        
         if project_id not in self.projects:
             self.projects[project_id] = {
                 "name": objective,
@@ -1075,7 +1363,7 @@ class LLMNode:
         if match:
             json_to_parse = match.group(1).strip()
         else:
-            # Handle cases where it might just start with { without fences
+            # If the response appears to be plain JSON without fences, use it as is.
             if json_to_parse.startswith("{") and json_to_parse.endswith("}"):
                 pass # Assume it's already JSON
             else:
@@ -1086,7 +1374,7 @@ class LLMNode:
         # --- End: Extract JSON ---
 
         try:
-            # Attempt to parse the potentially extracted JSON response
+            # Attempt to parse the extracted JSON response
             data = json.loads(json_to_parse) 
             stakeholders = data.get("stakeholders", [])
             steps = data.get("steps", [])
@@ -1102,7 +1390,7 @@ class LLMNode:
             print(f"[{self.node_id}] Response: {plan_summary.strip()}")
             # --- End: Format and print plan details ---
 
-            # Write the plan to a text file
+            # Save the project plan to a text file
             with open(f"{project_id}_plan.txt", "w", encoding="utf-8") as file:
                 file.write(f"Project ID: {project_id}\\n")
                 file.write(f"Objective: {objective}\\n")
@@ -1113,7 +1401,7 @@ class LLMNode:
                 for step in steps:
                     file.write(f"  - {step.get('description', '')}\\n")
 
-            # Improved role mapping with case-insensitive matching
+            # Map stakeholder roles to node identifiers, case-insensitively
             role_to_node = {
                 "ceo": "ceo",
                 "marketing": "marketing",
@@ -1141,21 +1429,20 @@ class LLMNode:
 
             print(f"[{self.node_id}] Project participants: {participants}")
             
-            # Schedule a meeting only if participants were found
+            # Schedule a meeting if valid participants were identified
             if participants:
                 self.schedule_meeting(project_id, participants)
             else:
                 print(f"[{self.node_id}] No valid participants identified for project '{project_id}'. Skipping meeting schedule.")
             
-            # Generate tasks from the plan
+            # Generate tasks based on the plan
             self.generate_tasks_from_plan(project_id, steps, participants)
 
-            # --- Start: Emit update events ---
+            # Emit update events (assuming a global socketio object)
             print(f"[{self.node_id}] Emitting update events for UI.")
             # Make sure socketio is accessible here. Assuming it's global for simplicity.
             socketio.emit('update_projects') 
             socketio.emit('update_tasks')
-            # --- End: Emit update events ---
             
         except json.JSONDecodeError as e:
             # Handle JSON parsing failure
@@ -1166,7 +1453,17 @@ class LLMNode:
             return # Stop processing the plan if JSON is invalid
 
     def generate_tasks_from_plan(self, project_id: str, steps: list, participants: list):
-        """Generate tasks from project plan steps using OpenAI function calling"""
+        """
+        Generate tasks from a project plan by creating task objects using LLM-assisted function calling.
+        
+        For each step in the plan, this method constructs a prompt to generate 1-3 tasks, calls the LLM with a
+        function tool specification (create_task), parses the returned task details, and creates the Task objects.
+        
+        Args:
+            project_id (str): Identifier for the project.
+            steps (list): List of steps from the project plan.
+            participants (list): List of node identifiers who are the project participants.
+        """
         
         # Define the function for task creation
         functions = [
@@ -1206,7 +1503,7 @@ class LLMNode:
             }
         ]
         
-        # For each step, generate tasks
+        # Process each project plan step
         for i, step in enumerate(steps):
             step_description = step.get("description", "")
             
@@ -1228,14 +1525,14 @@ class LLMNode:
                     tool_choice={"type": "function", "function": {"name": "create_task"}}
                 )
                 
-                # Process the function calls
+                # Process any function calls in the response to create tasks
                 for choice in response.choices:
                     if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
                         for tool_call in choice.message.tool_calls:
                             if tool_call.function.name == "create_task":
                                 task_data = json.loads(tool_call.function.arguments)
                                 
-                                # Create the task
+                                # Create a new Task using the provided data
                                 due_date = datetime.now() + timedelta(days=task_data["due_date_offset"])
                                 task = Task(
                                     title=task_data["title"],
@@ -1251,14 +1548,22 @@ class LLMNode:
                                     self.network.add_task(task)
                                     print(f"[{self.node_id}] Created task: {task}")
                                     
-                                    # Uncomment the calendar reminder
+                                    # Create a calendar reminder for the task
                                     self.create_calendar_reminder(task)
             
             except Exception as e:
                 print(f"[{self.node_id}] Error generating tasks for step {i+1}: {e}")
 
     def list_tasks(self):
-        """List all tasks assigned to this node"""
+        """
+        List all tasks assigned to this node.
+        
+        Retrieves tasks for this node from the network and formats a string summary.
+        
+        Returns:
+            str: A formatted string of tasks with their titles, due dates, priority, and descriptions.
+        """
+        
         if not self.network:
             return "No network connected."
             
@@ -1274,7 +1579,19 @@ class LLMNode:
         return result
 
     def _handle_meeting_cancellation(self, message):
-        """Handle natural language meeting cancellation requests"""
+        """
+        Handle meeting cancellation requests based on natural language commands.
+        
+        This method:
+          - Uses LLM to extract cancellation details from the message.
+          - Retrieves upcoming meetings.
+          - Filters meetings based on specified title, participants, and date criteria.
+          - Deletes matching events from Google Calendar and notifies participants.
+        
+        Args:
+            message (str): The cancellation command as a natural language message.
+        """
+        
         # First, get all meetings from calendar
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, can't cancel meetings")
@@ -1283,7 +1600,7 @@ class LLMNode:
         try:
             # Use OpenAI to extract cancellation details
             prompt = f"""
-            Extract meeting cancellation details from this message: "{message}"
+            Extract meeting cancellation details from this message: '{message}'
             
             Return a JSON object with these fields:
             - title: The meeting title or topic to cancel (or null if not specified)
@@ -1322,6 +1639,8 @@ class LLMNode:
             date_filter = cancel_data.get("date")
             
             cancelled_count = 0
+
+            # Iterate over events and determine if they match the cancellation criteria
             for event in events:
                 should_cancel = True
                 
@@ -1343,16 +1662,16 @@ class LLMNode:
                         should_cancel = False
                 
                 if should_cancel:
-                    # Cancel the meeting
+                    # Delete the event from the calendar
                     self.calendar_service.events().delete(
                         calendarId='primary',
                         eventId=event['id']
                     ).execute()
                     
-                    # Remove from local calendar
+                    # Remove the event from the local calendar records
                     self.calendar = [m for m in self.calendar if m.get('event_id') != event['id']]
                     
-                    # Notify participants
+                    # Notify attendees about the cancellation
                     event_attendees = [a.get('email', '').split('@')[0] for a in event.get('attendees', [])]
                     for attendee in event_attendees:
                         if attendee in self.network.nodes:
@@ -1377,7 +1696,21 @@ class LLMNode:
             print(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
 
     def _create_calendar_meeting(self, meeting_id, title, participants, start_datetime, end_datetime):
-        """Create a calendar meeting with the specified details"""
+        """
+        Create a meeting event in Google Calendar.
+        
+        Constructs the event details, attempts to insert the event into the primary calendar,
+        updates the local calendar records, and sends notifications to other participants.
+        If the calendar service is unavailable, falls back to local scheduling.
+        
+        Args:
+            meeting_id (str): Unique identifier for the meeting.
+            title (str): The title or summary for the meeting.
+            participants (list): List of participant identifiers.
+            start_datetime (datetime): The start time of the meeting.
+            end_datetime (datetime): The end time of the meeting.
+        """
+        
         # If calendar service is not available, fall back to local scheduling
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, using local scheduling")
@@ -1408,14 +1741,14 @@ class LLMNode:
             print(f"[{self.node_id}] Meeting created: {event.get('htmlLink')}")
             print(f"[{self.node_id}] Meeting '{title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}")
             
-            # Store in local calendar as well
+            # Add the meeting to the local calendar
             self.calendar.append({
                 'project_id': meeting_id,
                 'meeting_info': title,
                 'event_id': event['id']
             })
 
-            # Notify other participants
+            # Notify each participant (if not the sender) about the scheduled meeting
             for p in participants:
                 if p != self.node_id and p in self.network.nodes:
                     self.network.nodes[p].calendar.append({
@@ -1431,7 +1764,13 @@ class LLMNode:
             self._fallback_schedule_meeting(meeting_id, participants)
 
     def _complete_meeting_rescheduling(self):
-        """Complete the meeting rescheduling with the collected information"""
+        """
+        Complete the meeting rescheduling process using collected meeting context details.
+        
+        This method retrieves the target event, parses the new date and time, adjusts if the time is in the past,
+        updates the event's start and end times, and notifies participants about the change.
+        """
+        
         if not hasattr(self, 'meeting_context') or not self.meeting_context.get('active'):
             return
         
@@ -1490,7 +1829,7 @@ class LLMNode:
                 if meeting.get('event_id') == updated_event['id']:
                     meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
             
-            # Notify attendees
+            # Notify each attendee about the updated meeting details
             attendees = updated_event.get('attendees', [])
             for attendee in attendees:
                 attendee_id = attendee.get('email', '').split('@')[0]
@@ -1513,7 +1852,17 @@ class LLMNode:
             print(f"[{self.node_id}] Response: There was an error rescheduling the meeting. Please try again.")
 
     def fetch_emails(self, max_results=10, query=None):
-        """Fetch emails from Gmail with optional query parameters"""
+        """
+        Fetch emails from the Gmail account using the Gmail service.
+        
+        Args:
+            max_results (int): Maximum number of emails to fetch.
+            query (str, optional): A search query to filter the emails.
+        
+        Returns:
+            list: A list of emails with details like subject, sender, date, snippet, and body.
+        """
+        
         if not self.gmail_service:
             print(f"[{self.node_id}] Gmail service not available")
             return []
@@ -1573,7 +1922,18 @@ class LLMNode:
             return []
     
     def _extract_email_body(self, payload):
-        """Helper function to extract email body text from the payload"""
+        """
+        Recursively extract the email body text from the Gmail message payload.
+        
+        Handles both single-part and multipart messages by performing base64 decoding.
+        
+        Args:
+            payload (dict): The payload section of a Gmail message.
+        
+        Returns:
+            str: Decoded text content of the email, or a placeholder if not found.
+        """
+        
         if 'body' in payload and payload['body'].get('data'):
             # Base64 decode the body
             body_data = payload['body']['data']
@@ -1597,7 +1957,19 @@ class LLMNode:
         return "(No content)"
     
     def summarize_emails(self, emails, summary_type="concise"):
-        """Summarize a list of emails using the LLM"""
+        """
+        Summarize a list of emails using the LLM.
+        
+        Constructs a prompt by concatenating email details and requests either a concise or detailed summary.
+        
+        Args:
+            emails (list): List of email dictionaries.
+            summary_type (str): "concise" or "detailed" summary preference.
+        
+        Returns:
+            str: The summary produced by the LLM.
+        """
+        
         if not emails:
             return "No emails to summarize."
         
@@ -1640,7 +2012,18 @@ class LLMNode:
         return response
     
     def process_email_command(self, command):
-        """Process natural language commands related to emails"""
+        """
+        Process a natural language command related to emails.
+        
+        Detects the intent (e.g., fetch recent, search) and calls the appropriate email processing method.
+        
+        Args:
+            command (str): The email command in natural language.
+        
+        Returns:
+            str: The result or summary of the email action.
+        """
+        
         # First, detect the intent of the email command
         intent = self._detect_email_intent(command)
         
@@ -1675,10 +2058,25 @@ class LLMNode:
             return "I'm not sure what you want to do with your emails. Try asking for recent emails or searching for specific emails."
     
     def _detect_email_intent(self, message):
-        """Detect the intent of an email-related command"""
+        """
+        Detect the intent of an email-related command using LLM-based analysis.
+        
+        Constructs a prompt asking the LLM to output a JSON object with fields indicating:
+          - The action ("fetch_recent", "search", or "none")
+          - Count (number of emails to fetch)
+          - Query (if searching)
+          - Summary type ("concise" or "detailed")
+        
+        Args:
+            message (str): The email command to analyze.
+        
+        Returns:
+            dict: Parsed JSON object with detected intent details.
+        """
+        
         prompt = f"""
         Analyze this message and determine what email action is being requested:
-        "{message}"
+        '{message}'
         
         Return JSON with these fields:
         - action: string ("fetch_recent", "search", "none")
@@ -1703,7 +2101,19 @@ class LLMNode:
             return {"action": "none", "count": 5, "query": "", "summary_type": "concise"}
 
     def fetch_emails_with_advanced_query(self, criteria):
-        """Fetch emails with advanced filtering criteria"""
+        """
+        Fetch emails using advanced filtering criteria.
+        
+        Builds a Gmail query string from the provided criteria dictionary and calls fetch_emails.
+        
+        Args:
+            criteria (dict): Dictionary with keys like 'from', 'to', 'subject', 'has_attachment',
+                             'label', 'is_unread', 'after', 'before', 'keywords', 'max_results'.
+        
+        Returns:
+            list: A list of emails matching the advanced criteria.
+        """
+        
         if not self.gmail_service:
             return []
             
@@ -1751,7 +2161,15 @@ class LLMNode:
         return self.fetch_emails(max_results=max_results, query=query)
     
     def get_email_labels(self):
-        """Get available email labels/categories"""
+        """
+        Retrieve available email labels from Gmail.
+        
+        Fetches the labels, formats them in a user-friendly way, and returns them.
+        
+        Returns:
+            list: List of dictionaries with label id, name, and type.
+        """        
+        
         if not self.gmail_service:
             print(f"[{self.node_id}] Gmail service not available")
             return []
@@ -1776,7 +2194,19 @@ class LLMNode:
             return []
             
     def process_advanced_email_command(self, command):
-        """Process complex email commands with more advanced functionality"""
+        """
+        Process a complex email command using advanced parsing.
+        
+        First analyzes the command to extract detailed intent and parameters.
+        Depending on the action (e.g., list_labels, advanced_search), it calls appropriate functions.
+        
+        Args:
+            command (str): The advanced email command in natural language.
+        
+        Returns:
+            str: The output or response from processing the advanced email command.
+        """
+        
         # First analyze the command to extract detailed intent and parameters
         analysis = self._analyze_email_command(command)
         
@@ -1828,6 +2258,20 @@ class LLMNode:
             return self.process_email_command(command)
     
     def _analyze_email_command(self, command):
+        """
+        Analyze a complex email command to extract detailed parameters.
+        
+        This method sends a prompt to the LLM requesting a JSON output with the structure
+        specifying action, criteria, and summary type.
+        
+        Args:
+            command (str): The complex email command.
+        
+        Returns:
+            dict: Parsed JSON with fields "action", "criteria", and "summary_type".
+        """
+        
+
         """Analyze a complex email command to extract detailed intent and parameters"""
         # If we're in email composition mode, skip this analysis
         if hasattr(self, 'email_context') and self.email_context.get('active'):
@@ -1835,7 +2279,7 @@ class LLMNode:
             
         prompt = f"""
         Analyze this email-related command in detail:
-        "{command}"
+        '{command}'
         
         Return a JSON object with the following structure:
         {{
