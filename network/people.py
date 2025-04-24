@@ -1,4 +1,4 @@
-class people:
+class People:
   """
   Represents a network that connects various agents. 
     
