@@ -1,3 +1,6 @@
+from typing import Optional, Dict, List, Any
+import datetime
+
 class People:
   """
   Represents a network that connects various agents. 
