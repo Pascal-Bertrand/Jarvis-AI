@@ -34,7 +34,7 @@ class Intercom(People):
         recipient = self.nodes.get(recipient_id)
 
         # Send the message if the recipient exists in the network's node list. Note: The if-statement checks for empty/non-empty
-        if recipient
+        if recipient:
             recipient.receive_message(content, sender_id)
         else:
             # Print an error message if recipient is not found.

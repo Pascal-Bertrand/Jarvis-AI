@@ -1,6 +1,8 @@
 from typing import Optional, Dict, List, Any
 import datetime
 
+from network.tasks import Task
+
 class People:
     """
     Manages a registry of participants and their shared tasks.
