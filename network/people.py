@@ -2,14 +2,14 @@ from typing import Optional, Dict, List, Any
 import datetime
 
 class People:
-  """
-  Represents a network that connects various agents. 
+    """
+    Represents a network that connects various agents. 
+      
+      Attributes:
+          nodes (Dict[str, LLMNode]): A dictionary that maps node IDs to node instances.
+    """
     
-    Attributes:
-        nodes (Dict[str, LLMNode]): A dictionary that maps node IDs to node instances.
-  """
-  
-  def __init__(self, log_file: Optional[str] = None):
+    def __init__(self, log_file: Optional[str] = None):
         """
         Initialize a new Network instance.
         
@@ -22,12 +22,13 @@ class People:
          - a log file path (if any),
          - an empty list 'tasks' to track tasks in the network.
         """
-        
-        self.nodes: Dict[str, LLMNode] = {}
+  
+        # Object can be any object with .receive_message (more general than the previously used LLMNode)
+        self.nodes: Dict[str, object] = {}
         self.log_file = log_file
         self.tasks: List[Task] = []
-      
-    def register_node(self, node: 'LLMNode'):
+        
+    def register_node(self, node_id: str, node_obj: object):
         """
         Register a node with the network.
         
@@ -40,8 +41,26 @@ class People:
         After registration, the node can participate in messaging and task management within the network.
         """
         
-        self.nodes[node.node_id] = node
-        node.network = self
+        self.nodes[node_id] = node_obj
+        # Give the node a back-pointer
+        setattr(node_obj, 'network', self)
+  
+    def unregister_node(self, node_id: str):
+        """
+        Remove participant (silent if unknown).
+        """
+      
+        if node_id in self.nodes:
+            self.nodes[node_id].network = None
+            del self.nodes[node_id]
+
+
+    def get_all_nodes(self) -> List[str]:
+        """
+        Return a list of node IDs.
+        """
+
+        return list(self.nodes.keys())
 
 
 #TODO: Add more functionalities.
