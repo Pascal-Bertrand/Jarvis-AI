@@ -783,3 +783,61 @@ class Brain:
         except Exception as e:
             print(f"[{self.node_id}] Error analyzing email command: {str(e)}")
             return {"action": "none", "criteria": {}, "summary_type": "concise"}
+        
+    def _detect_send_email_intent(self, message):
+        """Detect if the message is requesting to send an email"""
+        # Skip this detection if we're already in email composition mode
+        if hasattr(self, 'email_context') and self.email_context.get('active'):
+            return {"is_send_email": False}
+            
+        prompt = f"""
+        Analyze this message and determine if it's requesting to send an email:
+        "{message}"
+        
+        A message is considered an email sending request if:
+        1. It contains phrases like "send email", "write email", "send mail", "compose email", "draft email", etc.
+        2. There's a clear intention to create and send an email to someone
+
+        Return JSON with:
+        - is_send_email: boolean (true if the message is about sending an email)
+        - recipient: string (email address or name of recipient if specified, empty string if not)
+        - subject: string (email subject line if specified, empty string if not)
+        - body: string (email content if specified, empty string if not)
+        - missing_info: array of strings (what information is missing: "recipient", "subject", "body")
+
+        Notes:
+        - If the message contains phrases like "subject:" or "title:" followed by text, extract that as the subject
+        - If the message has text after keywords like "body:", "content:", or "message:", extract that as the body
+        - If it says "the subject is" or "subject is" followed by text, extract that as the subject
+        - If it says "the body is" or "message is" followed by text, extract that as the body
+        - If no explicit markers are present but there's a clear distinction between subject and body, make your best guess
+        - Look for paragraph breaks or sentence structure to identify where subject ends and body begins
+        - For recipient, extract just the name or email (don't include words like "to" or "for")
+        - If the message itself appears to be the content of the email, set body to the entire message excluding obvious command parts
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4.1",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            
+            result = json.loads(response.choices[0].message.content)
+            
+            # Determine what information is missing
+            missing = []
+            if not result.get('recipient'):
+                missing.append('recipient')
+            if not result.get('subject'):
+                missing.append('subject')
+            if not result.get('body'):
+                missing.append('body')
+                
+            result['missing_info'] = missing
+            
+            return result
+        except Exception as e:
+            print(f"[{self.node_id}] Error detecting send email intent: {str(e)}")
+            return {"is_send_email": False, "recipient": "", "subject": "", "body": "", "missing_info": []}
+

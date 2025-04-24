@@ -111,3 +111,34 @@ def test_list_tasks_with_tasks(brain):
     brain.network.add_task(task)
     result = brain.list_tasks()
     assert "1. t (Due: 2025-01-01, Priority: high)" in result
+
+def test_detect_send_email_intent_full(monkeypatch, brain):
+    # Simulate the LLM returning a fully-specified email intent
+    fake_payload = {
+        "is_send_email": True,
+        "recipient": "alice@example.com",
+        "subject": "Hello",
+        "body": "Just checking in",
+        # note: this will be overridden by the function’s own missing_info logic
+        "missing_info": []
+    }
+    fake_json = json.dumps(fake_payload)
+
+    class FakeChoice:
+        def __init__(self, content):
+            self.message = type("M", (), {"content": content})
+
+    fake_response = type("R", (), {"choices": [FakeChoice(fake_json)]})
+
+    # Patch brain.client.chat.completions.create to return our fake_response
+    monkeypatch.setattr(brain.client.chat.completions, "create", lambda *args, **kwargs: fake_response)
+
+    msg = "send email to alice@example.com subject: Hello body: Just checking in"
+    res = brain._detect_send_email_intent(msg)
+
+    assert res["is_send_email"] is True
+    assert res["recipient"] == "alice@example.com"
+    assert res["subject"]   == "Hello"
+    assert res["body"]      == "Just checking in"
+    # All fields were provided, so no missing info
+    assert res["missing_info"] == []
