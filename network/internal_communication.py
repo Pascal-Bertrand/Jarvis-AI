@@ -35,7 +35,13 @@ class Intercom(People):
 
         # Send the message if the recipient exists in the network's node list. Note: The if-statement checks for empty/non-empty
         if recipient:
-            recipient.receive_message(content, sender_id)
+            # only deliver if the node implements receive_message
+            recv = getattr(recipient, "receive_message", None)
+            if callable(recv):
+                recv(content, sender_id)
+            else:
+                # node cannot receive messages, silently skip
+                pass
         else:
             # Print an error message if recipient is not found.
             print(f"[Intercom] Unknown recipient: {recipient_id}.")
