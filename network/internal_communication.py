@@ -1,3 +1,6 @@
+from typing import Optional, Dict, List, Any
+import datetime
+
 from people import People
 
 class Intercom(People):
