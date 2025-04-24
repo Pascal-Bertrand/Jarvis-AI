@@ -1,6 +1,6 @@
 from network.internal_communication import Intercom
 from network.tasks import Task
-from your_node_module import LLMNode   # or wherever you keep your node logic
+from main import LLMNode   # or wherever you keep your node logic
 
 def demo_run():
     network = Intercom()
