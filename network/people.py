@@ -7,19 +7,23 @@ class People:
   """
   
   def __init__(self, log_file: Optional[str] = None):
-    """
-    Initialize a new Network instance.
+        """
+        Initialize a new Network instance.
         
-      Args:
-          log_file (Optional[str]): The file path for logging messages. If provided, every message
-                                    sent through the network will be appended to this file.
-                                    
-      The constructor sets up:
-       - an empty dictionary 'nodes' to store registered nodes,
-      """
+        Args:
+            log_file (Optional[str]): The file path for logging messages. If provided, every message
+                                      sent through the network will be appended to this file.
+                                      
+        The constructor sets up:
+         - an empty dictionary 'nodes' to store registered nodes,
+         - a log file path (if any),
+         - an empty list 'tasks' to track tasks in the network.
+        """
+        
+        self.nodes: Dict[str, LLMNode] = {}
+        self.log_file = log_file
+        self.tasks: List[Task] = []
       
-      self.nodes: Dict[str, LLMNode] = {}
-
     def register_node(self, node: 'LLMNode'):
         """
         Register a node with the network.
