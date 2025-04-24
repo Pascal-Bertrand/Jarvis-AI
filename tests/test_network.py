@@ -2,6 +2,7 @@ import pytest
 from datetime import datetime
 from network.internal_communication import Intercom
 from network.tasks import Task
+from network.people import People
 
 class DummyNode:
     def __init__(self, node_id):
@@ -64,10 +65,47 @@ def test_add_task_and_get_tasks_for_node():
     assert task in net.tasks
 
     # and notify the assigned node
-    # (the “system” sender should have sent a notification)
     notifications = [msg for msg, sender in dummy.messages]
     assert any("New task assigned: Write tests" in msg for msg in notifications)
 
     # get_tasks_for_node must return exactly that task
     tasks_for_joe = net.get_tasks_for_node("joe")
     assert tasks_for_joe == [task]
+
+
+# === tests for people.py ===
+
+def test_people_initialization():
+    p = People()
+    assert p.nodes == {}
+    assert p.tasks == []
+    assert p.log_file is None
+
+def test_people_register_and_back_reference():
+    p = People(log_file="log.txt")
+    dummy = DummyNode("foo")
+    p.register_node("foo", dummy)
+    assert "foo" in p.nodes
+    assert p.nodes["foo"] is dummy
+    assert hasattr(dummy, "network")
+    assert dummy.network is p
+
+def test_people_get_all_nodes():
+    p = People()
+    for name in ["a", "b", "c"]:
+        p.register_node(name, DummyNode(name))
+    assert set(p.get_all_nodes()) == {"a", "b", "c"}
+
+def test_people_unregister_node():
+    p = People()
+    dummy = DummyNode("bar")
+    p.register_node("bar", dummy)
+    p.unregister_node("bar")
+    assert "bar" not in p.nodes
+    assert dummy.network is None
+
+def test_people_unregister_nonexistent_node():
+    p = People()
+    # should not raise
+    p.unregister_node("doesnotexist")
+    assert p.nodes == {}
