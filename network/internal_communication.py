@@ -1,63 +1,59 @@
-from typing import Optional, Dict, List, Any
-import datetime
+from typing import List
 
-from people import People
+from network.people import People
+from network.tasks import Task
+from secretary.utilities.logging import log_network_message
 
 class Intercom(People):
     """
-    Represents the communication part of a network that connects various agents.
+    Manages message passing and task notifications among registered participants.
     
     Attributes:
-        nodes (Dict[str, LLMNode]): A dictionary that maps node IDs to node instances.
+        nodes (Dict[str, object]): Mapping of node IDs to participant objects that implement a receive_message(content: str, sender_id: str) method.
         log_file (Optional[str]): Path to a log file where messages will be recorded. If None, logging is disabled.
-        tasks (List[Task]): A list that stores tasks assigned to nodes.
+        tasks (List[Task]): A list of Task instances tracked by the network.
     """
 
-    def send_message(self, sender_id: str, recipient_id: str, content: str):
+    def send_message(self, sender_id: str, recipient_id: str, content: str) -> None:
         """
-        Send a message from one node to another.
+        Dispatch a message from one participant to another, logging each attempt.
         
-        This function first logs the outgoing message by calling a private logging function.
-        Then, it checks if the recipient exists in the network's nodes dictionary:
-          - If the recipient exists, the message is delivered by invoking the recipient's 'receive_message' method.
-          - If the recipient does not exist, an error message is printed.
+        Logs the message first, then attempts delivery only if the recipient is registered.
+        If the recipient is not found, prints a warning instead of raising an error.
         
         Args:
-            sender_id (str): Identifier of the node sending the message.
-            recipient_id (str): Identifier of the recipient node.
-            content (str): The message content to be transmitted.
-            
-        The function ensures that every message is logged and that message delivery occurs only if the
-        target node is registered in the network.
+            sender_id (str): ID of the sending participant.
+            recipient_id (str): ID of the intended recipient.
+            content (str): The message payload to deliver.
         """
 
         # Log the message regardless of whether the recipient exists.
         self._log_message(sender_id, recipient_id, content)
 
-        # Send the message if the recipient exists in the network's node list.
-        if recipient_id in self.nodes:
-            self.nodes[recipient_id].receive_message(content, sender_id)
+        # Returns "recipient_id" if the node exists and "None" if it doesn't
+        recipient = self.nodes.get(recipient_id)
+
+        # Send the message if the recipient exists in the network's node list. Note: The if-statement checks for empty/non-empty
+        if recipient
+            recipient.receive_message(content, sender_id)
         else:
             # Print an error message if recipient is not found.
-            print(f"Node {recipient_id} not found in the network.")
+            print(f"[Intercom] Unknown recipient: {recipient_id}.")
 
-    def _log_message(self, sender_id: str, recipient_id: str, content: str):
+    def _log_message(self, sender_id: str, recipient_id: str, content: str) -> None:
         """
-        Log a message to a file if logging is enabled.
-        
-        This private helper method writes the details of the message in a formatted string to the
-        specified log file. It appends the message so that previous logs are preserved.
+        Record a network message using the external logging utility and the internal logging (if enabled.
         
         Args:
-            sender_id (str): The identifier of the node that originated the message.
-            recipient_id (str): The identifier of the target node.
-            content (str): The textual content of the message.
-            
-        If no log file is specified (i.e., log_file is None), the message is not logged.
+            sender_id (str): Originating participant ID.
+            recipient_id (str): Target participant ID.
+            content (str): Message content for logging.
         """
         
-        # Log using our new logging module
+        # Log using external logging module
         log_network_message(sender_id, recipient_id, content)
+
+        #----------------Note: We can probably remove the logging inside the network------------------#
         
         # Also preserve original file logging if configured
         if self.log_file:
@@ -68,11 +64,10 @@ class Intercom(People):
 
     def add_task(self, task: Task):
         """
-        Add a new task to the network and notify the assigned node.
+        Add a Task to the network and notify its assignee if registered.
         
-        The task is appended to the network's task list. If the task has an assigned node (its 'assigned_to' attribute
-        corresponds to a registered node), the method constructs a notification message detailing the task's title,
-        due date, and priority, and then sends this message from a system-generated sender.
+        Appends the task to self.tasks. If task.assigned_to matches a registered node,
+        constructs a notification string and sends it from a pseudo-sender "system".
         
         Args:
             task (Task): A task object with at least the following attributes:
@@ -80,9 +75,6 @@ class Intercom(People):
                         - due_date (datetime): A datetime object representing the task's deadline.
                         - priority (Any): The priority level of the task.
                         - assigned_to (str): The node ID of the node to which the task is assigned.
-                        
-        This approach immediately informs the responsible node of new task assignments, which is critical
-        for task management in networked applications.
         """
         
         self.tasks.append(task) # Add the new task to the list.
