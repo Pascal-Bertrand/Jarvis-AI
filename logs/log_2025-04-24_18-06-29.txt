@@ -1,0 +1,4 @@
+2025-04-24 18:06:29,137 - INFO - ======= AgentAI Logging Started at 2025-04-24_18-06-29 =======
+2025-04-24 18:06:29,152 - INFO - NETWORK: From alice to n1: hello world
+2025-04-24 18:06:29,163 - INFO - NETWORK: From alice to nope: are you there?
+2025-04-24 18:06:29,172 - INFO - NETWORK: From system to joe: New task assigned: Write tests. Due: 2025-05-01. Priority: high.
