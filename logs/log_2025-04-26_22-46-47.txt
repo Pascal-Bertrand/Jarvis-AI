@@ -1,0 +1,8 @@
+2025-04-26 22:46:47,579 - INFO - ======= AgentAI Logging Started at 2025-04-26_22-46-47 =======
+2025-04-26 22:46:47,624 - INFO - SYSTEM: OpenAI client initialized successfully
+2025-04-26 22:46:48,275 - INFO - SYSTEM: [Brain:ceo] initialized.
+2025-04-26 22:46:48,874 - INFO - SYSTEM: [Brain:marketing] initialized.
+2025-04-26 22:46:49,474 - INFO - SYSTEM: [Brain:engineering] initialized.
+2025-04-26 22:46:49,896 - INFO - SYSTEM: [Brain:design] initialized.
+2025-04-26 22:46:49,896 - INFO - SYSTEM: Nodes registered: ['ceo', 'marketing', 'engineering', 'design']
+2025-04-26 22:46:49,898 - INFO - SYSTEM: Main thread finished, Flask server running in background.

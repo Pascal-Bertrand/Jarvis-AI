@@ -1,0 +1,16 @@
+2025-04-26 23:05:07,793 - INFO - ======= AgentAI Logging Started at 2025-04-26_23-05-07 =======
+2025-04-26 23:05:07,840 - INFO - SYSTEM: OpenAI client initialized successfully
+2025-04-26 23:05:08,262 - INFO - SYSTEM: [Brain:ceo] initialized.
+2025-04-26 23:05:08,642 - INFO - SYSTEM: [Brain:marketing] initialized.
+2025-04-26 23:05:09,061 - INFO - SYSTEM: [Brain:engineering] initialized.
+2025-04-26 23:05:09,454 - INFO - SYSTEM: [Brain:design] initialized.
+2025-04-26 23:05:09,454 - INFO - SYSTEM: Nodes registered: ['ceo', 'marketing', 'engineering', 'design']
+2025-04-26 23:05:13,903 - INFO - NETWORK: From web_user to ceo: Hey
+2025-04-26 23:05:15,797 - DEBUG - API REQUEST (openai_chat): {'model': 'gpt-4.1', 'messages': [{'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes. End after conveying necessary information.'}, {'role': 'user', 'content': 'Hey'}]}
+2025-04-26 23:05:15,797 - DEBUG - API REQUEST (openai_chat): {'model': 'gpt-4.1', 'messages': [{'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes.'}, {'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes. End after conveying necessary information.'}, {'role': 'user', 'content': 'Hey'}]}
+2025-04-26 23:05:16,513 - DEBUG - API RESPONSE (openai_chat): {'response': 'Hello. How can I help you?'}
+2025-04-26 23:05:16,513 - INFO - AGENT (ceo): Hello. How can I help you?
+2025-04-26 23:05:24,171 - INFO - NETWORK: From web_user to ceo: plan 124 = conquer the world
+2025-04-26 23:05:27,777 - DEBUG - API REQUEST (gmail_list): {'userId': 'me', 'q': 'plan 124 OR conquer the world', 'maxResults': 5}
+2025-04-26 23:05:27,965 - DEBUG - API RESPONSE (gmail_list): {'resultSizeEstimate': 0}
+2025-04-26 23:05:27,965 - INFO - SYSTEM: [ceo] No emails found matching query: plan 124 OR conquer the world

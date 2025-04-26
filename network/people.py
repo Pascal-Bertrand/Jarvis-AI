@@ -76,4 +76,23 @@ class People:
         return list(self.nodes.keys())
 
 
+# The Network class below is removed as it's redundant after refactoring.
+# Intercom is used directly in main.py, and it inherits from People.
+# class Network(People):
+#     def __init__(self, log_file: Optional[str] = None):
+#         super().__init__(log_file)
+#
+#     def register_node(self, node: LLMNode): # This caused NameError
+#         """
+#         Register a node with the network.
+#
+#         This method adds the node to the network's internal dictionary using the node's unique identifier.
+#         It also sets the node's 'network' attribute to reference this Network instance, establishing a two-way link.
+#
+#         Args:
+#             node (LLMNode): The node instance to register. The node must have a 'node_id' attribute.
+#         """
+#         super().register_node(node.node_id, node)
+
+
 #TODO: Add more functionalities.

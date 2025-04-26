@@ -5,7 +5,7 @@ from typing import List, Dict, Optional
 from secretary.utilities.logging import log_user_message, log_network_message
 from secretary.utilities.google import initialize_google_services
 from secretary.scheduler import Scheduler
-from secretary.brain import Brain
+# from secretary.brain import Brain
 
 class Communication:
     """
@@ -41,18 +41,13 @@ class Communication:
         # Conversation history for LLM
         self.conversation_history: List[Dict] = []
 
-        # Initialize Google services
-        services = initialize_google_services(self.node_id)
-        self.calendar_service = services.get('calendar')
-        self.gmail_service = services.get('gmail')
+        # --- ADD Placeholders for injected dependencies ---
+        self.brain = None  # Will be injected by LLMNode
+        self.scheduler = None # Will be injected by LLMNode
+        self.calendar_service = None # Will be injected by LLMNode
+        self.gmail_service = None # Will be injected by LLMNode
 
-        # Scheduler handles all calendar logic
-        self.scheduler = Scheduler(self.node_id, self.calendar_service)
-
-        # Brain handles all other logic
-        self.brain = Brain(self.node_id, self.open_api_key, self.network, llm_params=None, socketio_instance=None)
-
-    def receive_message(self, message: str, sender_id: str):
+    def receive_message(self, message: str, sender_id: str) -> Optional[str]:
         """
         Process an incoming message in four steps:
           1) Quick CLI commands
@@ -63,6 +58,9 @@ class Communication:
         Args:
             message (str): The incoming message text.
             sender_id (str): Who sent the message (e.g. 'cli_user' or a node ID).
+            
+        Returns:
+            Optional[str]: The textual response to be sent back, or None if handled internally.
         """
         
         # Log the message
@@ -73,166 +71,87 @@ class Communication:
         print(f"[{self.node_id}] Received from {sender_id}: {message}")
 
         # quick CLI command handling
-        if self._handle_quick_command(message, sender_id):
-            return
+        quick_cmd_response = self._handle_quick_command(message, sender_id)
+        if quick_cmd_response is not None:
+            return quick_cmd_response
 
         # Calendar commands -> delegate entirely to Scheduler
-        cal_intent = self.scheduler._detect_calendar_intent(message)
-        if cal_intent.get('is_calendar_command', False):
-            return self.scheduler.handle_calendar(cal_intent, message)
+        # --- Temporarily commented out until Scheduler is implemented ---
+        # cal_intent = self.scheduler._detect_calendar_intent(message)
+        # if cal_intent.get('is_calendar_command', False):
+        #     return self.scheduler.handle_calendar(cal_intent, message)
 
-        # Email commands
-        email_intent = self.brain._detect_send_email_intent(message)
-        if email_intent.get('is_send_email', False) or email_intent.get('action', 'none') != 'none':
-            return self._handle_email(email_intent, message)
+        # Email commands - only check if message looks like an email-related command
+        # Simple heuristic to avoid unnecessary LLM calls for non-email messages
+        email_keywords = ["email", "gmail", "mail", "inbox", "message", "send", "write", "compose", "draft"]
+        if any(keyword in message.lower() for keyword in email_keywords):
+            # First, check for advanced commands (like search, list labels) which should return a response
+            adv_email_analysis = self.brain._analyze_email_command(message)
+            if adv_email_analysis.get('action') in ['list_labels', 'advanced_search', 'fetch_recent', 'search']:
+                return self.brain.process_advanced_email_command(adv_email_analysis)
+                
+            # Then, check for send email intent
+            send_email_intent = self.brain._detect_send_email_intent(message)
+            if send_email_intent.get('is_send_email', False):
+                # Email composition might be multi-turn, handle appropriately
+                # This might need further refinement depending on how email composition flow works
+                return self._handle_email_composition(send_email_intent, message)
 
         # Fallback: send to LLM
         return self._chat_with_llm(message)
 
-    def _handle_quick_command(self, message: str, sender_id: str) -> bool:
+    def _handle_quick_command(self, message: str, sender_id: str) -> Optional[str]:
         """
         Single-turn commands from CLI: 'tasks' and 'plan <project>=<objective>'.
 
-        Returns True if processed.
+        Returns: 
+            Optional[str]: Response string if command handled, None otherwise.
         """
         if sender_id != 'cli_user':
-            return False
+            return None
         cmd = message.strip().lower()
         if cmd == 'tasks':
             tasks_list = self.brain.list_tasks()
-            print(f"[{self.node_id}] Response: {tasks_list}")
-            return True
+            return tasks_list
         match = re.match(r"^plan\s+([\w-]+)\s*=\s*(.+)$", message.strip(), re.IGNORECASE)
         if match:
             project_id, objective = match.groups()
-            self.brain.plan_project(project_id.strip(), objective.strip())
-            return True
-        return False
+            plan_summary = self.brain.plan_project(project_id.strip(), objective.strip())
+            return plan_summary
+        return None
 
-    def _chat_with_llm(self, message: str):
+    def _chat_with_llm(self, message: str) -> str:
         """
         Fallback: append to history, query LLM, print and return the response.
         """
         self.conversation_history.append({'role':'user','content':message})
         response = self.brain.query_llm(self.conversation_history)
         self.conversation_history.append({'role':'assistant','content':response})
-        print(f"[{self.node_id}] Response: {response}")
         return response
 
-    def _handle_email(self, intent: dict, message: str):
+    def _handle_email_composition(self, intent: dict, message: str) -> Optional[str]:
+        """Handles the process of composing and sending an email."""
+        missing = intent.get('missing_info', [])
+        if missing:
+            return f"Okay, let's draft an email. I still need the following: {', '.join(missing)}."
+        else:
+            recipient = intent.get('recipient', 'unknown')
+            subject = intent.get('subject', 'no subject')
+            body = intent.get('body', 'empty body')
+            return f"Drafting email to {recipient} with subject '{subject}'. Ready to send? (Send command not implemented yet)"
+
+    def _handle_email(self, intent: dict, message: str) -> Optional[str]:
         """
         Handle both simple send-email intents and advanced email commands.
+        DEPRECATED? receive_message now routes based on intent analysis.
         """
         if intent.get('is_send_email', False):
-            missing = intent.get('missing_info', [])
-            self._start_email_composition(message, missing, intent)
+            return self._handle_email_composition(intent, message)
         else:
             action = intent.get('action')
             if action and action != 'none':
-                resp = self.brain.process_advanced_email_command(message)
-                print(f"[{self.node_id}] Response: {resp}")
-
-    def fetch_emails(self, max_results=10, query=None):
-        """
-        Fetch emails from the Gmail account using the Gmail service.
-        
-        Args:
-            max_results (int): Maximum number of emails to fetch.
-            query (str, optional): A search query to filter the emails.
-        
-        Returns:
-            list: A list of emails with details like subject, sender, date, snippet, and body.
-        """
-        
-        if not self.gmail_service:
-            print(f"[{self.node_id}] Gmail service not available")
-            return []
-        
-        try:
-            # Default query to get recent emails
-            query_string = query if query else ""
-            
-            # Get list of messages matching the query
-            results = self.gmail_service.users().messages().list(
-                userId='me',
-                q=query_string,
-                maxResults=max_results
-            ).execute()
-            
-            messages = results.get('messages', [])
-            
-            if not messages:
-                print(f"[{self.node_id}] No emails found matching query: {query_string}")
-                return []
-            
-            # Fetch full details for each message
-            emails = []
-            for message in messages:
-                msg_id = message['id']
-                msg = self.gmail_service.users().messages().get(
-                    userId='me', 
-                    id=msg_id, 
-                    format='full'
-                ).execute()
-                
-                # Extract header information
-                headers = msg['payload']['headers']
-                subject = next((h['value'] for h in headers if h['name'] == 'Subject'), '(No subject)')
-                sender = next((h['value'] for h in headers if h['name'] == 'From'), '(Unknown sender)')
-                date = next((h['value'] for h in headers if h['name'] == 'Date'), '')
-                
-                # Extract body content
-                body = self._extract_email_body(msg['payload'])
-                
-                # Add email data to list
-                emails.append({
-                    'id': msg_id,
-                    'subject': subject,
-                    'sender': sender,
-                    'date': date,
-                    'body': body,
-                    'snippet': msg.get('snippet', ''),
-                    'labelIds': msg.get('labelIds', [])
-                })
-            
-            print(f"[{self.node_id}] Fetched {len(emails)} emails")
-            return emails
-        
-        except Exception as e:
-            print(f"[{self.node_id}] Error fetching emails: {str(e)}")
-            return []
-    
-    def _extract_email_body(self, payload):
-        """
-        Recursively extract the email body text from the Gmail message payload.
-        
-        Handles both single-part and multipart messages by performing base64 decoding.
-        
-        Args:
-            payload (dict): The payload section of a Gmail message.
-        
-        Returns:
-            str: Decoded text content of the email, or a placeholder if not found.
-        """
-        
-        if 'body' in payload and payload['body'].get('data'):
-            # Base64 decode the body
-            body_data = payload['body']['data']
-            body_bytes = base64.urlsafe_b64decode(body_data)
-            return body_bytes.decode('utf-8')
-        
-        # If the payload has parts (multipart email), recursively extract from parts
-        if 'parts' in payload:
-            text_parts = []
-            for part in payload['parts']:
-                # Focus on text/plain parts first, fall back to HTML if needed
-                if part['mimeType'] == 'text/plain':
-                    text_parts.append(self._extract_email_body(part))
-                elif part['mimeType'] == 'text/html' and not text_parts:
-                    text_parts.append(self._extract_email_body(part))
-                elif part['mimeType'].startswith('multipart/'):
-                    text_parts.append(self._extract_email_body(part))
-            
-            return '\n'.join(text_parts)
-        
-        return "(No content)"
+                resp = self.brain.process_advanced_email_command(intent)
+                return resp
+            else:
+                log_warning(f"Unhandled email intent in _handle_email: {intent}")
+                return "I understand you want to do something with email, but I'm not sure exactly what."

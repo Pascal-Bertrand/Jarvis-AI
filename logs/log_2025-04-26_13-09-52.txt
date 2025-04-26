@@ -1,0 +1,27 @@
+2025-04-26 13:09:52,182 - INFO - ======= AgentAI Logging Started at 2025-04-26_13-09-52 =======
+2025-04-26 13:09:52,228 - INFO - SYSTEM: OpenAI client initialized successfully
+2025-04-26 13:10:27,478 - ERROR - ERROR: Google sign-in error: [Errno 48] Address already in use
+Traceback (most recent call last):
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 381, in _initialize_google_services
+    creds = flow.run_local_server(port=8080)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/.venv/lib/python3.12/site-packages/google_auth_oauthlib/flow.py", line 432, in run_local_server
+    local_server = wsgiref.simple_server.make_server(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.3/Frameworks/Python.framework/Versions/3.12/lib/python3.12/wsgiref/simple_server.py", line 154, in make_server
+    server = server_class((host, port), handler_class)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.3/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socketserver.py", line 457, in __init__
+    self.server_bind()
+  File "/opt/homebrew/Cellar/python@3.12/3.12.3/Frameworks/Python.framework/Versions/3.12/lib/python3.12/wsgiref/simple_server.py", line 50, in server_bind
+    HTTPServer.server_bind(self)
+  File "/opt/homebrew/Cellar/python@3.12/3.12.3/Frameworks/Python.framework/Versions/3.12/lib/python3.12/http/server.py", line 136, in server_bind
+    socketserver.TCPServer.server_bind(self)
+  File "/opt/homebrew/Cellar/python@3.12/3.12.3/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socketserver.py", line 473, in server_bind
+    self.socket.bind(self.server_address)
+OSError: [Errno 48] Address already in use
+
+2025-04-26 13:10:35,326 - INFO - USER (cli_user): hey
+2025-04-26 13:10:39,675 - DEBUG - API REQUEST (openai_chat): {'model': 'gpt-4.1', 'messages': [{'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes. End after conveying necessary information.'}, {'role': 'user', 'content': 'cli_user says: hey'}]}
+2025-04-26 13:10:40,573 - DEBUG - API RESPONSE (openai_chat): {'response': 'Hello. How can I help you?'}
+2025-04-26 13:10:40,574 - INFO - AGENT (ceo): Hello. How can I help you?

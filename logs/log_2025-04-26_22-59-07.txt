@@ -1,0 +1,32 @@
+2025-04-26 22:59:07,056 - INFO - ======= AgentAI Logging Started at 2025-04-26_22-59-07 =======
+2025-04-26 22:59:07,103 - INFO - SYSTEM: OpenAI client initialized successfully
+2025-04-26 22:59:07,587 - INFO - SYSTEM: [Brain:ceo] initialized.
+2025-04-26 22:59:08,000 - INFO - SYSTEM: [Brain:marketing] initialized.
+2025-04-26 22:59:08,488 - INFO - SYSTEM: [Brain:engineering] initialized.
+2025-04-26 22:59:08,963 - INFO - SYSTEM: [Brain:design] initialized.
+2025-04-26 22:59:08,963 - INFO - SYSTEM: Nodes registered: ['ceo', 'marketing', 'engineering', 'design']
+2025-04-26 22:59:14,436 - INFO - NETWORK: From web_user to ceo: Hey
+2025-04-26 22:59:16,373 - DEBUG - API REQUEST (openai_chat): {'model': 'gpt-4.1', 'messages': [{'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes. End after conveying necessary information.'}, {'role': 'user', 'content': 'Hey'}]}
+2025-04-26 22:59:16,374 - DEBUG - API REQUEST (openai_chat): {'model': 'gpt-4.1', 'messages': [{'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes.'}, {'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes. End after conveying necessary information.'}, {'role': 'user', 'content': 'Hey'}]}
+2025-04-26 22:59:17,499 - DEBUG - API RESPONSE (openai_chat): {'response': 'Hello. How can I help you?'}
+2025-04-26 22:59:17,500 - INFO - AGENT (ceo): Hello. How can I help you?
+2025-04-26 22:59:26,840 - INFO - NETWORK: From web_user to ceo: plan 445 = conquer the world
+2025-04-26 22:59:30,715 - ERROR - ERROR: Error processing message for node ceo: 'Brain' object has no attribute 'fetch_emails'
+Traceback (most recent call last):
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 374, in send_message_internal
+    response_text = network.nodes[node_id].receive_message(message, sender_id) # Pass sender_id
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 152, in receive_message
+    return self.communication.receive_message(message, sender_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/secretary/communication.py", line 88, in receive_message
+    return self.brain.process_advanced_email_command(adv_email_analysis)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/secretary/brain.py", line 730, in process_advanced_email_command
+    return self.process_email_command(command)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/secretary/brain.py", line 582, in process_email_command
+    emails = self.fetch_emails(max_results=count, query=query)
+             ^^^^^^^^^^^^^^^^^
+AttributeError: 'Brain' object has no attribute 'fetch_emails'
+

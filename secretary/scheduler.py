@@ -6,8 +6,9 @@ This will be responsible for all tasks including some event scheduling, like:
 """
 
 class Scheduler:
-    def __init__(self):
-        pass
+    def __init__(self, node_id=None, calendar_service=None):
+        self.node_id = node_id
+        self.calendar_service = calendar_service
 
     def schedule_meeting(self, date_time, participants):
         """

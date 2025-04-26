@@ -1,0 +1,77 @@
+2025-04-26 22:49:48,051 - INFO - ======= AgentAI Logging Started at 2025-04-26_22-49-48 =======
+2025-04-26 22:49:48,095 - INFO - SYSTEM: OpenAI client initialized successfully
+2025-04-26 22:49:48,568 - INFO - SYSTEM: [Brain:ceo] initialized.
+2025-04-26 22:49:49,013 - INFO - SYSTEM: [Brain:marketing] initialized.
+2025-04-26 22:49:49,424 - INFO - SYSTEM: [Brain:engineering] initialized.
+2025-04-26 22:49:49,856 - INFO - SYSTEM: [Brain:design] initialized.
+2025-04-26 22:49:49,856 - INFO - SYSTEM: Nodes registered: ['ceo', 'marketing', 'engineering', 'design']
+2025-04-26 22:55:31,044 - INFO - NETWORK: From web_user to ceo: plan 445 = conquer the world
+2025-04-26 22:55:31,050 - ERROR - ERROR: Error processing message for node ceo: Scheduler._detect_calendar_intent() missing 1 required positional argument: 'missing_info'
+Traceback (most recent call last):
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 374, in send_message_internal
+    response_text = network.nodes[node_id].receive_message(message, sender_id) # Pass sender_id
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 152, in receive_message
+    return self.communication.receive_message(message, sender_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/secretary/communication.py", line 79, in receive_message
+    cal_intent = self.scheduler._detect_calendar_intent(message)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Scheduler._detect_calendar_intent() missing 1 required positional argument: 'missing_info'
+
+2025-04-26 22:55:41,750 - INFO - NETWORK: From web_user to ceo: hey
+2025-04-26 22:55:41,753 - ERROR - ERROR: Error processing message for node ceo: Scheduler._detect_calendar_intent() missing 1 required positional argument: 'missing_info'
+Traceback (most recent call last):
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 374, in send_message_internal
+    response_text = network.nodes[node_id].receive_message(message, sender_id) # Pass sender_id
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 152, in receive_message
+    return self.communication.receive_message(message, sender_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/secretary/communication.py", line 79, in receive_message
+    cal_intent = self.scheduler._detect_calendar_intent(message)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Scheduler._detect_calendar_intent() missing 1 required positional argument: 'missing_info'
+
+2025-04-26 22:55:44,141 - INFO - NETWORK: From web_user to ceo: asda
+2025-04-26 22:55:44,142 - ERROR - ERROR: Error processing message for node ceo: Scheduler._detect_calendar_intent() missing 1 required positional argument: 'missing_info'
+Traceback (most recent call last):
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 374, in send_message_internal
+    response_text = network.nodes[node_id].receive_message(message, sender_id) # Pass sender_id
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 152, in receive_message
+    return self.communication.receive_message(message, sender_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/secretary/communication.py", line 79, in receive_message
+    cal_intent = self.scheduler._detect_calendar_intent(message)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Scheduler._detect_calendar_intent() missing 1 required positional argument: 'missing_info'
+
+2025-04-26 22:55:45,509 - INFO - NETWORK: From web_user to ceo: asd
+2025-04-26 22:55:45,510 - ERROR - ERROR: Error processing message for node ceo: Scheduler._detect_calendar_intent() missing 1 required positional argument: 'missing_info'
+Traceback (most recent call last):
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 374, in send_message_internal
+    response_text = network.nodes[node_id].receive_message(message, sender_id) # Pass sender_id
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 152, in receive_message
+    return self.communication.receive_message(message, sender_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/secretary/communication.py", line 79, in receive_message
+    cal_intent = self.scheduler._detect_calendar_intent(message)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Scheduler._detect_calendar_intent() missing 1 required positional argument: 'missing_info'
+
+2025-04-26 22:55:46,965 - INFO - NETWORK: From web_user to ceo: asda
+2025-04-26 22:55:46,967 - ERROR - ERROR: Error processing message for node ceo: Scheduler._detect_calendar_intent() missing 1 required positional argument: 'missing_info'
+Traceback (most recent call last):
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 374, in send_message_internal
+    response_text = network.nodes[node_id].receive_message(message, sender_id) # Pass sender_id
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/main.py", line 152, in receive_message
+    return self.communication.receive_message(message, sender_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/werkstudent/Applications/AgentAI/secretary/communication.py", line 79, in receive_message
+    cal_intent = self.scheduler._detect_calendar_intent(message)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Scheduler._detect_calendar_intent() missing 1 required positional argument: 'missing_info'
+

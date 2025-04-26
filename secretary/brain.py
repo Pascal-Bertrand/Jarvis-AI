@@ -43,7 +43,7 @@ class LLMClient:
         prompt = system + messages
         try:
             log_api_request("openai_chat", {"model": self.params["model"], "messages": prompt})
-            resp = self.client.ChatCompletion.create(
+            resp = self.client.chat.completions.create(
                 model=self.params["model"],
                 messages=prompt,
                 temperature=self.params["temperature"],
@@ -277,7 +277,7 @@ class Brain:
                 # If no fences and doesn't look like JSON, it's likely an error message
                 print(f"[{self.node_id}] LLM response doesn't appear to be JSON: {json_to_parse}")
                 print(f"[{self.node_id}] Response: Could not generate project plan. The AI's response was not in the expected format.")
-                return
+                return "Could not generate project plan. The AI's response was not in the expected format."
         # --- End: Extract JSON ---
 
         try:
@@ -294,7 +294,7 @@ class Brain:
             for i, step in enumerate(steps, 1):
                 plan_summary += f"  {i}. {step.get('description', 'No description')}\n"
             # Print the summary which will be captured as the response
-            print(f"[{self.node_id}] Response: {plan_summary.strip()}")
+            # print(f"[{self.node_id}] Response: {plan_summary.strip()}") # Remove print
             # --- End: Format and print plan details ---
 
             # Save the project plan to a text file
@@ -351,13 +351,16 @@ class Brain:
             socketio.emit('update_projects') 
             socketio.emit('update_tasks')
             
+            return plan_summary.strip() # Return the summary
+            
         except json.JSONDecodeError as e:
             # Handle JSON parsing failure
             print(f"[{self.node_id}] Failed to parse JSON plan: {e}")
             print(f"[{self.node_id}] Received non-JSON response from LLM: {response}")
             # Inform the user via the response mechanism
-            print(f"[{self.node_id}] Response: Could not generate project plan. The AI's response was not in the expected format.")
-            return # Stop processing the plan if JSON is invalid
+            # print(f"[{self.node_id}] Response: Could not generate project plan. The AI's response was not in the expected format.")
+            # return # Stop processing the plan if JSON is invalid
+            return "Could not generate project plan. The AI's response was not in the expected format." # Return error message
 
     def generate_tasks_from_plan(self, project_id: str, steps: list, participants: list):
         """
@@ -628,6 +631,171 @@ class Brain:
             print(f"[{self.node_id}] Error detecting email intent: {str(e)}")
             # Default fallback
             return {"action": "none", "count": 5, "query": "", "summary_type": "concise"}
+        
+            # --- Email Fetching & Processing Methods (Moved from Communication) ---
+
+    def fetch_emails(self, max_results=10, query=None):
+        """
+        Fetch emails from the Gmail account using the Gmail service.
+
+        Args:
+            max_results (int): Maximum number of emails to fetch.
+            query (str, optional): A search query to filter the emails.
+
+        Returns:
+            list: A list of emails with details like subject, sender, date, snippet, and body.
+        """
+        import base64 # Make sure base64 is available
+        from secretary.utilities.logging import log_warning, log_error, log_system_message, log_api_request, log_api_response
+
+        if not self.gmail_service:
+            log_warning(f"[{self.node_id}] Gmail service not available for fetch_emails")
+            return []
+
+        try:
+            # Default query to get recent emails
+            query_string = query if query else ""
+            log_api_request("gmail_list", {"userId": 'me', "q": query_string, "maxResults": max_results})
+
+            # Get list of messages matching the query
+            results = self.gmail_service.users().messages().list(
+                userId='me',
+                q=query_string,
+                maxResults=max_results
+            ).execute()
+            log_api_response("gmail_list", results)
+
+            messages = results.get('messages', [])
+
+            if not messages:
+                log_system_message(f"[{self.node_id}] No emails found matching query: {query_string}")
+                return []
+
+            # Fetch full details for each message
+            emails = []
+            for message in messages:
+                msg_id = message['id']
+                log_api_request("gmail_get", {"userId": 'me', "id": msg_id, "format": 'full'})
+                try:
+                    msg = self.gmail_service.users().messages().get(
+                        userId='me',
+                        id=msg_id,
+                        format='full' # 'metadata' is faster if only headers/snippet needed initially
+                    ).execute()
+                    log_api_response("gmail_get", {"id": msg_id, "snippet": msg.get('snippet', '')})
+
+                    # Extract header information
+                    headers = msg.get('payload', {}).get('headers', [])
+                    subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), '(No subject)')
+                    sender = next((h['value'] for h in headers if h['name'].lower() == 'from'), '(Unknown sender)')
+                    date = next((h['value'] for h in headers if h['name'].lower() == 'date'), '')
+
+                    # Extract body content
+                    body = self._extract_email_body(msg.get('payload', {}))
+
+                    # Add email data to list
+                    emails.append({
+                        'id': msg_id,
+                        'subject': subject,
+                        'sender': sender,
+                        'date': date,
+                        'body': body,
+                        'snippet': msg.get('snippet', ''),
+                        'labelIds': msg.get('labelIds', [])
+                    })
+                except Exception as get_err:
+                     log_error(f"[{self.node_id}] Error getting details for email ID {msg_id}: {get_err}")
+                     continue # Skip this email if details can't be fetched
+
+            log_system_message(f"[{self.node_id}] Fetched {len(emails)} emails")
+            return emails
+
+        except Exception as e:
+            log_error(f"[{self.node_id}] Error fetching emails: {str(e)}")
+            return []
+
+    def _extract_email_body(self, payload):
+        """
+        Recursively extract the email body text from the Gmail message payload.
+
+        Handles both single-part and multipart messages by performing base64 decoding.
+
+        Args:
+            payload (dict): The payload section of a Gmail message.
+
+        Returns:
+            str: Decoded text content of the email, or a placeholder if not found.
+        """
+        import base64 # Ensure base64 is imported here if not globally
+        from secretary.utilities.logging import log_warning, log_error # Ensure correct logging functions are available
+
+        if not payload:
+             return "(No payload)"
+
+        mime_type = payload.get('mimeType', '')
+
+        if 'body' in payload and payload['body'].get('size', 0) > 0:
+            body_data = payload['body'].get('data')
+            if body_data:
+                try:
+                    body_bytes = base64.urlsafe_b64decode(body_data)
+                    # Decode based on mimeType if possible, otherwise default to utf-8
+                    charset = 'utf-8' # Default
+                    # Look for charset in headers if available (might be in part headers)
+                    part_headers = payload.get('headers', [])
+                    content_type_header = next((h['value'] for h in part_headers if h['name'].lower() == 'content-type'), None)
+                    if content_type_header and 'charset=' in content_type_header:
+                        charset = content_type_header.split('charset=')[-1].split(';')[0].strip().lower()
+
+                    try:
+                         # Attempt decoding with detected/default charset
+                         decoded_body = body_bytes.decode(charset, errors='replace')
+                         # Return only if it's a text type, otherwise indicate non-text
+                         if mime_type.startswith('text/'):
+                              return decoded_body
+                         else:
+                              return f"(Non-text content: {mime_type})"
+                    except LookupError: # Handle unknown encoding
+                         log_warning(f"Unknown charset '{charset}', falling back to utf-8 with replace.")
+                         return body_bytes.decode('utf-8', errors='replace') # Fallback
+
+                except (base64.binascii.Error, ValueError, TypeError) as e:
+                    log_warning(f"Error decoding email body part (mime: {mime_type}): {e}")
+                    return "(Error decoding content)"
+
+        # If the payload has parts (multipart email), recursively extract from parts
+        if 'parts' in payload:
+            text_parts = []
+            html_parts = []
+            # Prioritize text/plain
+            for part in payload['parts']:
+                if part.get('mimeType') == 'text/plain':
+                     text_parts.append(self._extract_email_body(part))
+                elif part.get('mimeType') == 'text/html':
+                     html_parts.append(self._extract_email_body(part))
+                elif part.get('mimeType', '').startswith('multipart/'):
+                     # Recursively process nested multipart content
+                     text_parts.append(self._extract_email_body(part)) # Add result directly
+
+            # Prefer plain text if available
+            if text_parts:
+                return '\n\n---\n\n'.join(filter(None, text_parts))
+            # Fallback to HTML if no plain text
+            elif html_parts:
+                 # Basic HTML tag stripping (consider a library like beautifulsoup4 for robust parsing)
+                 import re
+                 html_content = '\n\n---\n\n'.join(filter(None, html_parts))
+                 text_content = re.sub('<[^>]+>', '', html_content) # Simple tag removal
+                 return text_content
+            else:
+                return "(Multipart email with no text/plain or text/html parts found)"
+
+
+        # If it's not multipart and has no body data (e.g., just an attachment placeholder)
+        if not mime_type.startswith('multipart/'):
+             return f"(No readable body content for mimeType: {mime_type})"
+
+        return "(No text content found)" # Default placeholder
     
     def get_email_labels(self):
         """

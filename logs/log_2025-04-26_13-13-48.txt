@@ -1,0 +1,4 @@
+2025-04-26 13:13:48,642 - INFO - ======= AgentAI Logging Started at 2025-04-26_13-13-48 =======
+2025-04-26 13:13:49,480 - INFO - NETWORK: From someone to node1: irrelevant text
+2025-04-26 13:13:49,481 - INFO - NETWORK: From other to node1: Please do this email
+2025-04-26 13:13:49,481 - INFO - NETWORK: From someone to node1: Hello there
