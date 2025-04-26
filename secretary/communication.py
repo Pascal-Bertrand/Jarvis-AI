@@ -2,7 +2,7 @@ import re
 import base64
 from typing import List, Dict, Optional
 
-from secretary.utilities.logging import log_user_message, log_network_message
+from secretary.utilities.logging import log_user_message, log_network_message, log_warning
 from secretary.utilities.google import initialize_google_services
 from secretary.scheduler import Scheduler
 # from secretary.brain import Brain
@@ -76,15 +76,15 @@ class Communication:
             return quick_cmd_response
 
         # Calendar commands -> delegate entirely to Scheduler
-        # --- Temporarily commented out until Scheduler is implemented ---
-        # cal_intent = self.scheduler._detect_calendar_intent(message)
-        # if cal_intent.get('is_calendar_command', False):
-        #     return self.scheduler.handle_calendar(cal_intent, message)
+        if self.scheduler:
+            cal_intent = self.scheduler._detect_calendar_intent(message)
+            if cal_intent.get('is_calendar_command', False):
+                return self.scheduler.handle_calendar(cal_intent, message)
 
         # Email commands - only check if message looks like an email-related command
         # Simple heuristic to avoid unnecessary LLM calls for non-email messages
         email_keywords = ["email", "gmail", "mail", "inbox", "message", "send", "write", "compose", "draft"]
-        if any(keyword in message.lower() for keyword in email_keywords):
+        if any(keyword in message.lower() for keyword in email_keywords) and self.brain:
             # First, check for advanced commands (like search, list labels) which should return a response
             adv_email_analysis = self.brain._analyze_email_command(message)
             if adv_email_analysis.get('action') in ['list_labels', 'advanced_search', 'fetch_recent', 'search']:
@@ -94,7 +94,6 @@ class Communication:
             send_email_intent = self.brain._detect_send_email_intent(message)
             if send_email_intent.get('is_send_email', False):
                 # Email composition might be multi-turn, handle appropriately
-                # This might need further refinement depending on how email composition flow works
                 return self._handle_email_composition(send_email_intent, message)
 
         # Fallback: send to LLM
@@ -102,22 +101,66 @@ class Communication:
 
     def _handle_quick_command(self, message: str, sender_id: str) -> Optional[str]:
         """
-        Single-turn commands from CLI: 'tasks' and 'plan <project>=<objective>'.
+        Single-turn commands from CLI: 'tasks' and project/task management commands.
+
+        Supported commands:
+        - 'tasks': List all tasks
+        - 'plan <project_id>=<objective>': Create a new project
+        - 'create project <project_id> <objective>': Alternative syntax for project creation
+        - 'new project <project_id> <objective>': Alternative syntax for project creation
+        - 'start project <project_id> <objective>': Alternative syntax for project creation
+        - 'project <project_id> <objective>': Simple syntax for project creation
+        - 'generate tasks for <project_id>': Generate tasks for existing project
+        - 'create tasks for <project_id>': Alternative syntax for task generation
+        - 'make tasks for <project_id>': Alternative syntax for task generation
 
         Returns: 
             Optional[str]: Response string if command handled, None otherwise.
         """
-        if sender_id != 'cli_user':
+        if sender_id != 'cli_user' or not self.brain:
             return None
+
+        # Convert message to lowercase for case-insensitive matching
         cmd = message.strip().lower()
-        if cmd == 'tasks':
+        
+        # Command: List all tasks
+        if cmd == 'tasks' or cmd == 'list tasks' or cmd == 'show tasks':
             tasks_list = self.brain.list_tasks()
             return tasks_list
-        match = re.match(r"^plan\s+([\w-]+)\s*=\s*(.+)$", message.strip(), re.IGNORECASE)
-        if match:
-            project_id, objective = match.groups()
+        
+        # Command: Create project with 'plan <project_id>=<objective>' syntax
+        plan_match = re.match(r"^plan\s+([\w-]+)\s*=\s*(.+)$", message.strip(), re.IGNORECASE)
+        if plan_match:
+            project_id, objective = plan_match.groups()
             plan_summary = self.brain.plan_project(project_id.strip(), objective.strip())
             return plan_summary
+        
+        # Command: Create project with 'create/new/start project <project_id> <objective>' syntax
+        create_project_match = re.match(r"^(create|new|start)?\s*project\s+([\w-]+)\s+(.+)$", message.strip(), re.IGNORECASE)
+        if create_project_match:
+            _, project_id, objective = create_project_match.groups()
+            plan_summary = self.brain.plan_project(project_id.strip(), objective.strip())
+            return plan_summary
+        
+        # Command: Generate tasks for an existing project
+        gen_tasks_match = re.match(r"^(generate|create|make)\s+tasks\s+(?:for|on)\s+([\w-]+)$", message.strip(), re.IGNORECASE)
+        if gen_tasks_match:
+            project_id = gen_tasks_match.group(2).strip()
+            # Check if project exists in Brain
+            if project_id not in self.brain.projects:
+                return f"Project '{project_id}' does not exist. Please create it first with 'plan {project_id}=<objective>'."
+            
+            # Get project steps and participants from Brain
+            steps = self.brain.projects[project_id].get("plan", [])
+            participants = list(self.brain.projects[project_id].get("participants", set()))
+            
+            if not steps:
+                return f"Project '{project_id}' has no steps defined. Please create a plan first."
+            
+            # Generate tasks based on the project plan
+            self.brain.generate_tasks_from_plan(project_id, steps, participants)
+            return f"Tasks generated for project '{project_id}'."
+        
         return None
 
     def _chat_with_llm(self, message: str) -> str:
@@ -131,6 +174,9 @@ class Communication:
 
     def _handle_email_composition(self, intent: dict, message: str) -> Optional[str]:
         """Handles the process of composing and sending an email."""
+        if not self.brain or not self.gmail_service:
+            return "Email services are not available."
+            
         missing = intent.get('missing_info', [])
         if missing:
             return f"Okay, let's draft an email. I still need the following: {', '.join(missing)}."
@@ -145,6 +191,9 @@ class Communication:
         Handle both simple send-email intents and advanced email commands.
         DEPRECATED? receive_message now routes based on intent analysis.
         """
+        if not self.brain:
+            return "Email processing is not available."
+            
         if intent.get('is_send_email', False):
             return self._handle_email_composition(intent, message)
         else:
