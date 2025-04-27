@@ -335,12 +335,12 @@ class Brain:
                     print(f"[{self.node_id}] No mapping for stakeholder '{stakeholder}'. Skipping.")
 
             print(f"[{self.node_id}] Project participants: {participants}")
-            
+            #TODO
             # Schedule a meeting if valid participants were identified
-            if participants:
-                self.schedule_meeting(project_id, participants)
-            else:
-                print(f"[{self.node_id}] No valid participants identified for project '{project_id}'. Skipping meeting schedule.")
+            #if participants:
+            #    self.schedule_meeting(project_id, participants)
+            #else:
+            #    print(f"[{self.node_id}] No valid participants identified for project '{project_id}'. Skipping meeting schedule.")
             
             # Generate tasks based on the plan
             self.generate_tasks_from_plan(project_id, steps, participants)

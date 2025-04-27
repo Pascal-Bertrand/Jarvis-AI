@@ -76,10 +76,10 @@ class Communication:
             return quick_cmd_response
 
         # Calendar commands -> delegate entirely to Scheduler
-        if self.scheduler:
-            cal_intent = self.scheduler._detect_calendar_intent(message)
-            if cal_intent.get('is_calendar_command', False):
-                return self.scheduler.handle_calendar(cal_intent, message)
+        #if self.scheduler:
+        #    cal_intent = self.scheduler._detect_calendar_intent(message)
+        #    if cal_intent.get('is_calendar_command', False):
+        #        return self.scheduler.handle_calendar(cal_intent, message)
 
         # Email commands - only check if message looks like an email-related command
         # Simple heuristic to avoid unnecessary LLM calls for non-email messages

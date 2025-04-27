@@ -352,10 +352,10 @@ def send_message():
     if node_id not in network.nodes:
         return jsonify({"error": f"Node {node_id} not found"}), 404
 
-    return send_message_internal(node_id, message, "web_user") # Specify sender
+    return send_message_internal(node_id, message, "cli_user") # Specify sender
 
 
-def send_message_internal(node_id, message, sender_id="web_user"): # Add sender_id
+def send_message_internal(node_id, message, sender_id="cli_user"): # Add sender_id
     """Process a message sent to a node and return the response"""
     global network
     if not network or node_id not in network.nodes:
@@ -431,6 +431,34 @@ def open_browser():
         except:
             continue
 
+def run_cli(network):
+    print("Commands:\n"
+          "  node_id: message => send 'message' to 'node_id' from CLI\n"
+          "  node_id: plan project_name = objective => create a new project plan\n"
+          "  node_id: tasks => list tasks for a node\n"
+          "  quit => exit\n")
+
+    while True:
+        user_input = input("> ")
+        if user_input.lower().strip() == "quit":
+            print("Exiting CLI...")
+            break
+            
+        # Handle node-specific commands
+        if ":" in user_input:
+            node_id, message = user_input.split(":", 1)
+            node_id = node_id.strip()
+            message = message.strip()
+
+            if node_id in network.nodes:
+                # All commands now go through receive_message
+                response = network.nodes[node_id].receive_message(message, "cli_user")
+                if response:
+                    print(response)
+            else:
+                print(f"No node with ID '{node_id}' found.")
+        else:
+            print("Invalid format. Use:\n  node_id: message\n  OR\n  quit\n")
 
 if __name__ == "__main__":
     # Make sure network is initialized before flask starts using it
@@ -451,6 +479,7 @@ if __name__ == "__main__":
 
     log_system_message(f"Nodes registered: {network.get_all_nodes()}")
 
+
     # Start Flask using the shared socketio instance
     flask_thread = threading.Thread(target=start_flask) 
     flask_thread.daemon = True
@@ -460,6 +489,8 @@ if __name__ == "__main__":
     browser_thread = threading.Thread(target=open_browser)
     browser_thread.daemon = True
     browser_thread.start()
+
+    run_cli(network)
 
     # Keep the main thread alive (Flask runs in daemon threads)
     # Or join the flask thread if you want the script to exit when Flask exits
