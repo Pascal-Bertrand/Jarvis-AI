@@ -33,6 +33,7 @@ class LLMClient:
         Sends a chat completion request, with a fixed system prompt
         and logs both request and response.
         """
+        
         system = [{
             "role": "system",
             "content": (
@@ -52,10 +53,11 @@ class LLMClient:
             text = resp.choices[0].message.content.strip()
             log_api_response("openai_chat", {"response": text})
             return text
+        
         except Exception as e:
             log_error(f"LLMClient.chat failed: {e}")
             return "LLM query failed."
-
+        
 class Confirmation:
     """
     Simple interactive yes/no prompt. Returns True on 'y' answers.
@@ -133,6 +135,53 @@ class Brain:
         self.socketio = socketio_instance
 
         log_system_message(f"[Brain:{self.node_id}] initialized.")
+        
+    def _detect_calendar_intent(self, message):
+        """
+        Detect if the incoming message is related to calendar commands.
+        
+        The method constructs a prompt asking the LLM to analyze if the message is calendar related,
+        and what action is intended (e.g., scheduling, cancellation).
+        
+        Args:
+            message (str): The message to analyze.
+        
+        Returns:
+            dict: A JSON object that includes:
+                  - is_calendar_command (bool)
+                  - action (string: "schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or None)
+                  - missing_info (list of strings indicating any missing information)
+        """
+        
+        prompt = f"""
+        Analyze this message and determine if it's a calendar-related command: '{message}'
+        Return JSON with:
+        - is_calendar_command: boolean
+        - action: string ("schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or null)
+        - missing_info: array of strings (what information is missing: "time", "participants", "date", "title")
+        """
+        
+        try:
+            # 1) Ask the LLM via your wrapper so you get back plain text
+            raw = self.query_llm([{"role": "user", "content": prompt}])
+
+            # 2) Strip out ```json fences if present
+            m = re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL | re.IGNORECASE)
+            json_text = m.group(1) if m else raw.strip()
+
+            # 3) Parse it
+            data = json.loads(json_text)
+
+            # Validate & fill defaults
+            return {
+                "is_calendar_command": bool(data.get("is_calendar_command")),
+                "action": data.get("action"),
+                "missing_info": data.get("missing_info", []) or []
+            }
+        
+        except Exception as e:
+            print(f"[{self.node_id}] Error detecting intent: {str(e)}")
+            return {"is_calendar_command": False, "action": None, "missing_info": []}
 
 
     def _extract_meeting_details(self, message):

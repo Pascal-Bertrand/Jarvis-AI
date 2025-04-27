@@ -5,7 +5,7 @@ from typing import List, Dict, Optional
 from secretary.utilities.logging import log_user_message, log_network_message, log_warning
 from secretary.utilities.google import initialize_google_services
 from secretary.scheduler import Scheduler
-# from secretary.brain import Brain
+#from secretary.brain import Brain
 
 class Communication:
     """
@@ -76,10 +76,10 @@ class Communication:
             return quick_cmd_response
 
         # Calendar commands -> delegate entirely to Scheduler
-        #if self.scheduler:
-        #    cal_intent = self.scheduler._detect_calendar_intent(message)
-        #    if cal_intent.get('is_calendar_command', False):
-        #        return self.scheduler.handle_calendar(cal_intent, message)
+        if self.scheduler:
+           cal_intent = self.brain._detect_calendar_intent(message)
+           if cal_intent.get('is_calendar_command', False):
+               return self.scheduler.handle_calendar(cal_intent, message)
 
         # Email commands - only check if message looks like an email-related command
         # Simple heuristic to avoid unnecessary LLM calls for non-email messages

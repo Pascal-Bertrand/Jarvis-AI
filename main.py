@@ -135,7 +135,7 @@ class LLMNode:
         self.brain.gmail_service = self.gmail_service       # Inject gmail service
 
         # Initialize Scheduler and inject calendar service
-        self.scheduler = Scheduler(self.node_id, self.calendar_service)
+        self.scheduler = self.scheduler = Scheduler(node_id=self.node_id, calendar_service=self.calendar_service, network=self.network, brain=self.brain)
 
         # Initialize Communication and inject dependencies
         self.communication = Communication(self.node_id, self.llm_client, self.network, self.api_key)
@@ -452,7 +452,7 @@ def run_cli(network):
 
             if node_id in network.nodes:
                 # All commands now go through receive_message
-                response = network.nodes[node_id].receive_message(message, "cli_user")
+                response = network.nodes[node_id].receive_message(message, "cli_user") #TODO: What function is called here??
                 if response:
                     print(response)
             else:

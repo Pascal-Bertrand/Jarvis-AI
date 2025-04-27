@@ -23,12 +23,12 @@ class DummyChatCompletion:
 def patch_openai(monkeypatch):
     """Monkeypatch openai.ChatCompletion for LLMClient and other raw calls."""
     dummy = DummyChatCompletion("dummy reply")
-    monkeypatch.setattr(openai, 'ChatCompletion', dummy)
+    monkeypatch.setattr(openai.chat.completions, "create", dummy.create, raising=False)
     yield
 
 
 def test_llmclient_chat_success():
-    params = {"model": "test-model", "temperature": 0.5, "max_tokens": 10}
+    params = {"model": "test-model", "message": [], "temperature": 0.5, "max_tokens": 10}
     client = LLMClient("key", params)
 
     # Should return dummy reply from our DummyChatCompletion
@@ -142,3 +142,25 @@ def test_detect_send_email_intent_full(monkeypatch, brain):
     assert res["body"]      == "Just checking in"
     # All fields were provided, so no missing info
     assert res["missing_info"] == []
+
+def test_detect_calendar_intent_parses_fenced_json(monkeypatch, brain):
+    # Simulate query_llm returning a JSON block wrapped in ```json fences
+    fenced = (
+        "```json\n"
+        '{"is_calendar_command": true, "action": "schedule_meeting", '
+        '"missing_info": ["date","time"]}\n'
+        "```"
+    )
+    monkeypatch.setattr(brain, 'query_llm', lambda messages: fenced)
+
+    intent = brain._detect_calendar_intent("Please set up a meeting")
+    assert intent["is_calendar_command"] is True
+    assert intent["action"] == "schedule_meeting"
+    assert intent["missing_info"] == ["date", "time"]
+
+
+def test_detect_calendar_intent_falls_back_on_bad_json(monkeypatch, brain):
+    # Simulate query_llm returning invalid JSON
+    monkeypatch.setattr(brain, 'query_llm', lambda messages: "not a json")
+    intent = brain._detect_calendar_intent("Hello, nothing here")
+    assert intent == {"is_calendar_command": False, "action": None, "missing_info": []}
