@@ -268,6 +268,7 @@ class Scheduler:
         
         response = questions.get(next_info, f"Please provide the {next_info} for the meeting") + context
         print(f"[{self.node_id}] Response: {response}")
+        #print(self.meeting_context, self.brain.meeting_context)
         return response
 
     def _continue_meeting_creation(self, message, sender_id):
