@@ -489,6 +489,7 @@ class Scheduler:
             print(f"[{self.node_id}] Error listing meetings: {str(e)}")
             return msg
 
+    # TODO: Refactor this function to have return values instead of print statements 
     def _handle_meeting_rescheduling(self, message):
         """
         Handle meeting rescheduling requests by extracting new scheduling details and updating the event.
@@ -880,7 +881,6 @@ class Scheduler:
             print(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
             return msg
 
-    # TODO: Refactor this function to have return values instead of print statements 
     def _create_calendar_meeting(self, meeting_id, title, participants, start_datetime, end_datetime):
         """
         Create a meeting event in Google Calendar.
