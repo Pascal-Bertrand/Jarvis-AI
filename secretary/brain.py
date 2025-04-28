@@ -127,6 +127,14 @@ class Brain:
         self.tasks = []            # local cache if needed
         self.projects = {}         # project plans by project_id
 
+        # This will be used to track the state of the meeting scheduling process (temporarily until memory.py is implemented)
+        self.meeting_context = {
+            'active': False,
+            'initial_message': None,
+            'missing_info': [],
+            'collected_info': {}
+        }
+
         # --- Calendar & Email stubs (to be injected or initialized elsewhere) ---
         self.calendar_service = None
         self.gmail_service    = None

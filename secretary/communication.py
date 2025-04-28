@@ -78,7 +78,7 @@ class Communication:
         # Calendar commands -> delegate entirely to Scheduler
         if self.scheduler:
            cal_intent = self.brain._detect_calendar_intent(message)
-           if cal_intent.get('is_calendar_command', False):
+           if cal_intent.get('is_calendar_command'):
                return self.scheduler.handle_calendar(cal_intent, message)
 
         # Email commands - only check if message looks like an email-related command

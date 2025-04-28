@@ -217,15 +217,20 @@ class Scheduler:
         """
         
         # Initialize a dictionary to track meeting creation progress
-        self.meeting_context = {
-            'active': True,
-            'initial_message': initial_message,
-            'missing_info': missing_info.copy(),
-            'collected_info': {}
-        }
+        # self.meeting_context = {
+        #     'active': True,
+        #     'initial_message': initial_message,
+        #     'missing_info': missing_info.copy(),
+        #     'collected_info': {}
+        # }
+        mc = self.brain.meeting_context
+        mc['active'] = True
+        mc['initial_message'] = initial_message
+        mc['missing_info'] = missing_info.copy()
+        mc['collected_info'] = {}
         
         # Ask for the first missing piece of information
-        self._ask_for_next_meeting_info()
+        return self._ask_for_next_meeting_info()
 
     def _ask_for_next_meeting_info(self):
         """
@@ -235,12 +240,13 @@ class Scheduler:
         Otherwise, it selects the next item from the missing_info list and prints a tailored question.
         """
         
+        self.meeting_context = self.brain.meeting_context
+
         if not self.meeting_context['missing_info']:
             # All required info collected; create complete message and process meeting creation
             combined_message = self._construct_complete_meeting_message()
-            self._handle_meeting_creation(combined_message)
             self.meeting_context['active'] = False
-            return
+            return self._handle_meeting_creation(combined_message)
 
         # Get the next missing information item
         next_info = self.meeting_context['missing_info'][0]
@@ -262,6 +268,7 @@ class Scheduler:
         
         response = questions.get(next_info, f"Please provide the {next_info} for the meeting") + context
         print(f"[{self.node_id}] Response: {response}")
+        return response
 
     def _continue_meeting_creation(self, message, sender_id):
         """
@@ -278,7 +285,7 @@ class Scheduler:
         if not self.meeting_context['missing_info']:
             # Shouldn't happen, but just in case
             self.meeting_context['active'] = False
-            return
+            return None
 
         # Remove the first missing detail, and save the user's answer under that key
         current_info = self.meeting_context['missing_info'].pop(0)
@@ -286,18 +293,18 @@ class Scheduler:
         
         if self.meeting_context['missing_info']:
             # More details are still required; ask the next question
-            self._ask_for_next_meeting_info()
+            return self._ask_for_next_meeting_info()
         else:
-            # All information collected: if rescheduling, call the respective handler; otherwise, proceed normally
-            if self.meeting_context.get('is_rescheduling', False) and 'target_event_id' in self.meeting_context:
-                self._complete_meeting_rescheduling()
-            else:
-                combined_message = self._construct_complete_meeting_message()
-                self._handle_meeting_creation(combined_message)
-            
             self.meeting_context['active'] = False
             print(f"[{self.node_id}] Response: Meeting {'rescheduled' if self.meeting_context.get('is_rescheduling') else 'scheduled'} successfully with all required information.")
 
+            # All information collected: if rescheduling, call the respective handler; otherwise, proceed normally
+            if self.meeting_context.get('is_rescheduling', False) and 'target_event_id' in self.meeting_context:
+                return self._complete_meeting_rescheduling()
+            else:
+                combined_message = self._construct_complete_meeting_message()
+                return self._handle_meeting_creation(combined_message)
+            
     def _construct_complete_meeting_message(self):
         """
         Construct a complete meeting instruction message by combining the initial command with the collected details.
@@ -335,7 +342,7 @@ class Scheduler:
         
         # Check if the brain has the required method for extracting meeting details
         if not self.brain or not hasattr(self.brain, '_extract_meeting_details'):
-            return
+            return None
 
         # Extract meeting details using an LLM-assisted helper method
         meeting_data = self.brain._extract_meeting_details(message)
@@ -345,8 +352,9 @@ class Scheduler:
         missing = [field for field in required_fields if not meeting_data.get(field)]
         
         if missing:
-            print(f"[{self.node_id}] Cannot schedule meeting: missing {', '.join(missing)}")
-            return
+            msg = f"[{self.node_id}] Cannot schedule meeting: missing {', '.join(missing)}"
+            print(msg)
+            return msg
         
         # Process and normalize participant names
         participants = []
@@ -357,8 +365,9 @@ class Scheduler:
         
         # Ensure the current node is included among the participants
         if not participants:
-            print(f"[{self.node_id}] Cannot schedule meeting: no valid participants")
-            return
+            msg = f"[{self.node_id}] Cannot schedule meeting: no valid participants"
+            print(msg)
+            return msg
             
         # Add the current node if not already included
         if self.node_id not in participants:
@@ -390,8 +399,8 @@ class Scheduler:
                     }
                     
                     # Ask for new date and time
-                    self._ask_for_next_meeting_info()
-                    return
+                    return self._ask_for_next_meeting_info()
+                    
                 
             except ValueError:
                 # If date parsing fails, notify user instead of auto-fixing
@@ -408,9 +417,8 @@ class Scheduler:
                 }
                 
                 # Ask for new date and time
-                self._ask_for_next_meeting_info()
-                return
-
+                return self._ask_for_next_meeting_info()
+                
             # Determine meeting duration (defaulting to 60 minutes if unspecified)
             duration_mins = int(meeting_data.get("duration", 60))
             end_datetime = start_datetime + timedelta(minutes=duration_mins)
@@ -423,9 +431,13 @@ class Scheduler:
             self._create_calendar_meeting(meeting_id, meeting_title, participants, start_datetime, end_datetime)
             
             # Confirm to user with reliable times
-            print(f"[{self.node_id}] Meeting '{meeting_title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}")
+            msg = f"[{self.node_id}] Meeting '{meeting_title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}"
+            print(msg)
+            return msg
+        
         except Exception as e:
-            print(f"[{self.node_id}] Error creating meeting: {str(e)}")
+            msg = f"[{self.node_id}] Error scheduling meeting: {str(e)}"
+            print(msg)
 
     def _handle_list_meetings(self):
         """
@@ -438,8 +450,9 @@ class Scheduler:
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, showing local meetings only")
             if not self.calendar:
-                print(f"[{self.node_id}] No meetings scheduled.")
-                return
+                msg = f"[{self.node_id}] No meetings scheduled."
+                print(msg)
+                return msg
             
         try:
             # Retrieve current time in the required ISO format for querying events
@@ -454,9 +467,11 @@ class Scheduler:
             events = events_result.get('items', [])
             
             if not events:
-                print(f"[{self.node_id}] No upcoming meetings found.")
-                return
+                msg = f"[{self.node_id}] No upcoming meetings found."
+                print(msg)
+                return msg
             
+            msg = f"[{self.node_id}] Upcoming meetings:"
             print(f"[{self.node_id}] Upcoming meetings:")
             for event in events:
                 # Get start time from event details
@@ -464,10 +479,15 @@ class Scheduler:
                 start_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
                 # Format attendee emails by extracting the user part
                 attendees = ", ".join([a.get('email', '').split('@')[0] for a in event.get('attendees', [])])
+                msg = msg + f"\n  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}"
                 print(f"  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}")
             
+            return msg
+        
         except Exception as e:
+            msg = f"[{self.node_id}] Error listing meetings: {str(e)}"
             print(f"[{self.node_id}] Error listing meetings: {str(e)}")
+            return msg
 
     def _handle_meeting_rescheduling(self, message):
         """
@@ -786,8 +806,9 @@ class Scheduler:
             events = events_result.get('items', [])
             
             if not events:
+                msg = f"[{self.node_id}] No upcoming meetings found to cancel."
                 print(f"[{self.node_id}] No upcoming meetings found to cancel")
-                return
+                return msg
             
             # Filter events based on cancellation criteria
             title_filter = cancel_data.get("title")
@@ -841,16 +862,25 @@ class Scheduler:
                             self.network.send_message(self.node_id, attendee, notification)
                 
                     cancelled_count += 1
+                    msg = f"[{self.node_id}] Meeting '{event.get('summary')}' cancelled."
                     print(f"[{self.node_id}] Cancelled meeting: {event.get('summary')}")
+                    return msg
             
             if cancelled_count == 0:
+                msg = f"[{self.node_id}] No meetings found matching the cancellation criteria"
                 print(f"[{self.node_id}] No meetings found matching the cancellation criteria")
+                return msg
             else:
+                msg = f"[{self.node_id}] Cancelled {cancelled_count} meeting(s)"
                 print(f"[{self.node_id}] Cancelled {cancelled_count} meeting(s)")
+                return msg
             
         except Exception as e:
+            msg = f"[{self.node_id}] Error cancelling meeting: {str(e)}"
             print(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
+            return msg
 
+    # TODO: Refactor this function to have return values instead of print statements 
     def _create_calendar_meeting(self, meeting_id, title, participants, start_datetime, end_datetime):
         """
         Create a meeting event in Google Calendar.
@@ -928,7 +958,7 @@ class Scheduler:
         """
         
         if not hasattr(self, 'meeting_context') or not self.meeting_context.get('active'):
-            return
+            return None
         
         # Get the new date and time
         new_date = self.meeting_context['collected_info'].get('date')
@@ -1002,6 +1032,7 @@ class Scheduler:
                         f"New time: {formatted_time}"
                     )
                     self.network.send_message(self.node_id, attendee_id, notification)
+                    return notification
         
         except Exception as e:
             print(f"[{self.node_id}] Error completing meeting rescheduling: {str(e)}")
@@ -1033,10 +1064,7 @@ class Scheduler:
         elif action == 'reschedule_meeting':
             return self._handle_meeting_rescheduling(message)
         else:
-            log_warning(f"[{self.node_id}] Unknown calendar action '{action}'")  # CHANGED
+            log_warning(f"[{self.node_id}] Unknown calendar action '{action}'") 
             return f"Sorry, I don't know how to '{action}'."
-
-        # Unified call signature
-        return handler(intent, message)
     
 #TODO: Implement the methods above to handle scheduling, cancelling, and sending reminders for meetings.

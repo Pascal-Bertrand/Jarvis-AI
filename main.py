@@ -135,7 +135,7 @@ class LLMNode:
         self.brain.gmail_service = self.gmail_service       # Inject gmail service
 
         # Initialize Scheduler and inject calendar service
-        self.scheduler = self.scheduler = Scheduler(node_id=self.node_id, calendar_service=self.calendar_service, network=self.network, brain=self.brain)
+        self.scheduler = Scheduler(node_id=self.node_id, calendar_service=self.calendar_service, network=self.network, brain=self.brain)
 
         # Initialize Communication and inject dependencies
         self.communication = Communication(self.node_id, self.llm_client, self.network, self.api_key)
