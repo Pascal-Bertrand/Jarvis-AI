@@ -181,6 +181,7 @@ var/
 .installed.cfg
 *.egg
 logs/
+temporary.py
 
 # Virtual Environment
 venv/
