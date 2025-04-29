@@ -283,6 +283,8 @@ class Scheduler:
             sender_id (str): The identifier for the sender.
         """        
         
+        self.meeting_context = self.brain.meeting_context
+
         if not self.meeting_context['missing_info']:
             # Shouldn't happen, but just in case
             self.meeting_context['active'] = False

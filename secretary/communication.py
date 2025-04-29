@@ -81,7 +81,7 @@ class Communication:
            if cal_intent.get('is_calendar_command', False):
                return self.scheduler.handle_calendar(cal_intent, message)
            if self.brain.meeting_context['active'] == True:
-               return self.scheduler._ask_for_next_meeting_info() # TODO: Call the correct method in Scheduler
+               return self.scheduler._continue_meeting_creation(message, sender_id)
 
         # Email commands - only check if message looks like an email-related command
         # Simple heuristic to avoid unnecessary LLM calls for non-email messages
