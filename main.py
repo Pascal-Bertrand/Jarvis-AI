@@ -452,7 +452,7 @@ def run_cli(network):
 
             if node_id in network.nodes:
                 # All commands now go through receive_message
-                response = network.nodes[node_id].receive_message(message, "cli_user") #TODO: What function is called here??
+                response = network.nodes[node_id].receive_message(message, "cli_user")
                 if response:
                     print(response)
             else:
