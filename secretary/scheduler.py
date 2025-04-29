@@ -1,5 +1,7 @@
 import json  
 from datetime import datetime, timedelta, timezone  
+import tzlocal
+import zoneinfo
 
 from network.tasks import Task            
 from network.internal_communication import Intercom  
@@ -101,7 +103,13 @@ class Scheduler:
             return self._fallback_schedule_meeting(project_id, participants)  
             
         meeting_description = f"Meeting for project '{project_id}'"
-        
+
+        try:
+            local_tz_name = tzlocal.get_localzone_name()
+        except Exception: # Catch potential errors and fallback
+            local_tz_name = 'UTC' # Fallback timezone
+
+
         # Schedule meeting for one day later, for a duration of one hour
         # TODO: Add a more flexible scheduling system (e.g., using LLM to extract date/time from message)
         start_time = datetime.now() + timedelta(days=1)
@@ -112,11 +120,11 @@ class Scheduler:
             'summary': meeting_description,
             'start': {
                 'dateTime': start_time.isoformat(),
-                'timeZone': 'UTC',
+                'timeZone': local_tz_name,
             },
             'end': {
                 'dateTime': end_time.isoformat(),
-                'timeZone': 'UTC',
+                'timeZone': local_tz_name,
             },
             'attendees': [{'email': f'{p}@example.com'} for p in participants],
         }
@@ -254,7 +262,8 @@ class Scheduler:
         
         # Predefined questions for standard meeting details
         questions = {
-            'time': "What time should the meeting be scheduled? (Please use HH:MM format in 24-hour time, e.g., 14:30)",
+            'time': "What time should the meeting be scheduled? (Please use the 12-hour time format, e.g., 2:30 PM)",
+            'duration': "How long should the meeting be? (Please use a number in minutes, e.g., 30)",
             'date': "On what date should the meeting be scheduled? (Please use YYYY-MM-DD format, e.g., 2023-12-31)",
             'participants': "Who should attend the meeting? Please list all participants.",
             'title': "What is the title or topic of the meeting?"
@@ -328,6 +337,8 @@ class Scheduler:
             complete_message += f"Date: {collected['date']}. "
         if 'time' in collected:
             complete_message += f"Time: {collected['time']}. "
+        if 'duration' in collected:
+            complete_message += f"Duration: {collected['duration']} minutes. "
         if 'participants' in collected:
             complete_message += f"Participants: {collected['participants']}."
         
@@ -352,7 +363,7 @@ class Scheduler:
         meeting_data = self.brain._extract_meeting_details(message)
         
         # Validate that required fields such as title and participants are present
-        required_fields = ['title', 'participants']
+        required_fields = ['title', 'participants', 'time']
         missing = [field for field in required_fields if not meeting_data.get(field)]
         
         if missing:
@@ -379,7 +390,7 @@ class Scheduler:
         
         # Process meeting date and time: use provided values or defaults
         meeting_date = meeting_data.get("date", datetime.now().strftime("%Y-%m-%d"))
-        meeting_time = meeting_data.get("time", (datetime.now() + timedelta(hours=1)).strftime("%H:%M"))
+        meeting_time = meeting_data.get("time", (datetime.now() + timedelta(minutes=int(meeting_data.get("duration")))).strftime("%H:%M"))
         
         try:
             # Validate date and time by attempting to parse them
@@ -424,13 +435,14 @@ class Scheduler:
                 return self._ask_for_next_meeting_info()
                 
             # Determine meeting duration (defaulting to 60 minutes if unspecified)
-            duration_mins = int(meeting_data.get("duration", 60))
+            duration_mins = int(meeting_data.get("duration"))
             end_datetime = start_datetime + timedelta(minutes=duration_mins)
             
             # Generate a unique meeting ID and set a meeting title
             meeting_id = f"meeting_{int(datetime.now().timestamp())}"
             meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
             
+            print(f"[{self.node_id}] Meeting title: {meeting_title}, participants: {participants}, start_datetime: {start_datetime}, end_datetime: {end_datetime}")
             # Schedule the meeting using the helper for creating calendar events
             self._create_calendar_meeting(meeting_id, meeting_title, participants, start_datetime, end_datetime)
             
@@ -497,7 +509,7 @@ class Scheduler:
                 attendees = ", ".join([a.get('email', '').split('@')[0] for a in event.get('attendees', [])])
                 msg = msg + f"\n  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}"
                 print(f"  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}")
-            
+                print (start_time)
             return msg
         
         except Exception as e:
@@ -551,7 +563,7 @@ class Scheduler:
             """
             
             response = self.client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
@@ -805,7 +817,7 @@ class Scheduler:
             """
             
             response = self.client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
@@ -922,16 +934,21 @@ class Scheduler:
             self._fallback_schedule_meeting(meeting_id, participants)
             return
         
+        try:
+            local_tz_name = tzlocal.get_localzone_name()
+        except Exception: # Catch potential errors and fallback
+            local_tz_name = 'UTC' # Fallback timezone
+
         # Create event
         event = {
             'summary': title,
             'start': {
                 'dateTime': start_datetime.isoformat(),
-                'timeZone': 'UTC',
+                'timeZone': local_tz_name,
             },
             'end': {
                 'dateTime': end_datetime.isoformat(),
-                'timeZone': 'UTC',
+                'timeZone': local_tz_name,
             },
             'attendees': [{'email': f'{p}@example.com'} for p in participants],
         }

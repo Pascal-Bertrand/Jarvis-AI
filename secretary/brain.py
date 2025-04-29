@@ -110,7 +110,7 @@ class Brain:
         openai.api_key = openai_api_key
         self.client = openai
         self.llm_params = llm_params or {
-            "model": "gpt-4.1",
+            "model": "gpt-4o-mini",
             "temperature": 0.1,
             "max_tokens": 1000
         }
@@ -138,6 +138,7 @@ class Brain:
         self.people = People()     # local cache of people (if needed)
         self.calendar = []
         self.context = []       # conversation history for LLM (if needed)
+        self.scheduler = None
 
         # --- Calendar & Email stubs (to be injected or initialized elsewhere) ---
         self.calendar_service = None
@@ -170,7 +171,7 @@ class Brain:
         Return JSON with:
         - is_calendar_command: boolean
         - action: string ("schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or null)
-        - missing_info: array of strings (what information is missing: "time", "participants", "date", "title")
+        - missing_info: array of strings (what information is missing: "time", "duration", "participants", "date", "title")
         """
         
         try:
@@ -490,7 +491,7 @@ class Brain:
             
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-4.1",
+                    model="gpt-4o-mini",
                     messages=[{"role": "user", "content": prompt}],
                     tools=functions,
                     tool_choice={"type": "function", "function": {"name": "create_task"}}
@@ -520,7 +521,7 @@ class Brain:
                                     print(f"[{self.node_id}] Created task: {task}")
                                     
                                     # Create a calendar reminder for the task
-                                    self.create_calendar_reminder(task)
+                                    return self.scheduler.create_calendar_reminder(task)
             
             except Exception as e:
                 print(f"[{self.node_id}] Error generating tasks for step {i+1}: {e}")
@@ -682,7 +683,7 @@ class Brain:
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
@@ -1003,7 +1004,7 @@ class Brain:
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
@@ -1047,7 +1048,7 @@ class Brain:
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
