@@ -135,6 +135,10 @@ class Brain:
             'collected_info': {}
         }
 
+        self.people = People()     # local cache of people (if needed)
+        self.calendar = []
+        self.context = []       # conversation history for LLM (if needed)
+
         # --- Calendar & Email stubs (to be injected or initialized elsewhere) ---
         self.calendar_service = None
         self.gmail_service    = None

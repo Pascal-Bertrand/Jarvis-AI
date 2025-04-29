@@ -176,7 +176,8 @@ class Scheduler:
             project_id (str): Identifier for the project related to the meeting.
             participants (list): List of participant identifiers.
         """
-        
+
+        # TODO: Store in a more user-friendly format (e.g. write a summary of the meeting info)
         meeting_info = f"Meeting for project '{project_id}' scheduled for {datetime.now() + timedelta(days=1)}"
         self.calendar.append({
             'project_id': project_id,
@@ -391,7 +392,7 @@ class Scheduler:
                     print(f"[{self.node_id}] Response: The meeting time {meeting_date} at {meeting_time} is in the past. Please provide a future date and time.")
                     
                     # Store context for follow-up
-                    self.meeting_context = {
+                    self.brain.meeting_context = {
                         'active': True,
                         'collected_info': {
                             'title': meeting_data.get("title"),
@@ -451,12 +452,24 @@ class Scheduler:
         """
         
         if not self.calendar_service:
+            msg = f"[{self.node_id}] Calendar service not available, showing local meetings only"
             print(f"[{self.node_id}] Calendar service not available, showing local meetings only")
+
             if not self.calendar:
-                msg = f"[{self.node_id}] No meetings scheduled."
+                msg += f"[{self.node_id}] No meetings scheduled."
                 print(msg)
                 return msg
             
+            msg += f"\n[{self.node_id}] Upcoming meetings:"
+            print(f"[{self.node_id}] Upcoming meetings:")
+            for meeting in self.brain.calendar:
+                # Format meeting details
+                meeting_info = meeting.get('meeting_info', 'No details available')
+                msg = msg + f"\n  - {meeting_info}"
+                print(f"  - {meeting_info}")
+            
+            return msg
+        
         try:
             # Retrieve current time in the required ISO format for querying events
             now = datetime.now(timezone.utc).isoformat()
@@ -774,8 +787,9 @@ class Scheduler:
         
         # First, get all meetings from calendar
         if not self.calendar_service:
+            msg = f"[{self.node_id}] Calendar service not available, can't cancel meetings"
             print(f"[{self.node_id}] Calendar service not available, can't cancel meetings")
-            return
+            return msg
         
         try:
             # Use OpenAI to extract cancellation details
@@ -797,6 +811,8 @@ class Scheduler:
             )
             
             cancel_data = json.loads(response.choices[0].message.content)
+
+            # TODO: Add a method for local calendar handling
             
             # Get upcoming meetings
             now = datetime.now(timezone.utc).isoformat()
@@ -936,6 +952,9 @@ class Scheduler:
                 'meeting_info': title,
                 'event_id': event['id']
             })
+            
+            # Update the brain's calendar with the new event
+            self.brain.calendar.append(self.calendar[-1])
 
             # Notify each participant (if not the sender) about the scheduled meeting
             for p in participants:
@@ -947,11 +966,13 @@ class Scheduler:
                     })
                     notification = f"New meeting: '{title}' scheduled by {self.node_id} for {meeting_date} at {meeting_time}"
                     self.network.send_message(self.node_id, p, notification)
+
         except Exception as e:
             print(f"[{self.node_id}] Failed to create calendar event: {e}")
             # Fallback to local calendar
             self._fallback_schedule_meeting(meeting_id, participants)
 
+    #TODO: Add correct return statements to this function and handle separation of concerns nicely
     def _complete_meeting_rescheduling(self):
         """
         Complete the meeting rescheduling process using collected meeting context details.
@@ -1070,4 +1091,4 @@ class Scheduler:
             log_warning(f"[{self.node_id}] Unknown calendar action '{action}'") 
             return f"Sorry, I don't know how to '{action}'."
     
-#TODO: Implement the methods above to handle scheduling, cancelling, and sending reminders for meetings.
+#TODO: Implement more methods, like sending reminders for meetings.
