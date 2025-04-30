@@ -452,22 +452,82 @@ class Scheduler:
             duration_mins = int(meeting_data.get("duration"))
             end_datetime = start_datetime + timedelta(minutes=duration_mins)
 
+            # --- Start: Conflict Check and Resolution ---
+            conflict_found = False
+            conflicting_participant = None
             for p in participants:
                 if not self._check_time_with_attendees(p, start_datetime, end_datetime):
-                    return self.find_perfect_meeting_time(participants, start_datetime, end_datetime)
+                    conflict_found = True
+                    conflicting_participant = p
+                    log_warning(f"[{self.node_id}] Conflict detected for participant '{p}' at proposed time {start_datetime}.")
+                    break # Exit loop on first conflict
+
+            if conflict_found:
+                # Call find_perfect_meeting_time to get a suggestion
+                exist_conflict, proposed_start, proposed_end = self.find_perfect_meeting_time(participants, start_datetime, end_datetime)
+
+                if not proposed_start: # Handle case where LLM fails to propose a time
+                     msg = f"[{self.node_id}] Could not find an alternative time slot for all participants."
+                     print(msg)
+                     return msg
+
+                # Always check the exist_conflict flag from the LLM's analysis
+                if exist_conflict:
+                    # Ask user to confirm the LLM's proposed time
+                    formatted_proposed_time = proposed_start.strftime('%Y-%m-%d %H:%M')
+                    confirm_prompt = (f"Conflict found for {conflicting_participant}. The next available slot for all participants seems to be "
+                                      f"{formatted_proposed_time}. Schedule then?")
+                    
+                    # Use the Confirmation class via the brain instance
+                    if self.brain.confirmation.request(confirm_prompt):
+                        # User confirmed, schedule at proposed time
+                        log_system_message(f"[{self.node_id}] User confirmed alternative time: {formatted_proposed_time}")
+                        meeting_id = f"meeting_{int(datetime.now().timestamp())}" # Regenerate ID maybe?
+                        meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
+                        self._create_calendar_meeting(meeting_id, meeting_title, participants, proposed_start, proposed_end)
+                        msg = f"[{self.node_id}] Meeting '{meeting_title}' scheduled for {formatted_proposed_time} with {', '.join(participants)} after finding a conflict."
+                        print(msg)
+                        return msg
+                    else:
+                        # User declined the proposed time
+                        msg = f"[{self.node_id}] User declined the proposed alternative time. Meeting not scheduled."
+                        print(msg)
+                        # If declined, we stop here as per current requirement.
+                        return msg
+                else:
+                     # LLM indicated no conflict OR suggested the original time was fine?
+                     # Schedule at the time the LLM proposed (which might be the original time if it found no conflict)
+                     log_system_message(f"[{self.node_id}] LLM found no conflict or suggested using {proposed_start}. Scheduling at proposed time.")
+                     meeting_id = f"meeting_{int(datetime.now().timestamp())}"
+                     meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
+                     self._create_calendar_meeting(meeting_id, meeting_title, participants, proposed_start, proposed_end)
+                     msg = f"[{self.node_id}] Meeting '{meeting_title}' scheduled for {proposed_start.strftime('%Y-%m-%d %H:%M')} with {', '.join(participants)} as per conflict check."
+                     print(msg)
+                     return msg
+
+            else:
+                # No conflicts found by _check_time_with_attendees, schedule directly
+                log_system_message(f"[{self.node_id}] No conflicts detected for the proposed time {start_datetime}. Scheduling directly.")
+                meeting_id = f"meeting_{int(datetime.now().timestamp())}"
+                meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
+                self._create_calendar_meeting(meeting_id, meeting_title, participants, start_datetime, end_datetime)
+                msg = f"[{self.node_id}] Meeting '{meeting_title}' scheduled for {start_datetime.strftime('%Y-%m-%d %H:%M')} with {', '.join(participants)}"
+                print(msg)
+                return msg
+            # --- End: Conflict Check and Resolution ---
 
             # Generate a unique meeting ID and set a meeting title
-            meeting_id = f"meeting_{int(datetime.now().timestamp())}"
-            meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
-            
-            print(f"[{self.node_id}] Meeting title: {meeting_title}, participants: {participants}, start_datetime: {start_datetime}, end_datetime: {end_datetime}")
+            # meeting_id = f"meeting_{int(datetime.now().timestamp())}"
+            # meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
+            #
+            # print(f"[{self.node_id}] Meeting title: {meeting_title}, participants: {participants}, start_datetime: {start_datetime}, end_datetime: {end_datetime}")
             # Schedule the meeting using the helper for creating calendar events
-            self._create_calendar_meeting(meeting_id, meeting_title, participants, start_datetime, end_datetime)
-            
+            # self._create_calendar_meeting(meeting_id, meeting_title, participants, start_datetime, end_datetime)
+
             # Confirm to user with reliable times
-            msg = f"[{self.node_id}] Meeting '{meeting_title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}"
-            print(msg)
-            return msg
+            # msg = f"[{self.node_id}] Meeting '{meeting_title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}"
+            # print(msg)
+            # return msg
         
         except Exception as e:
             msg = f"[{self.node_id}] Error scheduling meeting: {str(e)}"
