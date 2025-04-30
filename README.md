@@ -22,4 +22,14 @@ An allround AI Secretary and network communication program to kill admin work in
 ## Demo
 - To illustrate how flexible meeting scheduling works, edit the block_time function in main.py (produces a calender conflict by default) and run the main.py
 - If the proposed time for a new meeting clashes with the internal calendar, Jarvis proposes a better time that works for every one (confirm in the terminal)
-- If there are no clashes, the meeting is scheduled immediately 
+- If there are no clashes, the meeting is scheduled immediately
+
+## Example chats
+Create an extensive project plan...
+(./assets/planning.png)
+
+... and the corresponding tasks for everyone in the org
+(./assets/tasks.png)
+
+Schedule new meetings
+(./assets/scheduling.png)
