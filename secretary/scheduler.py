@@ -1188,7 +1188,7 @@ class Scheduler:
         except Exception as e:
             print(f"[{self.node_id}] Failed to create calendar event: {e}")
             # Fallback to local calendar
-            self._fallback_schedule_meeting(meeting_id, participants)
+            self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime)
 
     #TODO: Add correct return statements to this function and handle separation of concerns nicely
     def _complete_meeting_rescheduling(self):
