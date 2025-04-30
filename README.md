@@ -26,10 +26,10 @@ An allround AI Secretary and network communication program to kill admin work in
 
 ## Example chats
 Create an extensive project plan...
-(assets/planning.png)
+(/assets/planning.png)
 
 ... and the corresponding tasks for everyone in the org
-(assets/tasks.png)
+(/assets/tasks.png)
 
 Schedule new meetings
-(assets/scheduling.png)
+(/assets/scheduling.png)
