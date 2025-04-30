@@ -596,6 +596,7 @@ class Scheduler:
             print(calendar)
             return
         
+        # TODO: Replace with a conversation between agents to find the perfect meeting time
         prompt = f"""
         Extract all meetings from this calender for every node: '{calendar}'
 

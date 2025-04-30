@@ -15,7 +15,6 @@ from flask_cors import CORS
 import base64
 import tempfile
 import re
-from flask_socketio import SocketIO
 
 # --- Import Logging ---
 from secretary.utilities.logging import log_user_message, log_agent_message, log_system_message, log_network_message, log_error, log_warning, log_api_request, log_api_response
@@ -497,6 +496,22 @@ def demo_flexible_meeting(network) -> None:
     block_time('design',      10, 'Design Review')           # 10:00–11:00
     block_time('marketing',   11, 'Marketing Sync')          # 11:00–12:00
 
+    # # Introduction message
+    # intro = (
+    #     "You are the CEO.\n"
+    #     "• Engineering is busy on 2025-05-13 from 09:00 to 10:00.\n"
+    #     "• Design is busy on 2025-05-13 from 10:00 to 11:00.\n"
+    #     "• Marketing is busy on 2025-05-13 from 11:00 to 12:00.\n"
+    #     "\n"
+    #     "Now, to schedule your smart meeting, try something like:\n"
+    #     "Please schedule a 30-minute meeting with engineering, design, and marketing "
+    #     "on 2025-05-13 at 10:30."
+    #     "Title: 'Project X Kickoff'"
+    #     "Description: 'Discuss project X requirements and timelines.'\n"
+    # )
+
+    # print(f"[demo] ceo: {intro}")   
+
     # CEO proposes a meeting at 10:30 for 30 minutes (conflicts with Design)
     proposal = (
         "Please schedule a 30-minute meeting with engineering, design, and marketing "
@@ -506,7 +521,7 @@ def demo_flexible_meeting(network) -> None:
     )
     print(f"[demo] ceo proposes: {proposal}")
     response = network.nodes['ceo'].receive_message(proposal, 'cli_user')
-    print(f"[demo] Scheduler response: {response}")
+    return (f"[demo] Scheduler response: {response}")
 
 if __name__ == "__main__":
     # Make sure network is initialized before flask starts using it
@@ -526,7 +541,6 @@ if __name__ == "__main__":
     network.register_node(design.node_id, design)
 
     log_system_message(f"Nodes registered: {network.get_all_nodes()}")
-
 
     # Start Flask using the shared socketio instance
     flask_thread = threading.Thread(target=start_flask) 
