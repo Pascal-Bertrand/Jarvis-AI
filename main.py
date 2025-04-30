@@ -460,6 +460,54 @@ def run_cli(network):
         else:
             print("Invalid format. Use:\n  node_id: message\n  OR\n  quit\n")
 
+def demo_flexible_meeting(network) -> None:
+    """
+    Demonstration of flexible meeting scheduling using each assistant’s self.brain.calendar.
+    Situation:
+      - We pre-fill each stakeholder’s calendar at different times on May 13, 2025.
+      - The CEO then proposes a 30-minute meeting at 10:30, conflicting with Design,
+        and the scheduler should suggest an alternative.
+
+    #TODO: Implement this with communication of the personal assistants. 
+    #      They should all have the preferences of their users in mind and act accordingly.
+    """
+    from datetime import datetime, timedelta
+
+    # Ensure every node has a calendar list
+    for node in network.nodes:
+        network.nodes[node].brain.calendar = []
+
+    date = datetime(2025, 5, 13)
+
+    def block_time(node_id: str, start_hour: int, summary: str):
+        node = network.nodes['ceo']
+        start_dt = date.replace(hour=start_hour, minute=0, second=0)
+        end_dt = start_dt + timedelta(hours=1)
+        node.brain.calendar.append({
+            'project_id': f'{node_id}_busy',
+            'start_time': start_dt.isoformat(),
+            'end_time':   end_dt.isoformat(),
+            'meeting_info': summary,
+            'participants': [node_id],
+        })
+        print(f"[demo] {node_id} busy: {summary} from {start_dt.time()} to {end_dt.time()}")
+
+    # Block each team at different times
+    block_time('engineering', 9,  'Engineering Deep Work')   # 09:00–10:00
+    block_time('design',      10, 'Design Review')           # 10:00–11:00
+    block_time('marketing',   11, 'Marketing Sync')          # 11:00–12:00
+
+    # CEO proposes a meeting at 10:30 for 30 minutes (conflicts with Design)
+    proposal = (
+        "Please schedule a 30-minute meeting with engineering, design, and marketing "
+        "on 2025-05-13 at 10:30."
+        "Title: 'Project X Kickoff'"
+        "Description: 'Discuss project X requirements and timelines.'"
+    )
+    print(f"[demo] ceo proposes: {proposal}")
+    response = network.nodes['ceo'].receive_message(proposal, 'cli_user')
+    print(f"[demo] Scheduler response: {response}")
+
 if __name__ == "__main__":
     # Make sure network is initialized before flask starts using it
     network = Intercom(log_file="communication_log.txt") # Use Intercom
@@ -490,8 +538,9 @@ if __name__ == "__main__":
     browser_thread.daemon = True
     browser_thread.start()
 
-    run_cli(network)
-
+    #run_cli(network)
+    demo_flexible_meeting(network) # Uncomment to run the demo
+    
     # Keep the main thread alive (Flask runs in daemon threads)
     # Or join the flask thread if you want the script to exit when Flask exits
     flask_thread.join() # This would block here

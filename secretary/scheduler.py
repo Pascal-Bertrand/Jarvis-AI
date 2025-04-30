@@ -6,6 +6,7 @@ import zoneinfo
 from network.tasks import Task            
 from network.internal_communication import Intercom  
 from secretary.utilities.logging import log_system_message, log_warning  
+from secretary.brain import LLMClient
 
 class Scheduler:
 
@@ -21,8 +22,9 @@ class Scheduler:
         self.node_id = node_id
         self.calendar_service = calendar_service
         self.network = network               
-        self.calendar = []
-        self.brain = brain                   
+        self.brain = brain
+        self.calendar = self.network.local_calendar if self.network and node_id in self.network.nodes else [] 
+        self.node = self.network.nodes.get(node_id) if self.network and node_id in self.network.nodes else None
 
         # Attach this calendar list to the Brain node so meetings show up
         if self.network and self.node_id in self.network.nodes:
@@ -96,11 +98,6 @@ class Scheduler:
             
         The method also notifies other participants by adding the event to their local calendars and sending messages.
         """
-        
-        if not self.calendar_service:
-            log_warning(f"[{self.node_id}] Calendar service not available, using local scheduling")
-            print(f"[{self.node_id}] Calendar service not available, using local scheduling")
-            return self._fallback_schedule_meeting(project_id, participants)  
             
         meeting_description = f"Meeting for project '{project_id}'"
 
@@ -115,6 +112,11 @@ class Scheduler:
         start_time = datetime.now() + timedelta(days=1)
         end_time = start_time + timedelta(hours=1)
         
+        if not self.calendar_service:
+            log_warning(f"[{self.node_id}] Calendar service not available, using local scheduling")
+            print(f"[{self.node_id}] Calendar service not available, using local scheduling")
+            return self._fallback_schedule_meeting(project_id, participants, start_time, end_time)  
+
         # Build the meeting event structure
         event = {
             'summary': meeting_description,
@@ -172,9 +174,9 @@ class Scheduler:
             log_warning(f"[{self.node_id}] Failed to create calendar event: {e}")
             print(f"[{self.node_id}] Failed to create calendar event: {e}")
             # If creation fails, revert to local scheduling
-            return self._fallback_schedule_meeting(project_id, participants)
+            return self._fallback_schedule_meeting(project_id, participants, start_time, end_time)
     
-    def _fallback_schedule_meeting(self, project_id: str, participants: list):
+    def _fallback_schedule_meeting(self, project_id: str, participants: list, start_datetime: datetime, end_datetime: datetime):
         """
         Fallback method to locally schedule a meeting when Google Calendar is unavailable.
         
@@ -186,12 +188,24 @@ class Scheduler:
         """
 
         # TODO: Store in a more user-friendly format (e.g. write a summary of the meeting info)
-        meeting_info = f"Meeting for project '{project_id}' scheduled for {datetime.now() + timedelta(days=1)}"
+        meeting_info = f"Meeting for project '{project_id}' scheduled for {start_datetime.strftime('%Y-%m-%d %H:%M')} for a duration of {(end_datetime - start_datetime).seconds // 60} minutes."
         self.calendar.append({
             'project_id': project_id,
-            'meeting_info': meeting_info
+            'start_time': start_datetime.isoformat(),
+            'end_time': end_datetime.isoformat(),
+            'meeting_info': meeting_info,
+            'participants': participants
         })
         
+        # Save to the brain's calendar
+        self.brain.calendar.append({
+            'project_id': project_id,
+            'start_time': start_datetime.isoformat(),
+            'end_time': end_datetime.isoformat(),
+            'meeting_info': meeting_info,
+            'participants': participants
+        })
+
         log_system_message(f"[{self.node_id}] Scheduled local meeting: {meeting_info}")        
 
         # Notify every participant in the network, skipping any unknown participants
@@ -437,7 +451,11 @@ class Scheduler:
             # Determine meeting duration (defaulting to 60 minutes if unspecified)
             duration_mins = int(meeting_data.get("duration"))
             end_datetime = start_datetime + timedelta(minutes=duration_mins)
-            
+
+            for p in participants:
+                if not self._check_time_with_attendees(p, start_datetime, end_datetime):
+                    return self.find_perfect_meeting_time(participants, start_datetime, end_datetime)
+
             # Generate a unique meeting ID and set a meeting title
             meeting_id = f"meeting_{int(datetime.now().timestamp())}"
             meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
@@ -454,6 +472,126 @@ class Scheduler:
         except Exception as e:
             msg = f"[{self.node_id}] Error scheduling meeting: {str(e)}"
             print(msg)
+
+    def _check_time_with_attendees(self, participant_id: str, start_datetime: datetime, end_datetime: datetime) -> bool:
+        """
+        Check if the specified time range is available for a participant.
+        
+        Args:
+            participant_id (str): The identifier for the participant to check.
+            start_datetime (datetime): The proposed start time for the meeting.
+            end_datetime (datetime): The proposed end time for the meeting.
+            
+        Returns:
+            bool: True if the time is available, False otherwise.
+        """
+
+        participant_calendar = self.brain.calendar
+
+        #print(participant_calendar)
+
+        if not participant_calendar:
+            return True
+        
+        for meeting in participant_calendar:
+            # only consider meetings that include this participant
+            if participant_id not in meeting['participants']:
+                continue
+
+            # parse ISO strings to datetimes
+            meeting_start = datetime.fromisoformat(meeting['start_time'])
+            meeting_end = datetime.fromisoformat(meeting['end_time'])
+            
+            # Check if the proposed time overlaps with any existing meetings
+            if (start_datetime > meeting_start and end_datetime < meeting_end):
+                return False
+            elif (start_datetime == meeting_start or end_datetime == meeting_end):
+                return False
+            elif (start_datetime < meeting_end and end_datetime > meeting_start):
+                return False
+            else:
+                return True
+
+    def find_perfect_meeting_time(self, participants: list[str], start_datetime: datetime, end_datetime: datetime) -> str:
+        """
+        Find a perfect meeting time for all participants by checking their availability.
+
+        Goes through all participants' calendars and finds a time slot that works for everyone.
+        
+        Args:
+            participants (list): The identifier for all participants.
+            start_datetime (datetime): The proposed start time for the meeting.
+            end_datetime (datetime): The proposed end time for the meeting.
+            
+        Returns:
+            str: A confirmation message if the proposed meeting should be scheduled. (use class Confirmation)
+        """
+
+        print('DEBUG: Entered find_perfect_meeting_time')
+
+        duration = (end_datetime - start_datetime).total_seconds() / 60
+        calendar = self.brain.calendar
+        if not calendar:
+            print(f" Calendar service not available, can't schedule meetings")
+            print(calendar)
+            return
+        
+        prompt = f"""
+        Extract all meetings from this calender for every node: '{calendar}'
+
+        Identitfy if there are any potential conflicts with the existing meetings in {calendar}
+        with a new meeting that goes from {start_datetime} to {end_datetime} with {participants} as participants.
+
+        If there is a conflict return the meeting time and participants of the conflicting meeting and propose the next possible time slot with a duration of {duration} minutes
+        that is free for all participants: {participants}. 
+        
+        Return a JSON object with these fields:
+        - exist_conflict: A bool that is true if there are meeting conflicts and false otherwise 
+        - proposed_start_time: The start time of the next possible meeting slot if there are meeting conflicts and None otherwise
+        
+        IMPORTANT: exist_conflict MUST be a bool. proposed_start_time MUST be a datetime. ALL participants MUST be free (i.e. have no meetings scheduled) during the proposed time slot.
+        """
+    
+        response = self.node.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+        
+        response_content = response.choices[0].message.content
+
+        print(response_content, participants)
+
+        # response_content = LLMClient.chat(self, prompt)
+        # print(f"[{self.node_id}] Response: {response_content}")
+
+        try:
+            reschedule_data = json.loads(response_content)
+        except json.JSONDecodeError as e:
+            msg = f"[{self.node_id}] Error parsing rescheduling JSON: {e}"
+            print(f"[{self.node_id}] Error parsing rescheduling JSON: {e}")
+            return msg
+        
+        print(reschedule_data)
+
+        exist_conflict = None
+        if "exist_conflict" in reschedule_data and reschedule_data["exist_conflict"]:
+            exist_conflict = bool(reschedule_data["exist_conflict"])
+        
+        print(exist_conflict)
+
+        proposed_start_time = None
+        if "proposed_start_time" in reschedule_data and reschedule_data['proposed_start_time']:
+            proposed_start_time = datetime.strptime(reschedule_data['proposed_start_time'], "%Y-%m-%dT%H:%M:%S")
+        print(proposed_start_time)
+        
+        proposed_end_time = proposed_start_time + (end_datetime - start_datetime)
+
+        print(exist_conflict, proposed_start_time, proposed_end_time)
+
+        # TODO: Return a confirmation message with the proposed time slot and participants (class Confirmation)      
+        return exist_conflict, proposed_start_time, proposed_end_time
+
 
     def _handle_list_meetings(self):
         """
@@ -931,7 +1069,7 @@ class Scheduler:
         # If calendar service is not available, fall back to local scheduling
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, using local scheduling")
-            self._fallback_schedule_meeting(meeting_id, participants)
+            self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime)
             return
         
         try:
@@ -966,6 +1104,9 @@ class Scheduler:
             # Add the meeting to the local calendar
             self.calendar.append({
                 'project_id': meeting_id,
+                'start_time': start_datetime,
+                'end_time': end_datetime,
+                'participants': participants,
                 'meeting_info': title,
                 'event_id': event['id']
             })

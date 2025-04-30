@@ -25,6 +25,7 @@ class People:
             - self.nodes: empty dict for participant registration
             - self.log_file: stored file path for logging
             - self.tasks: empty list for tasks (managed by subclasses)
+            - self.local_calendar: empty list for local calendar (for scheduling tasks)
         """
   
         # Map of participant_id to participant instance
@@ -33,6 +34,8 @@ class People:
         self.log_file = log_file
         # Shared task list; actual addition happens via subclass methods (in particular Intercom)
         self.tasks: List[Task] = []
+        # Initialize local calendar (for scheduling tasks)
+        self.local_calendar = []
         
     def register_node(self, node_id: str, node_obj: object):
         """

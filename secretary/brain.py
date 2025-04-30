@@ -122,7 +122,7 @@ class Brain:
         self.confirmation = Confirmation()
 
         # --- Network / messaging / tasks ---
-        self.network: Intercom = network
+        self.network = network
         self.network.register_node(node_id, self)
         self.tasks = []            # local cache if needed
         self.projects = {}         # project plans by project_id
