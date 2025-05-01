@@ -24,6 +24,9 @@ An allround AI Secretary and network communication program to kill admin work in
 - If the proposed time for a new meeting clashes with the internal calendar, Jarvis proposes a better time that works for every one (confirm in the terminal)
 - If there are no clashes, the meeting is scheduled immediately
 
+## Demo video
+https://twitter.com/PascalBtd/status/1917884623737979049?ref_src=twsrc%5Etfw
+
 ## Example chats
 Create an extensive project plan...
 ![image](https://github.com/user-attachments/assets/b53e35e8-7534-4f91-929b-a193b1318a90)
