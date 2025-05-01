@@ -1,6 +1,7 @@
 import re, json
 from datetime import datetime, timedelta
 import openai
+import threading
 
 from network.internal_communication import Intercom
 from network.tasks import Task
@@ -70,6 +71,7 @@ class Confirmation:
         Initialize the Confirmation service.
         (Future configuration hooks can go here.)
         """
+        self.socketio = socketio  # Assuming socketio is globally available
         # no state for now, but __init__ makes this class instantiable externally
         pass
 
@@ -83,7 +85,8 @@ class Confirmation:
         Returns:
             bool: True if the user's response begins with 'y' (case-insensitive).
         """
-        answer = input(f"{prompt} (y/n): ").strip().lower()
+
+        answer = prompt.strip().lower()
         return answer.startswith("y")
 
 class Brain:
@@ -139,6 +142,13 @@ class Brain:
         self.calendar = []
         self.context = []       # conversation history for LLM (if needed)
         self.scheduler = None
+        self.confirmation_context = {
+            'active': False,
+            'context': None,      # e.g. "schedule meeting", "cancel meeting"
+            'initial_message': None,
+            'start_datetime': None,
+            'end_datetime': None
+        }
 
         # --- Calendar & Email stubs (to be injected or initialized elsewhere) ---
         self.calendar_service = None

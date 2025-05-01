@@ -1,10 +1,12 @@
 import re
 import base64
 from typing import List, Dict, Optional
+from datetime import datetime, timedelta, timezone 
 
 from secretary.utilities.logging import log_user_message, log_network_message, log_warning
 from secretary.utilities.google import initialize_google_services
 from secretary.scheduler import Scheduler
+from secretary.brain import Confirmation
 #from secretary.brain import Brain
 
 class Communication:
@@ -75,6 +77,15 @@ class Communication:
         if quick_cmd_response is not None:
             return quick_cmd_response
 
+        # Check if the message is the response to a confirmation question
+        if self.brain and self.brain.confirmation_context['active'] == True:
+            if Confirmation.request(self, message):
+                self.brain.confirmation_context['active'] = False
+                return self._handle_confirmation_response(message, sender_id)
+            else:
+                self.brain.confirmation_context['active'] = False
+                return "No problem, let me know if you need anything else."
+
         # Calendar commands -> delegate entirely to Scheduler
         if self.scheduler:
            cal_intent = self.brain._detect_calendar_intent(message)
@@ -100,6 +111,26 @@ class Communication:
 
         # Fallback: send to LLM
         return self._chat_with_llm(message)
+    
+    def _handle_confirmation_response(self, message: str, sender_id: str) -> Optional[str]:
+        """
+        Handle the response to a confirmation question.
+
+        Args:
+            message (str): The response message from the user.
+            sender_id (str): The ID of the sender.
+
+        Returns:
+            Optional[str]: Response string based on confirmation.
+        """
+        
+        if self.brain.confirmation_context['context'] == 'schedule meeting':
+            meeting_id = f"meeting_{int(datetime.now().timestamp())}"
+            meeting_title = self.brain.meeting_context.get('title')
+            participants = self.brain.meeting_context.get('participants', [])
+            proposed_start = self.brain.confirmation_context['start_datetime']
+            proposed_end = self.brain.confirmation_context['end_datetime']
+            return self.scheduler._create_calendar_meeting(meeting_id, meeting_title, participants, proposed_start, proposed_end)
 
     def _handle_quick_command(self, message: str, sender_id: str) -> Optional[str]:
         """

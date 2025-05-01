@@ -552,8 +552,8 @@ if __name__ == "__main__":
     browser_thread.daemon = True
     browser_thread.start()
 
-    #run_cli(network)
-    demo_flexible_meeting(network) # Uncomment to run the demo
+    run_cli(network)
+    #demo_flexible_meeting(network) # Uncomment to run the demo
     
     # Keep the main thread alive (Flask runs in daemon threads)
     # Or join the flask thread if you want the script to exit when Flask exits

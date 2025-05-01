@@ -476,7 +476,9 @@ class Scheduler:
                     # Ask user to confirm the LLM's proposed time
                     formatted_proposed_time = proposed_start.strftime('%Y-%m-%d %H:%M')
                     confirm_prompt = (f"Conflict found for {conflicting_participant}. The next available slot for all participants seems to be "
-                                      f"{formatted_proposed_time}. Schedule then?")
+                                      f"{formatted_proposed_time}. Schedule then? (yes/no)")
+                    
+                    return confirm_prompt
                     
                     # Use the Confirmation class via the brain instance
                     if self.brain.confirmation.request(confirm_prompt):
@@ -647,6 +649,14 @@ class Scheduler:
         print(proposed_start_time)
         
         proposed_end_time = proposed_start_time + (end_datetime - start_datetime)
+
+        self.brain.confirmation_context = {
+            'active': True,
+            'context': 'schedule meeting',
+            'initial_message': f"Proposed meeting time: {proposed_start_time} to {proposed_end_time}",
+            'start_datetime': proposed_start_time,
+            'end_datetime': proposed_end_time
+        }
 
         print(exist_conflict, proposed_start_time, proposed_end_time)
 
@@ -1130,8 +1140,8 @@ class Scheduler:
         # If calendar service is not available, fall back to local scheduling
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, using local scheduling")
-            self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime)
-            return
+            return self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime)
+            
         
         try:
             local_tz_name = tzlocal.get_localzone_name()
