@@ -221,13 +221,18 @@ def show_projects():
 
     all_projects = {}
     for node_id, node in network.nodes.items():
-        for project_id, project in node.projects.items():
-            if project_id not in all_projects:
-                all_projects[project_id] = {
-                    "name": project.get("name", ""),
-                    "participants": list(project.get("participants", set())),
-                    "owner": node_id
-                }
+        # Check if the node has a brain and the brain has projects
+        if hasattr(node, 'brain') and node.brain and hasattr(node.brain, 'projects'):
+            # Access projects stored within the node's Brain instance
+            for project_id, project in node.brain.projects.items():
+                if project_id not in all_projects:
+                    all_projects[project_id] = {
+                        "name": project.get("name", ""),
+                        "participants": list(project.get("participants", set())),
+                        "owner": node_id
+                    }
+        else:
+            log_warning(f"Node {node_id} does not have a brain or projects attribute.")
 
     return jsonify(all_projects)
 
@@ -461,9 +466,9 @@ def run_cli(network):
 
 def demo_flexible_meeting(network) -> None:
     """
-    Demonstration of flexible meeting scheduling using each assistant’s self.brain.calendar.
+    Demonstration of flexible meeting scheduling using each assistant's self.brain.calendar.
     Situation:
-      - We pre-fill each stakeholder’s calendar at different times on May 13, 2025.
+      - We pre-fill each stakeholder's calendar at different times on May 13, 2025.
       - The CEO then proposes a 30-minute meeting at 10:30, conflicting with Design,
         and the scheduler should suggest an alternative.
 
