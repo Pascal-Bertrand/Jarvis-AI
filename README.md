@@ -25,8 +25,7 @@ An allround AI Secretary and network communication program to kill admin work in
 - If there are no clashes, the meeting is scheduled immediately
 
 ## Demo video
-
-<blockquote class="twitter-tweet" data-media-max-width="560"><p lang="en" dir="ltr">Oliver Calvet and I did a thing, feedback appreciated :) <a href="https://t.co/CYXvIO4jLm">pic.twitter.com/CYXvIO4jLm</a></p>&mdash; Pascal Bertrand (@PascalBtd) <a href="https://twitter.com/PascalBtd/status/1917884623737979049?ref_src=twsrc%5Etfw">May 1, 2025</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+https://twitter.com/PascalBtd/status/1917884623737979049?ref_src=twsrc%5Etfw
 
 ## Example chats
 Create an extensive project plan...
