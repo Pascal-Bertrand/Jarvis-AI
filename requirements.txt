@@ -5,3 +5,5 @@ google-api-python-client
 flask
 flask-cors
 python-dotenv 
+tzlocal
+flask-socketio
