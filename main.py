@@ -16,6 +16,9 @@ import base64
 import tempfile
 import re
 
+# --- Import Configuration ---
+from config.agents import AGENT_CONFIG
+
 # --- Import Logging ---
 from secretary.utilities.logging import log_user_message, log_agent_message, log_system_message, log_network_message, log_error, log_warning, log_api_request, log_api_response
 
@@ -244,8 +247,14 @@ def transcribe_audio():
         return jsonify({"error": "Network not initialized"}), 500
 
     data = request.json
-    node_id = data.get('node_id')
+    node_id = data.get('node_id') # Target node
     audio_data = data.get('audio_data')
+    sender_id = data.get('sender_id') # Get sender ID from request
+
+    # Use node_id as sender if sender_id is not provided (fallback)
+    if not sender_id:
+        sender_id = node_id
+        log_warning(f"Sender ID not provided in /transcribe_audio request, falling back to target node_id: {node_id}")
 
     if not node_id or not audio_data:
         return jsonify({"error": "Missing node_id or audio_data"}), 400
@@ -293,7 +302,8 @@ def transcribe_audio():
 
         try:
             # Send the message to the node and get the response directly
-            response_text = network.nodes[node_id].receive_message(command_text, "cli_user") # Assuming sender is cli_user
+            # Use the sender_id obtained from the request
+            response_text = network.nodes[node_id].receive_message(command_text, sender_id)
 
             # Restore original print function (no longer needed)
             # builtins.print = original_print
@@ -347,8 +357,14 @@ def send_message():
         return jsonify({"error": "Network not initialized"}), 500
 
     data = request.json
-    node_id = data.get('node_id')
+    node_id = data.get('node_id') # Target node
     message = data.get('message')
+    sender_id = data.get('sender_id') # Get sender ID from request
+
+    # Use node_id as sender if sender_id is not provided (fallback, though UI should always send it now)
+    if not sender_id:
+        sender_id = node_id
+        log_warning(f"Sender ID not provided in /send_message request, falling back to target node_id: {node_id}")
 
     if not node_id or not message:
         return jsonify({"error": "Missing node_id or message"}), 400
@@ -356,10 +372,11 @@ def send_message():
     if node_id not in network.nodes:
         return jsonify({"error": f"Node {node_id} not found"}), 404
 
-    return send_message_internal(node_id, message, "cli_user") # Specify sender
+    # Pass the correct sender_id to the internal function
+    return send_message_internal(node_id, message, sender_id)
 
 
-def send_message_internal(node_id, message, sender_id="cli_user"): # Add sender_id
+def send_message_internal(node_id, message, sender_id):
     """Process a message sent to a node and return the response"""
     global network
     if not network or node_id not in network.nodes:
@@ -375,7 +392,9 @@ def send_message_internal(node_id, message, sender_id="cli_user"): # Add sender_
 
     try:
         # Send the message to the node and get the response
-        response_text = network.nodes[node_id].receive_message(message, sender_id) # Pass sender_id
+        # Use the sender_id passed into this function
+        log_system_message(f"Routing message to node '{node_id}' from sender '{sender_id}'")
+        response_text = network.nodes[node_id].receive_message(message, sender_id)
 
         # Restore original print function (no longer needed)
         # builtins.print = original_print
@@ -434,35 +453,35 @@ def open_browser():
                 break
         except:
             continue
+#obsolete
+# def run_cli(network):
+#     print("Commands:\n"
+#           "  node_id: message => send 'message' to 'node_id' from CLI\n"
+#           "  node_id: plan project_name = objective => create a new project plan\n"
+#           "  node_id: tasks => list tasks for a node\n"
+#           "  quit => exit\n")
 
-def run_cli(network):
-    print("Commands:\n"
-          "  node_id: message => send 'message' to 'node_id' from CLI\n"
-          "  node_id: plan project_name = objective => create a new project plan\n"
-          "  node_id: tasks => list tasks for a node\n"
-          "  quit => exit\n")
-
-    while True:
-        user_input = input("> ")
-        if user_input.lower().strip() == "quit":
-            print("Exiting CLI...")
-            break
+#     while True:
+#         user_input = input("> ")
+#         if user_input.lower().strip() == "quit":
+#             print("Exiting CLI...")
+#             break
             
-        # Handle node-specific commands
-        if ":" in user_input:
-            node_id, message = user_input.split(":", 1)
-            node_id = node_id.strip()
-            message = message.strip()
+#         # Handle node-specific commands
+#         if ":" in user_input:
+#             node_id, message = user_input.split(":", 1)
+#             node_id = node_id.strip()
+#             message = message.strip()
 
-            if node_id in network.nodes:
-                # All commands now go through receive_message
-                response = network.nodes[node_id].receive_message(message, "cli_user")
-                if response:
-                    print(response)
-            else:
-                print(f"No node with ID '{node_id}' found.")
-        else:
-            print("Invalid format. Use:\n  node_id: message\n  OR\n  quit\n")
+#             if node_id in network.nodes:
+#                 # All commands now go through receive_message
+#                 response = network.nodes[node_id].receive_message(message, "cli_user")
+#                 if response:
+#                     print(response)
+#             else:
+#                 print(f"No node with ID '{node_id}' found.")
+#         else:
+#             print("Invalid format. Use:\n  node_id: message\n  OR\n  quit\n")
 
 def demo_flexible_meeting(network) -> None:
     """
@@ -532,18 +551,30 @@ if __name__ == "__main__":
     # Make sure network is initialized before flask starts using it
     network = Intercom(log_file="communication_log.txt") # Use Intercom
 
-    # Create nodes, passing the network instance and API key
-    # Use the global openai_api_key defined earlier
-    ceo = LLMNode("ceo", knowledge="Knows entire org structure.", network=network, llm_api_key_override=openai_api_key)
-    marketing = LLMNode("marketing", knowledge="Knows about markets.", network=network, llm_api_key_override=openai_api_key)
-    engineering = LLMNode("engineering", knowledge="Knows codebase.", network=network, llm_api_key_override=openai_api_key)
-    design = LLMNode("design", knowledge="Knows UI/UX best practices.", network=network, llm_api_key_override=openai_api_key)
+    # --- Create nodes dynamically from configuration --- 
+    for agent_config in AGENT_CONFIG:
+        node = LLMNode(
+            node_id=agent_config["id"],
+            knowledge=agent_config["knowledge"], # Pass knowledge from config
+            network=network,
+            llm_api_key_override=openai_api_key
+        )
+        network.register_node(node.node_id, node)
+        log_system_message(f"Created and registered node: {agent_config['id']}")
+    # --- End dynamic node creation ---
 
-    # Register them using (node_id, node_obj) signature for Intercom
-    network.register_node(ceo.node_id, ceo)
-    network.register_node(marketing.node_id, marketing)
-    network.register_node(engineering.node_id, engineering)
-    network.register_node(design.node_id, design)
+    # --- Remove static node creation ---
+    # ceo = LLMNode("ceo", knowledge="Knows entire org structure.", network=network, llm_api_key_override=openai_api_key)
+    # marketing = LLMNode("marketing", knowledge="Knows about markets.", network=network, llm_api_key_override=openai_api_key)
+    # engineering = LLMNode("engineering", knowledge="Knows codebase.", network=network, llm_api_key_override=openai_api_key)
+    # design = LLMNode("design", knowledge="Knows UI/UX best practices.", network=network, llm_api_key_override=openai_api_key)
+    #
+    # # Register them using (node_id, node_obj) signature for Intercom
+    # network.register_node(ceo.node_id, ceo)
+    # network.register_node(marketing.node_id, marketing)
+    # network.register_node(engineering.node_id, engineering)
+    # network.register_node(design.node_id, design)
+    # --- End removal ---
 
     log_system_message(f"Nodes registered: {network.get_all_nodes()}")
 
@@ -557,7 +588,7 @@ if __name__ == "__main__":
     browser_thread.daemon = True
     browser_thread.start()
 
-    run_cli(network)
+    #run_cli(network)
     #demo_flexible_meeting(network) # Uncomment to run the demo
     
     # Keep the main thread alive (Flask runs in daemon threads)

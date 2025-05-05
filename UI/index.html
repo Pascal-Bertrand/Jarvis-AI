@@ -1,6 +1,9 @@
-<meta charset="UTF-8">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jarvis AI</title>
+    <title>Agent AI Network</title>
     <!-- Add Google Fonts -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -20,13 +23,13 @@
             --card-shadow: 0 4px 6px rgba(0,0,0,0.07);
             --transition-speed: 0.3s;
         }
-        
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
-        
+
         body {
             font-family: 'Inter', sans-serif;
             background-color: var(--bg-light);
@@ -35,13 +38,13 @@
             padding: 0;
             margin: 0;
         }
-        
+
         .container {
             max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
+            margin: 20px auto;
+            padding: 0 20px;
         }
-        
+
         .dashboard-header {
             display: flex;
             justify-content: space-between;
@@ -50,31 +53,59 @@
             padding-bottom: 15px;
             border-bottom: 1px solid var(--border-color);
         }
-        
+
         .dashboard-header h1 {
             font-size: 28px;
             font-weight: 600;
             color: var(--primary-dark);
             margin: 0;
         }
-        
+
         .dashboard-subheader {
             color: var(--text-light);
             font-size: 15px;
             margin-top: 5px;
         }
-        
+
+        /* Agent Selector Styles */
+        .agent-selector {
+            display: flex;
+            align-items: center;
+        }
+
+        .agent-select-dropdown {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: white;
+            font-size: 14px;
+            cursor: pointer;
+            margin-left: 8px;
+        }
+
         .dashboard-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: 1fr;
             gap: 25px;
             margin-bottom: 25px;
         }
-        
-        .dashboard-full {
-            grid-column: 1 / -1;
+
+        @media (min-width: 992px) {
+             .dashboard-grid {
+                grid-template-columns: 2fr 1fr; /* Chat takes more space */
+             }
+             .dashboard-grid-bottom {
+                 grid-template-columns: 1fr 1fr;
+             }
         }
-        
+
+        .dashboard-grid-bottom {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 25px;
+        }
+
+
         .card {
             background-color: white;
             border-radius: 10px;
@@ -83,12 +114,12 @@
             transition: transform var(--transition-speed), box-shadow var(--transition-speed);
             border: 1px solid var(--border-color);
         }
-        
+
         .card:hover {
             transform: translateY(-3px);
             box-shadow: 0 6px 12px rgba(0,0,0,0.1);
         }
-        
+
         .card-header {
             padding: 18px 20px;
             border-bottom: 1px solid var(--border-color);
@@ -97,48 +128,18 @@
             align-items: center;
             background-color: #fafafa;
         }
-        
+
         .card-header h2 {
             font-size: 18px;
             font-weight: 600;
             color: var(--text-dark);
             margin: 0;
         }
-        
+
         .card-body {
             padding: 20px;
         }
-        
-        /* Node selector styles */
-        .node-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        
-        .node-item {
-            background-color: #f0f4f8;
-            padding: 8px 16px;
-            border-radius: 20px;
-            cursor: pointer;
-            transition: all var(--transition-speed);
-            border: 1px solid #e9ecef;
-            font-weight: 500;
-            font-size: 14px;
-        }
-        
-        .node-item:hover {
-            background-color: #e9ecef;
-            border-color: #dee2e6;
-        }
-        
-        .node-item.active {
-            background-color: var(--primary-color);
-            color: white;
-            border-color: var(--primary-dark);
-        }
-        
+
         /* Task card styles */
         .task {
             border-left: 4px solid var(--success-color);
@@ -149,34 +150,34 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             transition: transform var(--transition-speed);
         }
-        
+
         .task:hover {
             transform: translateX(3px);
         }
-        
+
         .task h3 {
             font-size: 16px;
             margin-bottom: 8px;
             color: var(--text-dark);
         }
-        
+
         .task p {
             font-size: 14px;
             color: var(--text-light);
             margin-bottom: 8px;
         }
-        
+
         .task-meta {
             display: flex;
             justify-content: space-between;
             font-size: 12px;
             color: var(--text-light);
         }
-        
+
         .high { border-left-color: var(--danger-color); }
         .medium { border-left-color: var(--warning-color); }
         .low { border-left-color: var(--success-color); }
-        
+
         /* Project card styles */
         .project {
             padding: 15px;
@@ -185,36 +186,38 @@
             border-radius: 8px;
             border: 1px solid var(--border-color);
         }
-        
+
         .project h3 {
             font-size: 16px;
             margin-bottom: 8px;
             color: var(--primary-dark);
         }
-        
+
         .project-participants {
             display: flex;
+            flex-wrap: wrap; /* Allow participants to wrap */
             gap: 5px;
             margin-top: 10px;
         }
-        
+
         .project-participant {
             background-color: #e0e0e0;
             padding: 4px 8px;
             border-radius: 12px;
             font-size: 12px;
+            white-space: nowrap; /* Prevent participant names from breaking */
         }
-        
+
         /* Chat interface styles */
         .chat-container {
             display: flex;
             flex-direction: column;
-            height: 450px;
+            height: 500px; /* Increased height */
             border-radius: 8px;
             overflow: hidden;
             background-color: white;
         }
-        
+
         .chat-messages {
             flex-grow: 1;
             padding: 20px;
@@ -222,211 +225,161 @@
             background-color: #f9f9f9;
             display: flex;
             flex-direction: column;
+            gap: 10px; /* Add gap between messages */
         }
-        
+
+        .chat-message {
+            padding: 10px 15px;
+            border-radius: 18px;
+            max-width: 80%;
+            line-height: 1.4;
+            position: relative;
+            animation: messageAppear 0.3s ease-out;
+        }
+
+        @keyframes messageAppear {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-header {
+            font-weight: 600;
+            margin-bottom: 4px;
+            font-size: 0.9em;
+            color: var(--text-light);
+            display: flex;
+            align-items: center;
+        }
+
+        .message-header i {
+            margin-right: 6px;
+            font-size: 1em;
+        }
+
+        .message-content {
+            word-wrap: break-word;
+        }
+
+        .user-message {
+            background-color: var(--primary-light);
+            color: white;
+            align-self: flex-end;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        .user-message .message-header {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .agent-message {
+            background-color: white;
+            color: var(--text-dark);
+            align-self: flex-start;
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: 4px;
+        }
+        .agent-message .message-header {
+            color: var(--primary-dark);
+        }
+
+        .system-message {
+            background-color: #e9ecef;
+            color: var(--text-light);
+            align-self: center; /* Center system messages */
+            max-width: 90%;
+            text-align: center;
+            font-size: 0.9em;
+            border-radius: 6px;
+            margin: 5px 0;
+        }
+         .system-message .message-header {
+            justify-content: center; /* Center header */
+            color: var(--text-light);
+         }
+
         .chat-input-container {
             display: flex;
             padding: 15px;
             background-color: white;
             border-top: 1px solid var(--border-color);
+            align-items: center; /* Align items vertically */
         }
-        
+
         .chat-input {
             flex-grow: 1;
-            padding: 12px 15px;
+            padding: 10px 15px;
             border: 1px solid var(--border-color);
-            border-radius: 30px;
+            border-radius: 20px; /* Slightly less rounded */
             outline: none;
             font-size: 14px;
             transition: border-color var(--transition-speed);
+            margin: 0 10px; /* Add margin */
         }
-        
+
         .chat-input:focus {
             border-color: var(--primary-light);
-            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+            box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.1);
         }
-        
-        .chat-send-btn {
-            padding: 10px 20px;
+
+        .chat-button {
+            padding: 10px 15px;
             background-color: var(--primary-color);
             color: white;
             border: none;
-            border-radius: 30px;
+            border-radius: 20px;
             cursor: pointer;
-            margin-left: 10px;
             font-weight: 500;
             transition: background-color var(--transition-speed);
-        }
-        
-        .chat-send-btn:hover {
-            background-color: var(--primary-dark);
-        }
-        
-        .message {
-            margin-bottom: 15px;
-            padding: 12px 15px;
-            border-radius: 18px;
-            max-width: 80%;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            position: relative;
-            animation: messageAppear 0.3s ease-out;
-        }
-        
-        @keyframes messageAppear {
-            from { 
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to { 
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        .user-message {
-            background-color: #e3f2fd;
-            align-self: flex-end;
-            margin-left: auto;
-            border-bottom-right-radius: 4px;
-        }
-        
-        .agent-message {
-            background-color: white;
-            align-self: flex-start;
-            border-bottom-left-radius: 4px;
-            border: 1px solid #eaeaea;
-        }
-        
-        /* Microphone button styles */
-        .mic-button {
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            background-color: #f0f0f0;
             display: flex;
             align-items: center;
             justify-content: center;
-            cursor: pointer;
-            margin-right: 10px;
-            transition: all var(--transition-speed);
-            border: 1px solid var(--border-color);
+            font-size: 14px;
+            height: 40px; /* Match input height */
         }
-        
-        .mic-button:hover {
-            background-color: #e3e3e3;
+        .chat-button i {
+            margin-right: 5px;
         }
-        
-        .mic-button.recording {
-            background-color: #ff4c4c;
+
+        .chat-button:hover {
+            background-color: var(--primary-dark);
+        }
+
+        .record-button {
+             background-color: #6c757d;
+             width: 40px; /* Fixed width */
+             padding: 0;
+        }
+         .record-button:hover {
+             background-color: #5a6268;
+         }
+
+        .record-button.recording {
+            background-color: var(--danger-color);
             animation: pulse 1.5s infinite;
-            border-color: #d63031;
         }
-        
+
         @keyframes pulse {
-            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 76, 76, 0.7); }
-            70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(255, 76, 76, 0); }
-            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 76, 76, 0); }
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(244, 67, 54, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
         }
-        
-        .mic-button i {
-            font-size: 18px;
-            color: #333;
+
+        .record-button i {
+             margin: 0; /* No margin for icon-only button */
         }
-        
-        .mic-button.recording i {
-            color: white;
-        }
-        
-        .transcription {
-            font-style: italic;
+
+        .empty-state {
+            text-align: center;
             color: var(--text-light);
-            margin: 10px 0;
-            font-size: 0.9em;
-            padding: 0 15px;
+            padding: 30px;
+            font-size: 14px;
         }
-        
-        /* Audio player styles */
-        .audio-player {
-            margin: 10px 0;
-            width: 100%;
-            background-color: #f0f0f0;
-            border-radius: 30px;
-            padding: 5px;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .audio-player audio {
-            width: 100%;
-            height: 35px;
-        }
-        
-        /* Terminal output styles */
-        .terminal-message {
-            background-color: var(--bg-dark);
-            color: #f0f0f0;
-            font-family: monospace;
-            white-space: pre-wrap;
-            align-self: stretch;
-            max-width: 100%;
-            overflow-x: auto;
-            border-radius: 6px;
-            padding: 10px;
-            margin: 10px 0;
-        }
-        
-        .terminal-toggle {
-            background-color: #444;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin: 10px 0;
-            font-size: 12px;
-            transition: background-color var(--transition-speed);
-        }
-        
-        .terminal-toggle:hover {
-            background-color: #555;
-        }
-        
-        .terminal-content {
-            background-color: var(--bg-dark);
-            color: #f0f0f0;
-            font-family: monospace;
-            white-space: pre-wrap;
-            padding: 15px;
-            border-radius: 6px;
-            overflow-x: auto;
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #333;
-            animation: fadeIn 0.3s;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        .loading {
-            opacity: 0.6;
-        }
-        
-        .debug-button-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin: 15px 0;
-            width: 100%;
-        }
-        
+
         /* Loading indicator */
         .loading-dots:after {
             content: '.';
             animation: dots 1.5s steps(5, end) infinite;
         }
-        
         @keyframes dots {
             0%, 20% { content: '.'; }
             40% { content: '..'; }
@@ -434,67 +387,6 @@
             80%, 100% { content: ''; }
         }
 
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .card-header h2 {
-                font-size: 16px;
-            }
-            
-            .message {
-                max-width: 90%;
-            }
-        }
-
-        /* Add this style for the audio level meter */
-        .audio-level-container {
-            display: none; /* Hide completely */
-        }
-
-        .audio-level-meter {
-            display: none; /* Hide completely */
-        }
-
-        /* Add these styles to the existing CSS */
-        .task-completed-indicator {
-            display: inline-block;
-            background-color: #4CAF50;
-            color: white;
-            font-size: 12px;
-            padding: 3px 8px;
-            border-radius: 12px;
-            margin-left: 10px;
-            animation: fadeIn 0.5s;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        /* Visual style for the "conversation ended" state */
-        .conversation-ended .mic-button {
-            position: relative;
-        }
-
-        .conversation-ended .mic-button::after {
-            content: '✓';
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background-color: #4CAF50;
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
 
     </style>
 </head>
@@ -502,738 +394,511 @@
     <div class="container">
         <div class="dashboard-header">
             <div>
-                <h1>Jarvis AI</h1>
-                <div class="dashboard-subheader">Your all-round work companion</div>
+                <h1>Agent AI Network</h1>
+                <div class="dashboard-subheader">Control and monitor your AI agents</div>
+            </div>
+            <div class="agent-selector">
+                <label for="agentSelect" style="margin-right: 8px; font-weight: 500;">Act as:</label>
+                <select id="agentSelect" class="agent-select-dropdown">
+                    <!-- Options will be populated by JavaScript -->
+                </select>
             </div>
         </div>
-        <div id="nodes" class="node-list" style="display: none;">Loading<span class="loading-dots"></span></div>
-        
+
+        <!-- Main Grid (Chat on Left, Projects/Tasks on Right) -->
         <div class="dashboard-grid">
-            <div class="card dashboard-full">
-                <div class="card-header">
+            <!-- Chat Card -->
+            <div class="card">
+                 <div class="card-header">
                     <h2>Agent Communication</h2>
                 </div>
                 <div class="card-body" style="padding: 0;">
-                    <div id="chat-tab-contents">
-                        <!-- Chat contents will be added here dynamically -->
+                     <div class="chat-container">
+                        <div class="chat-messages" id="chatMessages">
+                            <!-- Messages will be added here dynamically -->
+                        </div>
+                        <div class="chat-input-container">
+                            <button id="recordBtn" class="chat-button record-button" title="Click to record audio">
+                                <i class="fas fa-microphone"></i>
+                            </button>
+                            <input type="text" id="messageInput" class="chat-input" placeholder="Type a message...">
+                            <button id="sendBtn" class="chat-button">
+                                <i class="fas fa-paper-plane"></i> Send
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <!-- Projects & Tasks Side Column -->
+            <div class="dashboard-grid-bottom">
+                 <div class="card">
+                    <div class="card-header">
+                        <h2>Projects</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="projectsList">
+                             <div class="empty-state">Loading Projects<span class="loading-dots"></span></div>
+                         </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Tasks</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="tasksList">
+                             <div class="empty-state">Loading Tasks<span class="loading-dots"></span></div>
+                         </div>
+                    </div>
+                </div>
+             </div>
         </div>
-        
-        <div class="dashboard-grid">
-            <div class="card">
-                <div class="card-header">
-                    <h2>Projects</h2>
-                </div>
-                <div class="card-body">
-                    <div id="projects">Loading<span class="loading-dots"></span></div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <div class="card-header">
-                    <h2>Tasks</h2>
-                </div>
-                <div class="card-body">
-                    <div id="tasks">Loading<span class="loading-dots"></span></div>
-                </div>
-            </div>
-        </div>
+
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.2/socket.io.js" integrity="sha512-VJ6+sp2E5rFQkTL5Sdy7NXVzbIPSJJLzkTarTYdUQC7WXMwwVvsCS9FHRWtrBCJ9HSdOfKyffNwdCZS7IFG1TA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.2/socket.io.js"></script>
 
     <script>
-        let activeNodeId = null;
-        let nodes = [];
-        
-        function activateTab(nodeId) {
-            // Deactivate all tabs
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            
-            // Deactivate all tab contents
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            
-            // Activate the selected tab
-            const selectedTab = document.querySelector(`.tab[data-node-id="${nodeId}"]`);
-            if (selectedTab) {
-                selectedTab.classList.add('active');
-            }
-            
-            // Activate the selected tab content
-            const selectedContent = document.getElementById(`chat-tab-${nodeId}`);
-            if (selectedContent) {
-                selectedContent.classList.add('active');
-            }
-        }
-        
-        function setActiveNode(nodeId) {
-            document.querySelectorAll('.node-item').forEach(node => {
-                node.classList.remove('active');
-            });
-            document.querySelectorAll('.node-item').forEach(node => {
-                if (node.textContent === nodeId) {
-                    node.classList.add('active');
-                }
-            });
-            activeNodeId = nodeId;
-            // Show only the selected chat content
-            document.querySelectorAll('.chat-content-single').forEach(div => {
-                div.style.display = 'none';
-            });
-            const selected = document.getElementById(`chat-content-${nodeId}`);
-            if (selected) selected.style.display = 'block';
-        }
-        
-        function sendMessage(nodeId) {
-            const inputElement = document.getElementById(`chat-input-${nodeId}`);
-            const message = inputElement.value.trim();
-            
-            if (!message) return;
-            
-            // Add user message to chat
-            addMessageToChat(nodeId, message, 'user');
-            
-            // Clear input
-            inputElement.value = '';
-            
-            // Show loading indicator
-            const loadingId = addLoadingIndicator(nodeId);
-            
-            // Send message to server
-            fetch('/send_message', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    node_id: nodeId,
-                    message: message
-                }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Remove loading indicator
-                removeLoadingIndicator(loadingId);
-                
-                // Add agent response if available
-                if (data.response) {
-                    addMessageToChat(nodeId, data.response, 'agent');
-                } else if (data.terminal_output) {
-                    // If no direct response but terminal output exists, extract response from terminal
-                    const lines = data.terminal_output.split('\n');
-                    let responseFound = false;
-                    
-                    for (const line of lines) {
-                        if (line.includes(`[${nodeId}] Response:`)) {
-                            const response = line.replace(`[${nodeId}] Response:`, '').trim();
-                            addMessageToChat(nodeId, response, 'agent');
-                            responseFound = true;
-                            break;
-                        }
-                    }
-                    
-                    // If no response found in terminal output, show a generic response
-                    if (!responseFound) {
-                        addMessageToChat(nodeId, "Command processed. Check terminal for details.", 'agent');
-                    }
-                }
-                
-                // Add debug button for terminal output
-                if (data.terminal_output) {
-                    addDebugButton(nodeId, data.terminal_output);
-                }
-            })
-            .catch(error => {
-                // Remove loading indicator
-                removeLoadingIndicator(loadingId);
-                
-                console.error('Error sending message:', error);
-                addMessageToChat(nodeId, "Error: Couldn't send message", 'agent');
-            });
-        }
-        
-        function addLoadingIndicator(nodeId) {
-            const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
-            const loadingElement = document.createElement('div');
-            loadingElement.className = 'message agent-message loading';
-            loadingElement.innerHTML = 'Thinking<span class="loading-dots"></span>';
-            loadingElement.id = 'loading-' + Date.now();
-            chatMessagesElement.appendChild(loadingElement);
-            
-            // Scroll to bottom
-            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
-            
-            return loadingElement.id;
-        }
-        
-        function removeLoadingIndicator(loadingId) {
-            const loadingElement = document.getElementById(loadingId);
-            if (loadingElement) {
-                loadingElement.remove();
-            }
-        }
-        
-        function addDebugButton(nodeId, terminalOutput) {
-            const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
-            const debugButtonContainer = document.createElement('div');
-            debugButtonContainer.className = 'debug-button-container';
-            
-            const debugButton = document.createElement('button');
-            debugButton.textContent = 'Show Terminal Output';
-            debugButton.className = 'terminal-toggle';
-            
-            const terminalContent = document.createElement('pre');
-            terminalContent.className = 'terminal-content';
-            terminalContent.style.display = 'none';
-            terminalContent.textContent = terminalOutput;
-            
-            debugButton.onclick = function() {
-                if (terminalContent.style.display === 'none') {
-                    terminalContent.style.display = 'block';
-                    debugButton.textContent = 'Hide Terminal Output';
-                } else {
-                    terminalContent.style.display = 'none';
-                    debugButton.textContent = 'Show Terminal Output';
-                }
-            };
-            
-            debugButtonContainer.appendChild(debugButton);
-            debugButtonContainer.appendChild(terminalContent);
-            chatMessagesElement.appendChild(debugButtonContainer);
-            
-            // Scroll to bottom
-            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
-        }
-        
-        function addMessageToChat(nodeId, message, sender) {
-            const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
-            const messageElement = document.createElement('div');
-            messageElement.className = `message ${sender}-message`;
-            messageElement.textContent = message;
-            chatMessagesElement.appendChild(messageElement);
-            
-            // Scroll to bottom
-            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
-        }
-        
-        // Audio recording functionality with manual controls
-        let mediaRecorder = null;
+        let recorder = null;
         let audioChunks = [];
-        let isRecording = false;
-        let activeRecordingNode = null;
-        
-        function toggleRecording(nodeId) {
-            const micButton = document.getElementById(`mic-button-${nodeId}`);
-            const transcriptionDiv = document.getElementById(`transcription-${nodeId}`);
-            
-            if (isRecording) {
-                // Stop recording if already recording
-                stopRecording();
-            } else {
-                // Check if we're already recording for another node
-                if (activeRecordingNode && activeRecordingNode !== nodeId) {
-                    const prevMicButton = document.getElementById(`mic-button-${activeRecordingNode}`);
-                    prevMicButton.classList.remove('recording');
-                    if (mediaRecorder) {
-                        stopRecording();
-                    }
-                }
-                
-                // Start new recording with optimized settings for Whisper API
-                navigator.mediaDevices.getUserMedia({ 
-                    audio: {
-                        echoCancellation: true,    // Enable echo cancellation for Whisper
-                        noiseSuppression: true,    // Enable noise suppression for Whisper
-                        autoGainControl: true,     // Keep auto gain control for volume normalization
-                        sampleRate: 16000          // Use 16kHz which works well with Whisper
-                    } 
+        let audioContext;
+        let socket;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchNodes(); // Fetch nodes to populate the dropdown
+            fetchTasks();
+            fetchProjects();
+            setupWebSocket();
+            setupEventListeners();
+
+            // Attempt to get microphone access early
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    console.log('Microphone access granted.');
+                    stream.getTracks().forEach(track => track.stop()); // Release the track
                 })
-                    .then(stream => {
-                        audioChunks = [];
-                        
-                        // Use appropriate audio encoding for Whisper
-                        const options = {};
-                        if (MediaRecorder.isTypeSupported('audio/mp3')) {
-                            options.mimeType = 'audio/mp3';
-                            console.log("Using MP3 format for recording");
-                        } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-                            options.mimeType = 'audio/webm;codecs=opus';
-                            console.log("Using Opus codec for recording");
-                        } else {
-                            console.log("Using default audio format");
-                        }
-                        
-                        // Add moderate bitrate for better quality
-                        if ('audioBitsPerSecond' in MediaRecorder) {
-                            options.audioBitsPerSecond = 128000;  // 128kbps is sufficient for speech
-                        }
-                        
-                        console.log("Creating MediaRecorder with options:", options);
-                        mediaRecorder = new MediaRecorder(stream, options);
-                        
-                        mediaRecorder.addEventListener('dataavailable', event => {
-                            if (event.data.size > 0) {
-                                audioChunks.push(event.data);
-                                console.log(`Received audio chunk: ${event.data.size} bytes`);
-                            }
-                        });
-                        
-                        mediaRecorder.addEventListener('stop', () => {
-                            // Process the recording
-                            if (audioChunks.length > 0) {
-                                const totalSize = audioChunks.reduce((size, chunk) => size + chunk.size, 0);
-                                console.log(`Recording complete, total size: ${totalSize} bytes in ${audioChunks.length} chunks`);
-                                processAudioRecording(nodeId);
-                            } else {
-                                console.log("No audio chunks recorded");
-                                transcriptionDiv.textContent = "No audio recorded. Please try again.";
-                            }
-                            
-                            // Stop all audio tracks to release the microphone
-                            stream.getTracks().forEach(track => track.stop());
-                        });
-                        
-                        // Collect data frequently for better continuity
-                        mediaRecorder.start(100); // Collect data every 100ms
-                        isRecording = true;
-                        activeRecordingNode = nodeId;
-                        micButton.classList.add('recording');
-                        transcriptionDiv.textContent = "Recording... Click microphone again to stop and process";
-                    })
-                    .catch(error => {
-                        console.error('Error accessing microphone:', error);
-                        transcriptionDiv.textContent = "Error: Could not access microphone. Please check permissions.";
-                    });
-            }
-        }
-        
-        function stopRecording() {
-            if (mediaRecorder && isRecording) {
-                mediaRecorder.stop();
-                isRecording = false;
-                
-                const micButton = document.getElementById(`mic-button-${activeRecordingNode}`);
-                if (micButton) {
-                    micButton.classList.remove('recording');
-                }
-            }
-        }
-        
-        function processAudioRecording(nodeId) {
-            const transcriptionDiv = document.getElementById(`transcription-${nodeId}`);
-            
-            // Create audio blob - prioritize formats for Whisper API
-            const mimeType = MediaRecorder.isTypeSupported('audio/mp3') ? 'audio/mp3' : 
-                             MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 
-                             'audio/webm';
-            const audioBlob = new Blob(audioChunks, { type: mimeType });
-            
-            // Only process if we have actual audio data
-            if (audioBlob.size <= 100) {
-                transcriptionDiv.textContent = "No speech detected or recording too short. Please try again.";
-                console.log("Audio blob size too small:", audioBlob.size, "bytes");
-                return;
-            }
-            
-            console.log("Audio blob size:", audioBlob.size, "bytes", "type:", mimeType);
-            
-            // Convert to base64
-            const reader = new FileReader();
-            reader.readAsDataURL(audioBlob);
-            reader.onloadend = function() {
-                const base64Audio = reader.result;
-                
-                transcriptionDiv.textContent = "Processing audio with Whisper...";
-                
-                // Send to server for transcription
-                fetch('/transcribe_audio', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        node_id: nodeId,
-                        audio_data: base64Audio
-                    })
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`Server responded with status: ${response.status}`);
+                .catch(err => {
+                    console.error('Microphone access denied or unavailable:', err);
+                    const recordBtn = document.getElementById('recordBtn');
+                    if(recordBtn) {
+                        recordBtn.disabled = true;
+                        recordBtn.title = "Microphone access denied";
+                        recordBtn.innerHTML = '<i class="fas fa-microphone-slash"></i>';
                     }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
-                    
-                    // Show transcription
-                    transcriptionDiv.textContent = `I heard: ${data.transcription}`;
-                    
-                    // Add user message to chat
-                    addMessageToChat(nodeId, data.transcription, 'user');
-                    
-                    // Add agent response
-                    if (data.response) {
-                        addMessageToChat(nodeId, data.response, 'agent');
-                    }
-                    
-                    // Add debug button for terminal output
-                    if (data.terminal_output) {
-                        addDebugButton(nodeId, data.terminal_output);
-                    }
-                    
-                    // Play audio response if available
-                    if (data.audio_response) {
-                        playAudioResponse(nodeId, data.audio_response);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error transcribing audio:', error);
-                    transcriptionDiv.textContent = `Error: ${error.message}`;
                 });
-            };
-        }
-        
-        function playAudioResponse(nodeId, base64Audio) {
-            const chatMessagesElement = document.getElementById(`chat-messages-${nodeId}`);
-            
-            // Create audio element
-            const audioContainer = document.createElement('div');
-            audioContainer.className = 'audio-player';
-            
-            const audioElement = document.createElement('audio');
-            audioElement.controls = true;
-            audioElement.style.width = '100%';
-            
-            // Set the audio source
-            const audioSource = document.createElement('source');
-            audioSource.src = `data:audio/mp3;base64,${base64Audio}`;
-            audioSource.type = 'audio/mp3';
-            
-            audioElement.appendChild(audioSource);
-            audioContainer.appendChild(audioElement);
-            chatMessagesElement.appendChild(audioContainer);
-            
-            // Auto play the audio
-            audioElement.play().catch(e => {
-                console.warn('Auto-play prevented by browser:', e);
-            });
-            
-            // Scroll to bottom
-            chatMessagesElement.scrollTop = chatMessagesElement.scrollHeight;
-        }
-        
-        // Update how we display projects
-        function loadProjects() {
-            fetch('/projects')
-                .then(response => response.json())
-                .then(projectData => {
-                    const projectsContainer = document.getElementById('projects');
-                    
-                    if (Object.keys(projectData).length === 0) {
-                        projectsContainer.innerHTML = '<div class="empty-state">No projects available. Start by planning a project with an agent.</div>';
-                        return;
-                    }
-                    
-                    projectsContainer.innerHTML = '';
-                    
-                    for (const [projectId, project] of Object.entries(projectData)) {
-                        const projectElement = document.createElement('div');
-                        projectElement.className = 'project';
-                        
-                        let participantsHtml = '';
-                        if (project.participants && project.participants.length > 0) {
-                            participantsHtml = '<div class="project-participants">';
-                            project.participants.forEach(participant => {
-                                participantsHtml += `<span class="project-participant">${participant}</span>`;
-                            });
-                            participantsHtml += '</div>';
-                        }
-                        
-                        projectElement.innerHTML = `
-                            <h3>${project.name || projectId}</h3>
-                            <div>Owner: ${project.owner}</div>
-                            ${participantsHtml}
-                        `;
-                        
-                        projectsContainer.appendChild(projectElement);
-                    }
-                })
-                .catch(error => {
-                    document.getElementById('projects').innerHTML = 'Error loading projects.';
-                    console.error('Error fetching projects:', error);
-                });
-        }
-        
-        // Update how we display tasks
-        function loadTasks() {
-            fetch('/tasks')
-                .then(response => response.json())
-                .then(taskData => {
-                    const tasksContainer = document.getElementById('tasks');
-                    
-                    if (taskData.length === 0) {
-                        tasksContainer.innerHTML = '<div class="empty-state">No tasks available. Tasks will appear when created by agents.</div>';
-                        return;
-                    }
-                    
-                    tasksContainer.innerHTML = '';
-                    
-                    taskData.forEach(task => {
-                        const taskElement = document.createElement('div');
-                        taskElement.className = `task ${task.priority}`;
-                        
-                        // Format the due date
-                        const dueDate = new Date(task.due_date);
-                        const formattedDueDate = dueDate.toLocaleDateString();
-                        
-                        taskElement.innerHTML = `
-                            <h3>${task.title}</h3>
-                            <p>${task.description}</p>
-                            <div class="task-meta">
-                                <span>Due: ${formattedDueDate}</span>
-                                <span>Assigned to: ${task.assigned_to}</span>
-                            </div>
-                        `;
-                        
-                        tasksContainer.appendChild(taskElement);
-                    });
-                })
-                .catch(error => {
-                    document.getElementById('tasks').innerHTML = 'Error loading tasks.';
-                    console.error('Error fetching tasks:', error);
-                });
-        }
-        
-        // Enhance the node item creation
-        function updateNodeElements(nodes) {
-            const nodesContainer = document.getElementById('nodes');
-            const chatTabContentsContainer = document.getElementById('chat-tab-contents');
-            
-            if (nodes.length === 0) {
-                nodesContainer.innerHTML = '<div class="empty-state">No agents available.</div>';
-                return;
-            }
-            
-            nodesContainer.innerHTML = '';
-            chatTabContentsContainer.innerHTML = '';
-            
-            nodes.forEach((node, idx) => {
-                // Create node item
-                const nodeElement = document.createElement('div');
-                nodeElement.className = 'node-item';
-                nodeElement.textContent = node;
-                nodeElement.onclick = () => setActiveNode(node);
-                nodesContainer.appendChild(nodeElement);
-                
-                // Create chat content (no tabs)
-                const chatContentElement = document.createElement('div');
-                chatContentElement.className = 'chat-content-single';
-                chatContentElement.id = `chat-content-${node}`;
-                chatContentElement.style.display = idx === 0 ? 'block' : 'none';
-                chatContentElement.innerHTML = `
-                    <div class="chat-container">
-                        <div class="chat-messages" id="chat-messages-${node}"></div>
-                        <div class="chat-input-container">
-                            <div class="mic-button" id="mic-button-${node}" title="Click once to start recording, click again to stop">
-                                <i class="fas fa-microphone"></i>
-                            </div>
-                            <input type="text" class="chat-input" id="chat-input-${node}" placeholder="Type a message...">
-                            <button class="chat-send-btn" onclick="sendMessage('${node}')">Send</button>
-                        </div>
-                        <div class="transcription" id="transcription-${node}"></div>
-                    </div>
-                `;
-                chatTabContentsContainer.appendChild(chatContentElement);
-                
-                // Add event listener for Enter key
-                setTimeout(() => {
-                    const inputElement = document.getElementById(`chat-input-${node}`);
-                    if (inputElement) {
-                        inputElement.addEventListener('keypress', function(event) {
-                            if (event.key === 'Enter') {
-                                sendMessage(node);
-                            }
-                        });
-                    }
-                    // Add microphone functionality
-                    const micButton = document.getElementById(`mic-button-${node}`);
-                    if (micButton) {
-                        micButton.addEventListener('click', () => toggleRecording(node));
-                    }
-                }, 0);
-            });
-        }
+        });
 
-        // Initial data loading
-        fetch('/nodes')
-            .then(response => response.json())
-            .then(nodeData => {
-                nodes = nodeData;
-                updateNodeElements(nodes);
-                // Show first agent's chat by default
-                if (nodes.length > 0) {
-                    setActiveNode(nodes[0]);
-                }
-                loadProjects();
-                loadTasks();
-            })
-            .catch(error => {
-                document.getElementById('nodes').innerHTML = 'Error loading agents.';
-                console.error('Error fetching nodes:', error);
-            });
-
-        // Add a function to check if a task was completed based on the response
-        function checkTaskCompletion(response, terminalOutput) {
-            if (!response && !terminalOutput) return false;
-            
-            // Check for task completion indicators in the response
-            const completionPhrases = [
-                "successfully", "completed", "done", "scheduled", "created", 
-                "rescheduled", "cancelled", "task complete", "meeting scheduled",
-                "meeting rescheduled", "meeting cancelled"
-            ];
-            
-            // Check the response text
-            if (response) {
-                const responseLower = response.toLowerCase();
-                if (completionPhrases.some(phrase => responseLower.includes(phrase))) {
-                    return true;
-                }
-            }
-            
-            // Check terminal output for task completion indicators
-            if (terminalOutput) {
-                const outputLower = terminalOutput.toLowerCase();
-                
-                // Look for successful scheduling, rescheduling, or cancellation confirmation messages
-                if (outputLower.includes("meeting created") || 
-                    outputLower.includes("meeting") && outputLower.includes("scheduled") ||
-                    outputLower.includes("meeting") && outputLower.includes("rescheduled") ||
-                    outputLower.includes("cancelled") && outputLower.includes("meeting") ||
-                    outputLower.includes("task") && outputLower.includes("created")) {
-                    return true;
-                }
-            }
-            
-            return false;
-        }
-
-        // Wait for the DOM to be fully loaded before running scripts
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log("DOM fully loaded and parsed."); // DEBUG
-
-            // --- Restored Socket.IO Logic ---
-            console.log("Setting up Socket.IO Logic..."); // DEBUG
-            const socket = io(); 
+        function setupWebSocket() {
+            socket = io();
 
             socket.on('connect', () => {
-                console.log('Socket.IO connected');
+                console.log('WebSocket connected:', socket.id);
             });
 
             socket.on('disconnect', () => {
-                console.log('Socket.IO disconnected');
-            });
-
-            // Ensure these functions are defined or remove the calls !!!
-            function loadProjects() { 
-                fetch('/projects')
-                    .then(response => response.json())
-                    .then(projectData => {
-                        const projectsContainer = document.getElementById('projects');
-                        
-                        if (Object.keys(projectData).length === 0) {
-                            projectsContainer.innerHTML = '<div class="empty-state">No projects available. Start by planning a project with an agent.</div>';
-                            return;
-                        }
-                        
-                        projectsContainer.innerHTML = '';
-                        
-                        for (const [projectId, project] of Object.entries(projectData)) {
-                            const projectElement = document.createElement('div');
-                            projectElement.className = 'project';
-                            
-                            let participantsHtml = '';
-                            if (project.participants && project.participants.length > 0) {
-                                participantsHtml = '<div class="project-participants">';
-                                project.participants.forEach(participant => {
-                                    participantsHtml += `<span class="project-participant">${participant}</span>`;
-                                });
-                                participantsHtml += '</div>';
-                            }
-                            
-                            projectElement.innerHTML = `
-                                <h3>${project.name || projectId}</h3>
-                                <div>Owner: ${project.owner}</div>
-                                ${participantsHtml}
-                            `;
-                            
-                            projectsContainer.appendChild(projectElement);
-                        }
-                    })
-                    .catch(error => {
-                        document.getElementById('projects').innerHTML = 'Error loading projects.';
-                        console.error('Error fetching projects:', error);
-                    });
-            }
-            function loadTasks() { 
-                fetch('/tasks')
-                    .then(response => response.json())
-                    .then(taskData => {
-                        const tasksContainer = document.getElementById('tasks');
-                        
-                        if (taskData.length === 0) {
-                            tasksContainer.innerHTML = '<div class="empty-state">No tasks available. Tasks will appear when created by agents.</div>';
-                            return;
-                        }
-                        
-                        tasksContainer.innerHTML = '';
-                        
-                        taskData.forEach(task => {
-                            const taskElement = document.createElement('div');
-                            taskElement.className = `task ${task.priority}`;
-                            
-                            // Format the due date
-                            const dueDate = new Date(task.due_date);
-                            const formattedDueDate = dueDate.toLocaleDateString();
-                            
-                            taskElement.innerHTML = `
-                                <h3>${task.title}</h3>
-                                <p>${task.description}</p>
-                                <div class="task-meta">
-                                    <span>Due: ${formattedDueDate}</span>
-                                    <span>Assigned to: ${task.assigned_to}</span>
-                                </div>
-                            `;
-                            
-                            tasksContainer.appendChild(taskElement);
-                        });
-                    })
-                    .catch(error => {
-                        document.getElementById('tasks').innerHTML = 'Error loading tasks.';
-                        console.error('Error fetching tasks:', error);
-                    });
-            }
-
-            socket.on('update_projects', () => {
-                console.log('Received update_projects event');
-                loadProjects(); 
+                console.log('WebSocket disconnected');
             });
 
             socket.on('update_tasks', () => {
-                console.log('Received update_tasks event');
-                loadTasks(); 
+                console.log('Task update received via WebSocket');
+                fetchTasks();
             });
-            // --- End Restored Socket.IO Logic ---
 
-        }); // End DOMContentLoaded listener
+            socket.on('update_projects', () => {
+                console.log('Project update received via WebSocket');
+                fetchProjects();
+            });
+
+            socket.on('connect_error', (err) => {
+                console.error('WebSocket connection error:', err);
+            });
+        }
+
+        function setupEventListeners() {
+            const sendBtn = document.getElementById('sendBtn');
+            const messageInput = document.getElementById('messageInput');
+            const recordBtn = document.getElementById('recordBtn');
+            const agentSelect = document.getElementById('agentSelect');
+
+            sendBtn.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { // Send on Enter, allow Shift+Enter for newline
+                    e.preventDefault(); // Prevent default Enter behavior (newline)
+                    sendMessage();
+                }
+            });
+
+            recordBtn.addEventListener('click', toggleRecording);
+
+            agentSelect.addEventListener('change', (event) => {
+                console.log(`Agent selected: ${event.target.value}`);
+                clearChatMessages();
+                addSystemMessage(`Switched context to ${event.target.value}`);
+            });
+        }
+
+        function fetchNodes() {
+            fetch('/nodes')
+                .then(response => response.json())
+                .then(nodes => {
+                    const agentSelect = document.getElementById('agentSelect');
+                    agentSelect.innerHTML = ''; // Clear previous options
+
+                    if (nodes && nodes.length > 0) {
+                        nodes.forEach((nodeId, index) => {
+                            const option = document.createElement('option');
+                            option.value = nodeId;
+                            // Capitalize first letter for display
+                            option.textContent = nodeId.charAt(0).toUpperCase() + nodeId.slice(1);
+                            agentSelect.appendChild(option);
+
+                            // Set the first node as the default selected agent
+                            if (index === 0) {
+                                agentSelect.value = nodeId;
+                                console.log(`Default agent set to: ${nodeId}`);
+                            }
+                        });
+                        // Trigger change event manually to update initial state if needed
+                        agentSelect.dispatchEvent(new Event('change'));
+                    } else {
+                        const option = document.createElement('option');
+                        option.textContent = "No agents available";
+                        option.disabled = true;
+                        agentSelect.appendChild(option);
+                         // Disable interaction if no agents
+                         document.getElementById('messageInput').disabled = true;
+                         document.getElementById('sendBtn').disabled = true;
+                         document.getElementById('recordBtn').disabled = true;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching nodes:', error)
+                    const agentSelect = document.getElementById('agentSelect');
+                    agentSelect.innerHTML = '<option disabled>Error loading agents</option>';
+                });
+        }
+
+        function fetchTasks() {
+            fetch('/tasks')
+                .then(response => response.json())
+                .then(tasks => {
+                    const tasksList = document.getElementById('tasksList');
+                    tasksList.innerHTML = ''; // Clear previous tasks
+                    if (!tasks || tasks.length === 0) {
+                        tasksList.innerHTML = '<div class="empty-state">No tasks found.</div>';
+                        return;
+                    }
+                    tasks.forEach(task => {
+                        const taskElement = document.createElement('div');
+                        // Determine priority class, default to 'low' if undefined/invalid
+                        const priorityClass = ['high', 'medium', 'low'].includes(task.priority?.toLowerCase()) ? task.priority.toLowerCase() : 'low';
+                        taskElement.className = `task ${priorityClass}`;
+                        const dueDate = task.due_date ? new Date(task.due_date).toLocaleDateString() : 'N/A';
+                        taskElement.innerHTML = `
+                            <h3>${task.title || 'Untitled Task'}</h3>
+                            <p>${task.description || 'No description.'}</p>
+                            <div class="task-meta">
+                                <span>Assigned to: ${task.assigned_to || 'Unassigned'}</span>
+                                <span>Due: ${dueDate}</span>
+                            </div>
+                        `;
+                        tasksList.appendChild(taskElement);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching tasks:', error);
+                    document.getElementById('tasksList').innerHTML = '<div class="empty-state">Error loading tasks.</div>';
+                });
+        }
+
+         function fetchProjects() {
+            fetch('/projects')
+                .then(response => response.json())
+                .then(projects => {
+                    const projectsList = document.getElementById('projectsList');
+                    projectsList.innerHTML = ''; // Clear previous projects
+                    if (!projects || Object.keys(projects).length === 0) {
+                        projectsList.innerHTML = '<div class="empty-state">No projects found.</div>';
+                        return;
+                    }
+                    for (const projectId in projects) {
+                        const project = projects[projectId];
+                        const projectElement = document.createElement('div');
+                        projectElement.className = 'project';
+                        let participantsHtml = '';
+                        if (project.participants && project.participants.length > 0) {
+                           participantsHtml = project.participants.map(p =>
+                                `<span class="project-participant">${p}</span>`
+                            ).join('');
+                        } else {
+                            participantsHtml = '<span>No participants</span>';
+                        }
+
+                        projectElement.innerHTML = `
+                            <h3>${project.name || projectId}</h3>
+                            <p>Owner: ${project.owner || 'Unknown'}</p>
+                            <div class="project-participants">
+                                ${participantsHtml}
+                            </div>
+                        `;
+                        projectsList.appendChild(projectElement);
+                    }
+                })
+                .catch(error => {
+                     console.error('Error fetching projects:', error);
+                     document.getElementById('projectsList').innerHTML = '<div class="empty-state">Error loading projects.</div>';
+                 });
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            const agentSelect = document.getElementById('agentSelect');
+            const selectedNodeId = agentSelect.value; // This is the TARGET node ID
+            const selectedSenderId = selectedNodeId; // Acting AS the selected agent
+
+            if (!message) return;
+            if (!selectedNodeId) {
+                addSystemMessage("Error: Please select an agent first.");
+                return;
+            }
+
+            addUserMessage(message);
+            messageInput.value = '';
+            messageInput.focus(); // Keep focus on input
+
+            // Send message to server
+            fetch('/send_message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                // Send target node_id and the sender_id (who is sending)
+                body: JSON.stringify({ node_id: selectedNodeId, message: message, sender_id: selectedSenderId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    addSystemMessage(`Error: ${data.error}`);
+                } else {
+                    addAgentMessage(data.response || "(Agent processed the message)");
+                    // Optionally display terminal output if needed, e.g., in a separate debug area
+                    if (data.terminal_output) {
+                        console.log("Terminal Output:", data.terminal_output);
+                        // addSystemMessage(`Terminal Output available (check console)`);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error sending message:', error);
+                addSystemMessage('Error sending message. Check console.');
+            });
+        }
+
+        function toggleRecording() {
+            const recordBtn = document.getElementById('recordBtn');
+            if (recorder && recorder.state === "recording") {
+                recorder.stop();
+                recordBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+                recordBtn.classList.remove('recording');
+                recordBtn.title = "Click to record audio";
+                console.log("Recording stopped.");
+            } else {
+                startRecording();
+                 recordBtn.innerHTML = '<i class="fas fa-stop"></i>'; // Change icon to stop
+                 recordBtn.classList.add('recording');
+                 recordBtn.title = "Click to stop recording";
+            }
+        }
+
+        function startRecording() {
+            const agentSelect = document.getElementById('agentSelect');
+            const selectedNodeId = agentSelect.value; // Target node
+            const selectedSenderId = selectedNodeId; // Acting agent
+
+             if (!selectedNodeId) {
+                addSystemMessage("Error: Please select an agent before recording.");
+                // Reset button state if recording couldn't start
+                const recordBtn = document.getElementById('recordBtn');
+                recordBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+                recordBtn.classList.remove('recording');
+                recordBtn.title = "Click to record audio";
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    // Optional: Create AudioContext for potential future analysis (not strictly needed for recording)
+                    // audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    // const source = audioContext.createMediaStreamSource(stream);
+
+                    const options = {};
+                     if (MediaRecorder.isTypeSupported('audio/mp3')) {
+                         options.mimeType = 'audio/mp3';
+                     } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+                         options.mimeType = 'audio/webm;codecs=opus';
+                     } // Add more types like audio/ogg if needed
+
+                     recorder = new MediaRecorder(stream, options);
+                     audioChunks = []; // Reset chunks
+
+                     recorder.ondataavailable = event => {
+                         if (event.data.size > 0) { // Ensure we have data
+                             audioChunks.push(event.data);
+                         }
+                     };
+
+                    recorder.onstop = () => {
+                        if (audioChunks.length > 0) {
+                            const audioBlob = new Blob(audioChunks, { type: options.mimeType || 'audio/webm' });
+                            console.log(`Sending audio blob (${options.mimeType || 'default'}):`, audioBlob.size, 'bytes');
+                            sendAudioToServer(audioBlob, selectedNodeId, selectedSenderId); // Pass target and sender
+                        } else {
+                            console.warn("No audio data chunks recorded.");
+                            addSystemMessage("No audio detected during recording.");
+                        }
+
+                        // Stop the tracks and close the context
+                         stream.getTracks().forEach(track => track.stop());
+                         // if (audioContext && audioContext.state !== 'closed') {
+                         //     audioContext.close();
+                         // }
+                         recorder = null; // Reset recorder
+                     };
+
+                    recorder.start();
+                    console.log("Recording started...");
+                    addSystemMessage("Recording started...");
+
+                })
+                .catch(err => {
+                    console.error('Error accessing microphone:', err);
+                    addSystemMessage("Error accessing microphone. Please grant permission.");
+                     const recordBtn = document.getElementById('recordBtn');
+                     recordBtn.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+                     recordBtn.classList.remove('recording');
+                     recordBtn.disabled = true;
+                     recordBtn.title = "Microphone access denied";
+                });
+        }
+
+        function sendAudioToServer(audioBlob, nodeId, senderId) { // Accept target nodeId and senderId
+             const reader = new FileReader();
+             reader.onloadend = function() {
+                 const base64AudioData = reader.result;
+
+                 console.log(`Sending audio for node: ${nodeId} from sender: ${senderId}`);
+                 addSystemMessage("Processing audio...");
+
+                 fetch('/transcribe_audio', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     // Send target node_id and sender_id
+                     body: JSON.stringify({ node_id: nodeId, audio_data: base64AudioData, sender_id: senderId })
+                 })
+                 .then(response => response.json())
+                 .then(data => {
+                    console.log("Transcription response:", data);
+                     if (data.error) {
+                         addSystemMessage(`Error: ${data.error}`);
+                     } else {
+                         addUserMessage(`(Voice Input): ${data.transcription || "(Empty transcription)"}`);
+                         addAgentMessage(data.response || "(Agent processed the audio)");
+
+                         // Play audio response if available
+                         if (data.audio_response) {
+                             playAudioResponse(data.audio_response);
+                         }
+                         // Optionally display terminal output
+                         if (data.terminal_output) {
+                            console.log("Terminal Output:", data.terminal_output);
+                            // addSystemMessage(`Terminal Output available (check console)`);
+                         }
+                     }
+                 })
+                 .catch(error => {
+                    console.error('Error sending audio:', error);
+                    addSystemMessage('Error sending audio. Check console.');
+                 });
+             }
+             reader.readAsDataURL(audioBlob);
+        }
+
+        function playAudioResponse(base64Audio) {
+            try {
+                const audioSource = `data:audio/mp3;base64,${base64Audio}`;
+                const audio = new Audio(audioSource);
+                audio.play()
+                     .catch(e => console.error("Error playing audio response:", e));
+                 addSystemMessage("Playing agent audio response...");
+            } catch (e) {
+                console.error("Failed to create or play audio response:", e);
+                addSystemMessage("Could not play audio response.");
+            }
+        }
+
+        // Helper functions for adding messages to the chat UI
+         function addMessage(sender, message, type) {
+            const messagesContainer = document.getElementById('chatMessages');
+            if (!messagesContainer) return; // Exit if container not found
+
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('chat-message', `${type}-message`);
+
+            // Simple check for HTML content
+            const containsHtml = /<[a-z][\s\S]*>/i.test(message);
+
+            const iconClass = type === 'user' ? 'fa-user' : (type === 'agent' ? 'fa-robot' : 'fa-info-circle');
+            // Get sender name from dropdown for user messages if needed, otherwise use type
+            let senderName = type.charAt(0).toUpperCase() + type.slice(1); // Default: User, Agent, System
+             if (type === 'user') {
+                const agentSelect = document.getElementById('agentSelect');
+                senderName = agentSelect.options[agentSelect.selectedIndex]?.text || 'You'; // Use selected agent name or 'You'
+             } else if (type === 'agent') {
+                 // For agent messages, maybe derive from context if needed, otherwise 'Agent'
+                 // For now, we don't know *which* agent responded unless the backend tells us
+                 senderName = 'Agent';
+             }
+
+            messageElement.innerHTML = `
+                <div class="message-header">
+                    <i class="fas ${iconClass}"></i>
+                    <strong>${senderName}:</strong>
+                </div>
+                <div class="message-content"></div>
+            `;
+
+            // Set content safely
+            const contentDiv = messageElement.querySelector('.message-content');
+            if (containsHtml) {
+                // Be cautious with innerHTML - ensure backend sanitizes if needed
+                contentDiv.innerHTML = message;
+            } else {
+                // Use textContent for plain text to prevent XSS
+                contentDiv.textContent = message;
+            }
+
+            messagesContainer.appendChild(messageElement);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight; // Auto-scroll
+        }
+
+        function addUserMessage(message) {
+            addMessage('User', message, 'user');
+        }
+
+        function addAgentMessage(message) {
+            addMessage('Agent', message, 'agent');
+        }
+
+        function addSystemMessage(message) {
+            addMessage('System', message, 'system');
+        }
+
+        function clearChatMessages() {
+            const messagesContainer = document.getElementById('chatMessages');
+            if (messagesContainer) messagesContainer.innerHTML = '';
+        }
+
     </script>
 </body>
 </html>
