@@ -186,6 +186,7 @@ temporary.py
 # Virtual Environment
 venv/
 ENV/
+A2A/
 
 # Environment variables
 .env
