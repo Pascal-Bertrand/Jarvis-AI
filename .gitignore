@@ -202,3 +202,7 @@ communication_log.txt
 .vscode/
 *.swp
 *.swo
+
+# folders
+A2A/
+a2a-tutorial/
