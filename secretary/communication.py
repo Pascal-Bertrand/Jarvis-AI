@@ -3,7 +3,7 @@ import base64
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta, timezone 
 
-from secretary.utilities.logging import log_user_message, log_network_message, log_warning, log_system_message
+from secretary.utilities.logging import log_user_message, log_network_message, log_warning, log_system_message, log_error
 from secretary.utilities.google import initialize_google_services
 from secretary.scheduler import Scheduler
 from secretary.brain import Confirmation
@@ -66,9 +66,13 @@ class Communication:
         """
         
         # Log the message
-        log_network_message(f"[Communication] {sender_id, self.node_id, message}")
+        log_system_message(f"[Communication] {sender_id, self.node_id, message}")
         print(f"[{self.node_id}] Received from {sender_id}: {message}")
 
+        # Check if it is a information message from another node
+        if message.startswith("[(INFO)]"):
+            return message.replace("[(INFO)]", "")        
+        
         # quick CLI command handling
         quick_cmd_response = self._handle_quick_command(message, sender_id)
         if quick_cmd_response is not None:

@@ -139,7 +139,14 @@ class Brain:
         }
 
         self.people = People()     # local cache of people (if needed)
-        self.calendar = []
+        self.calendar = [{
+                'project_id': None,
+                'start_time': None,
+                'end_time': None,
+                'participants': None,
+                'meeting_info': None,
+                'event_id': None
+            }]
         self.context = []       # conversation history for LLM (if needed)
         self.scheduler = None
         self.confirmation_context = {

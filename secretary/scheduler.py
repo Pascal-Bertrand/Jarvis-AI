@@ -351,10 +351,15 @@ class Scheduler:
             if not hasattr(node, 'calendar'):
                 setattr(node, 'calendar', [])
             # Append the meeting details to the participant's local calendar
-            node.calendar.append({
-                'project_id': project_id,
+            node.brain.calendar.append({
+                'event_id': project_id,
                 'meeting_info': meeting_info
             })
+            
+            # Notify them
+            notification = f"[(INFO)]Meeting '{project_id}': '{meeting_info}' has been scheduled by {self.node_id}"
+            self.network.send_message(self.node_id, p, notification)
+            
             log_system_message(f"[{self.node_id}] Notified {p} about meeting for project '{project_id}'.")
     
         # Emit an update to the UI via SocketIO
@@ -909,7 +914,7 @@ class Scheduler:
             The meeting_identifier MUST be a simple string.
             """
             
-            response = self.client.chat.completions.create(
+            response = self.node.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
@@ -1144,12 +1149,12 @@ class Scheduler:
             message (str): The cancellation command as a natural language message.
         """
         
-        # First, get all meetings from calendar
-        if not self.calendar_service:
-            msg = f"[{self.node_id}] Calendar service not available, can't cancel meetings"
-            print(f"[{self.node_id}] Calendar service not available, can't cancel meetings")
-            return msg
+        # if not self.calendar_service:
+        #     msg = f"[{self.node_id}] Calendar service not available, can't cancel meetings"
+        #     print(f"[{self.node_id}] Calendar service not available, can't cancel meetings")
+        #     return msg
         
+        # First, get all meetings from calendar
         try:
             # Use OpenAI to extract cancellation details
             prompt = f"""
@@ -1163,7 +1168,7 @@ class Scheduler:
             Only include information that is explicitly mentioned.
             """
             
-            response = self.client.chat.completions.create(
+            response = self.node.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
@@ -1172,6 +1177,8 @@ class Scheduler:
             cancel_data = json.loads(response.choices[0].message.content)
 
             # TODO: Add a method for local calendar handling
+            if not self.calendar_service:
+                return self._fallback_cancel_meeting(cancel_data)
             
             # Get upcoming meetings
             now = datetime.now(timezone.utc).isoformat()
@@ -1262,7 +1269,131 @@ class Scheduler:
             msg = f"[{self.node_id}] Error cancelling meeting: {str(e)}"
             print(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
             return msg
+    
+    # TODO: Work on the logic! Right now it just cancels all meetings with minor criteria    
+    def _fallback_cancel_meeting(self, cancel_data: dict) -> str:
+        """
+        Fallback method for scheduling a meeting when the calendar service is unavailable.
+        
+        This method handles the scheduling of meetings locally and updates the local calendar records.
+        
+        Args:
+            cancel_data (Dict[str, Any]): Data containing meeting details to be scheduled.
+            
+        Returns:
+            str: Confirmation message indicating the result of the scheduling attempt.
+        """
+        log_system_message(f"[Scheduler] [{self.node_id}] Calendar service not available, using local scheduling")
+        
+        try:
+            date_filter = cancel_data.get("date")
+            participants_filter = [p.lower() for p in cancel_data.get("with_participants", [])]
+            title_filter = cancel_data.get("title")
+            now = datetime.now(timezone.utc).isoformat()
+            events = self._get_local_meetings_on_date(date_filter)
+        
+            if not events:
+                msg = f"[{self.node_id}] No upcoming meetings found to cancel."
+                print(f"[{self.node_id}] No upcoming meetings found to cancel")
+                return msg
+                      
+            cancelled_count = 0
 
+            # Iterate over events and determine if they match the cancellation criteria
+            for event in events:
+                should_cancel = True
+                
+                log_system_message(f"[Scheduler] [{self.node_id}] Checking event: {event.get('meeting_info')}")
+                
+                #TODO ...
+                # Check title match if specified
+                if title_filter and title_filter.lower() not in event.get['meeting_info'].lower():
+                    should_cancel = False
+                
+                # Check participants if specified
+                if participants_filter:
+                    event_attendees = event.get['participants', []]
+                    if not any(p in event_attendees for p in participants_filter):
+                        should_cancel = False
+                
+                # Check date if specified
+                if date_filter:
+                    event_start = event.get('start_time')
+                    if event_start and date_filter not in event_start:
+                        should_cancel = False
+                
+                if should_cancel and event != None:
+                    # Delete the event from the calendar
+                    if event in self.brain.calendar:
+                        self.brain.calendar.remove(event)
+
+                    # Notify attendees about the cancellation
+                    for attendee in event.get('participants', []):
+                        
+                        log_system_message(f"[Scheduler] [{self.node_id}] Notifying {attendee} about cancellation")
+                        
+                        # Update their local calendar
+                        self.network.nodes[attendee].brain.calendar = [
+                            m for m in self.network.nodes[attendee].brain.calendar 
+                            if m.get('event_id') != event.get('event_id')
+                        ]
+                        # Notify them
+                        notification = f"[(INFO)]Meeting '{event.get('event_id')}': '{event.get('meeting_info')}' has been cancelled by {self.node_id}"
+                        self.network.send_message(self.node_id, attendee, notification)
+            
+                    cancelled_count += 1
+                    msg = f"[{self.node_id}] Meeting '{event.get('summary')}' cancelled."
+                    
+                    log_system_message(f"[Scheduler] [{self.node_id}] Cancelled meeting: {event.get('summary')}")
+                    
+                    print(f"[{self.node_id}] Cancelled meeting: {event.get('summary')}")
+            
+            if cancelled_count == 0:
+                msg = f"[{self.node_id}] No meetings found matching the cancellation criteria"
+                print(f"[{self.node_id}] No meetings found matching the cancellation criteria")
+                return msg
+            else:
+                msg = f"[{self.node_id}] Cancelled {cancelled_count} meeting(s)"
+                print(f"[{self.node_id}] Cancelled {cancelled_count} meeting(s)")
+                return msg
+            
+        except Exception as e:
+            msg = f"[{self.node_id}] Error cancelling meeting: {str(e)}"
+            print(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
+            return msg
+
+    def _get_local_meetings_on_date(self, date: str) -> list:
+        """
+        Retrieve meetings on a given date from the local calendar.
+        
+        Args:
+            date_filter (str): Date filter to apply when retrieving meetings.
+            
+        Returns:
+            list: List(Dict[str, Any]) of upcoming meetings.
+        """
+        
+        log_system_message(f"[Scheduler] [{self.node_id}] Retrieving local meetings on date: {date}")
+        
+        calendar = self.brain.calendar
+        meeting_list = []
+        
+        for event in calendar:
+            event_start_str = event.get('start_time')
+            if type(event_start_str) == str:
+                event_dt = datetime.fromisoformat(event_start_str)
+            parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
+            
+            if event_dt.date() == parsed_date:
+                meeting_list.append(event)
+                log_system_message(f"[Scheduler] [{self.node_id}] Meeting found: {event.get('meeting_info')}")
+                print(f"[{self.node_id}] Meeting found: {event.get('meeting_info')}")
+        
+        return meeting_list
+            
+        pass
+        
+        
     def _create_calendar_meeting(self, meeting_id, title, participants, start_datetime, end_datetime):
         """
         Create a meeting event in Google Calendar.
@@ -1459,6 +1590,7 @@ class Scheduler:
 
         # CHANGED: pick handler based on action, but always call handler(intent, message)
         if action == 'schedule_meeting':
+            log_system_message(f"[Scheduler] [{self.node_id}] Routing to meeting creation")
             if missing:
                 # If missing info, start the meeting creation process
                 return self._start_meeting_creation(message, missing)
@@ -1466,10 +1598,13 @@ class Scheduler:
                 # If no missing info, handle the meeting creation
                 return self._handle_meeting_creation(message)
         elif action == 'list_meetings':
+            log_system_message(f"[Scheduler] [{self.node_id}] Routing to _handle_list_meetings")
             return self._handle_list_meetings()
         elif action == 'cancel_meeting':
+            log_system_message(f"[Scheduler] [{self.node_id}] Routing to _handle_meeting_cancellation")
             return self._handle_meeting_cancellation(message)
         elif action == 'reschedule_meeting':
+            log_system_message(f"[Scheduler] [{self.node_id}] Routing to _handle_meeting_rescheduling")
             return self._handle_meeting_rescheduling(message)
         else:
             log_warning(f"[{self.node_id}] Unknown calendar action '{action}'") 
