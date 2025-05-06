@@ -71,6 +71,7 @@ class Communication:
 
         # Check if it is a information message from another node
         if message.startswith("[(INFO)]"):
+            log_system_message(f"[Communication] [{self.node_id}] Information message: {message.replace("[(INFO)]", "")}")
             return message.replace("[(INFO)]", "")        
         
         # quick CLI command handling

@@ -260,6 +260,7 @@ class Scheduler:
         }
 
         try:
+            log_system_message(f"[Scheduler] [{self.node_id}] Attempting to create google calendar event: {event}")
             # Insert the meeting event into the calendar and capture the response event
             event = self.calendar_service.events().insert(calendarId='primary', body=event).execute()
             msg = f"[{self.node_id}] Meeting created: {event.get('htmlLink')}"
@@ -270,7 +271,7 @@ class Scheduler:
                  self.socketio.emit('update_meetings')
 
             # Add meeting details to the node's local calendar
-            self.calendar.append({
+            self.brain.calendar.append({
                 'project_id': project_id,
                 'meeting_info': meeting_description,
                 'event_id': event['id']
@@ -321,13 +322,13 @@ class Scheduler:
 
         # TODO: Store in a more user-friendly format (e.g. write a summary of the meeting info)
         meeting_info = f"Meeting for project '{project_id}' scheduled for {start_datetime.strftime('%Y-%m-%d %H:%M')} for a duration of {(end_datetime - start_datetime).seconds // 60} minutes."
-        self.calendar.append({
-            'project_id': project_id,
-            'start_time': start_datetime.isoformat(),
-            'end_time': end_datetime.isoformat(),
-            'meeting_info': meeting_info,
-            'participants': participants
-        })
+        # self.calendar.append({
+        #     'project_id': project_id,
+        #     'start_time': start_datetime.isoformat(),
+        #     'end_time': end_datetime.isoformat(),
+        #     'meeting_info': meeting_info,
+        #     'participants': participants
+        # })
         
         # Save to the brain's calendar
         self.brain.calendar.append({
@@ -338,30 +339,38 @@ class Scheduler:
             'participants': participants
         })
 
-        log_system_message(f"[{self.node_id}] Scheduled local meeting: {meeting_info}")        
+        log_system_message(f"[Scheduler] [{self.node_id}] Scheduled local meeting: {meeting_info}")        
 
         # Notify every participant in the network, skipping any unknown participants
+        
         for p in participants:
-            if p not in self.network.nodes:
-                log_warning(f"[{self.node_id}] Cannot notify unknown participant '{p}' in fallback; skipping.")
-                continue
+            log_system_message(f"[Scheduler] {type(self.node_id)} , {type(p)}")
+            
+            if p != self.node_id:
+                
+                if p not in self.network.nodes:
+                    log_warning(f"[{self.node_id}] Cannot notify unknown participant '{p}' in fallback; skipping.")
+                    continue
 
-            node = self.network.nodes[p]
-            # Safety check to ensure the node has a calendar attribute
-            if not hasattr(node, 'calendar'):
-                setattr(node, 'calendar', [])
-            # Append the meeting details to the participant's local calendar
-            node.brain.calendar.append({
-                'event_id': project_id,
-                'meeting_info': meeting_info
-            })
-            
-            # Notify them
-            notification = f"[(INFO)]Meeting '{project_id}': '{meeting_info}' has been scheduled by {self.node_id}"
-            self.network.send_message(self.node_id, p, notification)
-            
-            log_system_message(f"[{self.node_id}] Notified {p} about meeting for project '{project_id}'.")
-    
+                node = self.network.nodes[p]
+                # Safety check to ensure the node has a calendar attribute
+                if not hasattr(node, 'calendar'):
+                    setattr(node, 'calendar', [])
+                # Append the meeting details to the participant's local calendar
+                node.brain.calendar.append({
+                    'project_id': project_id,
+                    'start_time': start_datetime.isoformat(),
+                    'end_time': end_datetime.isoformat(),
+                    'meeting_info': meeting_info,
+                    'participants': participants
+                })
+                
+                # Notify them
+                notification = f"[(INFO)]Meeting '{project_id}': '{meeting_info}' has been scheduled by {self.node_id}"
+                self.network.send_message(self.node_id, p, notification)
+                
+                log_system_message(f"[{self.node_id}] Notified {p} about meeting for project '{project_id}'.")
+        
         # Emit an update to the UI via SocketIO
         if self.socketio:
             self.socketio.emit('update_meetings')
