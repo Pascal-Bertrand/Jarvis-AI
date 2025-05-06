@@ -454,34 +454,34 @@ def open_browser():
         except:
             continue
 #obsolete
-# def run_cli(network):
-#     print("Commands:\n"
-#           "  node_id: message => send 'message' to 'node_id' from CLI\n"
-#           "  node_id: plan project_name = objective => create a new project plan\n"
-#           "  node_id: tasks => list tasks for a node\n"
-#           "  quit => exit\n")
+def run_cli(network):
+    print("Commands:\n"
+          "  node_id: message => send 'message' to 'node_id' from CLI\n"
+          "  node_id: plan project_name = objective => create a new project plan\n"
+          "  node_id: tasks => list tasks for a node\n"
+          "  quit => exit\n")
 
-#     while True:
-#         user_input = input("> ")
-#         if user_input.lower().strip() == "quit":
-#             print("Exiting CLI...")
-#             break
+    while True:
+        user_input = input("> ")
+        if user_input.lower().strip() == "quit":
+            print("Exiting CLI...")
+            break
             
-#         # Handle node-specific commands
-#         if ":" in user_input:
-#             node_id, message = user_input.split(":", 1)
-#             node_id = node_id.strip()
-#             message = message.strip()
+        # Handle node-specific commands
+        if ":" in user_input:
+            node_id, message = user_input.split(":", 1)
+            node_id = node_id.strip()
+            message = message.strip()
 
-#             if node_id in network.nodes:
-#                 # All commands now go through receive_message
-#                 response = network.nodes[node_id].receive_message(message, "cli_user")
-#                 if response:
-#                     print(response)
-#             else:
-#                 print(f"No node with ID '{node_id}' found.")
-#         else:
-#             print("Invalid format. Use:\n  node_id: message\n  OR\n  quit\n")
+            if node_id in network.nodes:
+                # All commands now go through receive_message
+                response = network.nodes[node_id].receive_message(message, "cli_user")
+                if response:
+                    print(response)
+            else:
+                print(f"No node with ID '{node_id}' found.")
+        else:
+            print("Invalid format. Use:\n  node_id: message\n  OR\n  quit\n")
 
 def demo_flexible_meeting(network) -> None:
     """
@@ -588,7 +588,7 @@ if __name__ == "__main__":
     browser_thread.daemon = True
     browser_thread.start()
 
-    #run_cli(network)
+    run_cli(network)
     #demo_flexible_meeting(network) # Uncomment to run the demo
     
     # Keep the main thread alive (Flask runs in daemon threads)

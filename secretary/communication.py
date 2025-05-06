@@ -66,21 +66,20 @@ class Communication:
         """
         
         # Log the message
-        if sender_id == 'cli_user':
-            log_user_message(sender_id, message)
-        else:
-            log_network_message(sender_id, self.node_id, message)
+        log_network_message(sender_id, self.node_id, message)
         print(f"[{self.node_id}] Received from {sender_id}: {message}")
 
         # quick CLI command handling
         quick_cmd_response = self._handle_quick_command(message, sender_id)
         if quick_cmd_response is not None:
+            log_system_message(f"Quick command response: {quick_cmd_response}")
             return quick_cmd_response
 
         # Check if the message is the response to a confirmation question
         if self.brain and self.brain.confirmation_context['active'] == True:
             if Confirmation.request(self, message):
                 self.brain.confirmation_context['active'] = False
+                log_system_message(f"Confirmation response: {message}")
                 return self._handle_confirmation_response(message, sender_id)
             else:
                 self.brain.confirmation_context['active'] = False
@@ -150,7 +149,7 @@ class Communication:
         Returns: 
             Optional[str]: Response string if command handled, None otherwise.
         """
-        if sender_id != 'cli_user' or not self.brain:
+        if not self.brain:
             return None
 
         # Convert message to lowercase for case-insensitive matching

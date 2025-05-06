@@ -340,6 +340,8 @@ class Scheduler:
             str: A complete message string including title, date, time, and participants.
         """
         
+        self.meeting_context = self.brain.meeting_context
+        
         initial = self.meeting_context['initial_message']
         collected = self.meeting_context['collected_info']
         
