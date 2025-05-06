@@ -5,12 +5,12 @@ import zoneinfo
 
 from network.tasks import Task            
 from network.internal_communication import Intercom  
-from secretary.utilities.logging import log_system_message, log_warning  
+from secretary.utilities.logging import log_system_message, log_warning, log_error  
 from secretary.brain import LLMClient
 
 class Scheduler:
 
-    def __init__(self, node_id: str = None, calendar_service=None, network: Intercom = None, brain = None):
+    def __init__(self, node_id: str = None, calendar_service=None, network: Intercom = None, brain = None, socketio_instance=None):
         """
         Initialize the Scheduler.
 
@@ -18,12 +18,15 @@ class Scheduler:
             node_id (str): Identifier for the node using this scheduler.
             calendar_service: Google Calendar service client (or None).
             network (Intercom): The Intercom/network instance for notifications.
+            brain: The Brain instance associated with this node.
+            socketio_instance: The shared SocketIO instance.
         """
         self.node_id = node_id
         self.calendar_service = calendar_service
-        self.network = network               
+        self.network = network
         self.brain = brain
-        self.calendar = self.network.local_calendar if self.network and node_id in self.network.nodes else [] 
+        self.socketio = socketio_instance
+        self.calendar = self.network.local_calendar if self.network and node_id in self.network.nodes else []
         self.node = self.network.nodes.get(node_id) if self.network and node_id in self.network.nodes else None
 
         # Attach this calendar list to the Brain node so meetings show up
@@ -34,6 +37,128 @@ class Scheduler:
         # Register this Scheduler instance under its node_id
         if self.network and self.node_id is not None:
             self.network.register_node(self.node_id, self)
+
+    def get_upcoming_meetings(self, max_results=10):
+        """
+        Fetch upcoming meetings from Google Calendar and local storage for this node.
+
+        Args:
+            max_results (int): Maximum number of meetings to retrieve from Google Calendar.
+
+        Returns:
+            list: A list of meeting event objects, or an empty list if an error occurs.
+        """
+        google_meetings = []
+        if self.calendar_service:
+            try:
+                now_utc = datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
+                events_result = self.calendar_service.events().list(
+                    calendarId='primary',
+                    timeMin=now_utc,
+                    maxResults=max_results,
+                    singleEvents=True,
+                    orderBy='startTime'
+                ).execute()
+                google_meetings = events_result.get('items', [])
+                log_system_message(f"[{self.node_id}] Fetched {len(google_meetings)} upcoming meetings from Google Calendar.")
+            except Exception as e:
+                log_error(f"[{self.node_id}] Error fetching upcoming meetings from Google Calendar: {str(e)}")
+        else:
+            log_warning(f"[{self.node_id}] Google Calendar service not available, cannot fetch GCal meetings.")
+
+        local_meetings_transformed = []
+        if self.brain and hasattr(self.brain, 'calendar') and self.brain.calendar:
+            log_system_message(f"[{self.node_id}] Found {len(self.brain.calendar)} local meetings.")
+            for local_meeting in self.brain.calendar:
+                # Transform local meeting structure to be compatible with UI expectations (like GCal events)
+                # Ensure start and end times are in the correct format for the UI.
+                start_time_str = local_meeting.get('start_time')
+                end_time_str = local_meeting.get('end_time')
+
+                start_obj = {}
+                if start_time_str:
+                    try:
+                        # Assuming ISO format from _fallback_schedule_meeting
+                        dt_obj = datetime.fromisoformat(start_time_str)
+                        start_obj = {'dateTime': dt_obj.isoformat(), 'timeZone': str(dt_obj.tzinfo or tzlocal.get_localzone_name())}
+                    except ValueError:
+                        start_obj = {'date': start_time_str} # Fallback if not full dateTime
+                
+                end_obj = {}
+                if end_time_str:
+                    try:
+                        dt_obj = datetime.fromisoformat(end_time_str)
+                        end_obj = {'dateTime': dt_obj.isoformat(), 'timeZone': str(dt_obj.tzinfo or tzlocal.get_localzone_name())}
+                    except ValueError:
+                        end_obj = {'date': end_time_str}
+
+                transformed = {
+                    'summary': local_meeting.get('meeting_info', 'Local Meeting'),
+                    'start': start_obj,
+                    'end': end_obj,
+                    'attendees': [{'email': f'{p}@example.com'} for p in local_meeting.get('participants', [])],
+                    'organizer': {'email': f'{self.node_id}@local.agent'},
+                    'id': local_meeting.get('event_id', f"local_{local_meeting.get('project_id', '')}_{start_time_str}"),
+                    'source': 'local' # To distinguish if needed
+                }
+                # Filter out past local meetings manually if timeMin wasn't applied
+                if start_time_str:
+                    try:
+                        dt_obj_check = datetime.fromisoformat(start_time_str)
+                        # Ensure dt_obj_check is timezone-aware (UTC) for comparison
+                        if dt_obj_check.tzinfo is None or dt_obj_check.tzinfo.utcoffset(dt_obj_check) is None:
+                            # dt_obj_check is naive, assume it's in local time
+                            local_tz = tzlocal.get_localzone()
+                            # Make it local-aware, then convert to UTC
+                            dt_obj_check = dt_obj_check.replace(tzinfo=local_tz).astimezone(timezone.utc)
+                        else:
+                            # If already aware, convert to UTC for consistent comparison
+                            dt_obj_check = dt_obj_check.astimezone(timezone.utc)
+
+                        if dt_obj_check >= datetime.now(timezone.utc):
+                            local_meetings_transformed.append(transformed)
+                        else:
+                            log_system_message(f"[{self.node_id}] Skipping past local meeting: {transformed.get('summary')}")
+                    except ValueError as ve:
+                         log_warning(f"[{self.node_id}] Could not parse date for local meeting '{transformed.get('summary')}': {start_time_str}. Error: {ve}")
+                         local_meetings_transformed.append(transformed) # Append if date parsing fails, let UI handle display or ignore
+                else:
+                     local_meetings_transformed.append(transformed) # No start time, include for now
+
+        # Merge and de-duplicate meetings
+        # Simple de-duplication based on event ID (Google event ID or generated local ID)
+        all_meetings_dict = {}
+        for meeting in google_meetings:
+            all_meetings_dict[meeting['id']] = meeting
+        
+        for meeting in local_meetings_transformed:
+            # Only add local meeting if no Google meeting with the same ID exists
+            # or if it's a purely local meeting (no event_id matching GCal)
+            if meeting['id'] not in all_meetings_dict or not local_meeting.get('event_id'):
+                 all_meetings_dict[meeting['id']] = meeting
+
+        merged_meetings = list(all_meetings_dict.values())
+
+        # Sort all meetings by start time
+        def get_sort_key(event):
+            start_info = event.get('start', {})
+            date_time_str = start_info.get('dateTime', start_info.get('date'))
+            if date_time_str:
+                try:
+                    # Handle both date and dateTime strings
+                    if 'T' in date_time_str:
+                        return datetime.fromisoformat(date_time_str.replace('Z', '+00:00'))
+                    else:
+                        return datetime.strptime(date_time_str, '%Y-%m-%d')
+                except ValueError:
+                    return datetime.max # Put unparsable dates at the end
+            return datetime.max
+
+        merged_meetings.sort(key=get_sort_key)
+
+        log_system_message(f"[{self.node_id}] Total upcoming meetings (merged): {len(merged_meetings)}")
+        
+        return merged_meetings
 
     def create_calendar_reminder(self, task: Task):
         """
@@ -78,7 +203,12 @@ class Scheduler:
 
             # Insert the event into the primary calendar
             event = self.calendar_service.events().insert(calendarId='primary', body=event).execute()
-            log_system_message(f"[{self.node_id}] Task reminder created: {event.get('htmlLink')}")
+            msg = f"[{self.node_id}] Task reminder created: {event.get('htmlLink')}"
+            log_system_message(msg)
+            
+            # Emit an update to the UI via SocketIO
+            if self.socketio:
+                 self.socketio.emit('update_meetings')
             
         except Exception as e:
             log_warning(f"[{self.node_id}] Failed to create calendar reminder: {e}")
@@ -137,6 +267,10 @@ class Scheduler:
             msg = f"[{self.node_id}] Meeting created: {event.get('htmlLink')}"
             log_system_message(msg)
             
+            # Emit an update to the UI via SocketIO
+            if self.socketio:
+                 self.socketio.emit('update_meetings')
+
             # Add meeting details to the node's local calendar
             self.calendar.append({
                 'project_id': project_id,
@@ -225,6 +359,10 @@ class Scheduler:
             })
             log_system_message(f"[{self.node_id}] Notified {p} about meeting for project '{project_id}'.")
     
+        # Emit an update to the UI via SocketIO
+        if self.socketio:
+            self.socketio.emit('update_meetings')
+
         return meeting_info
 
     def _start_meeting_creation(self, initial_message, missing_info):
@@ -966,7 +1104,7 @@ class Scheduler:
                 # Update local calendar records
                 for meeting in self.calendar:
                     if meeting.get('event_id') == updated_event['id']:
-                        meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {new_date} at {formatted_time})"
+                        meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
                 
                 # Notify all attendees about the rescheduled meeting
                 attendees = updated_event.get('attendees', [])
@@ -976,7 +1114,7 @@ class Scheduler:
                         # Update their local calendar
                         for meeting in self.network.nodes[attendee_id].calendar:
                             if meeting.get('event_id') == updated_event['id']:
-                                meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {new_date} at {formatted_time})"
+                                meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
                         
                         # Send notifications
                         notification = (
@@ -1107,7 +1245,11 @@ class Scheduler:
                     cancelled_count += 1
                     msg = f"[{self.node_id}] Meeting '{event.get('summary')}' cancelled."
                     print(f"[{self.node_id}] Cancelled meeting: {event.get('summary')}")
-                    return msg
+                    
+                    # Emit an update to the UI via SocketIO for cancellation
+                    if self.socketio:
+                        self.socketio.emit('update_meetings')
+                    return msg # Return after the first successful cancellation and notification
             
             if cancelled_count == 0:
                 msg = f"[{self.node_id}] No meetings found matching the cancellation criteria"
@@ -1198,10 +1340,18 @@ class Scheduler:
                     notification = f"New meeting: '{title}' scheduled by {self.node_id} for {meeting_date} at {meeting_time}"
                     self.network.send_message(self.node_id, p, notification)
 
+            # Emit an update to the UI via SocketIO
+            if self.socketio:
+                 self.socketio.emit('update_meetings')
+
+            return f"Meeting '{title}' scheduled successfully. Check your calendar."
         except Exception as e:
             print(f"[{self.node_id}] Failed to create calendar event: {e}")
             # Fallback to local calendar
+            # The emit will be handled by _fallback_schedule_meeting if it's called
             self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime)
+            # Ensure a return value even in fallback after GCal error
+            return f"Meeting '{title}' scheduled locally due to Google Calendar error."
 
     #TODO: Add correct return statements to this function and handle separation of concerns nicely
     def _complete_meeting_rescheduling(self):
@@ -1287,7 +1437,12 @@ class Scheduler:
                         f"New time: {formatted_time}"
                     )
                     self.network.send_message(self.node_id, attendee_id, notification)
-                    return notification
+                    
+            # Emit an update to the UI via SocketIO for rescheduling
+            if self.socketio:
+                self.socketio.emit('update_meetings')
+            
+            return notification # Or a success message
         
         except Exception as e:
             print(f"[{self.node_id}] Error completing meeting rescheduling: {str(e)}")

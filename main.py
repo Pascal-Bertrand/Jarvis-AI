@@ -136,8 +136,8 @@ class LLMNode:
         self.brain.calendar_service = self.calendar_service # Inject calendar service
         self.brain.gmail_service = self.gmail_service       # Inject gmail service
 
-        # Initialize Scheduler and inject calendar service
-        self.scheduler = Scheduler(node_id=self.node_id, calendar_service=self.calendar_service, network=self.network, brain=self.brain)
+        # Initialize Scheduler and inject calendar service and socketio
+        self.scheduler = Scheduler(node_id=self.node_id, calendar_service=self.calendar_service, network=self.network, brain=self.brain, socketio_instance=socketio)
 
         # Initialize Communication and inject dependencies
         self.communication = Communication(self.node_id, self.llm_client, self.network, self.api_key)
@@ -190,16 +190,25 @@ def show_tasks():
     if not network:
         return jsonify({"error": "Network not initialized"}), 500
 
+    agent_id_filter = request.args.get('agent_id')
     all_tasks = []
-    # Option 1: Iterate through all tasks in the network directly
-    # for task in network.tasks:
-    #     all_tasks.append(task.to_dict())
 
-    # Option 2: Keep original logic - get tasks per node
-    for node_id in network.nodes.keys(): # Use keys() for efficiency if node object isn't needed
-        tasks = network.get_tasks_for_node(node_id)
-        for task in tasks:
-            all_tasks.append(task.to_dict())
+    for node_id_loop, node in network.nodes.items():
+        # If filtering, only process tasks for the specified agent (node)
+        if agent_id_filter and node_id_loop != agent_id_filter:
+            continue
+        
+        # Assuming tasks are stored in network.tasks and can be filtered by assigned_to
+        # Or, if tasks are within each node's brain:
+        if hasattr(node, 'brain') and node.brain and hasattr(node.brain, 'tasks') and node.brain.tasks:
+            for task in node.brain.tasks: # Iterate over tasks in the node's brain
+                # If not filtering OR if task is assigned to the agent_id_filter
+                if not agent_id_filter or (hasattr(task, 'assigned_to') and task.assigned_to == agent_id_filter):
+                    all_tasks.append(task.to_dict())
+        elif network.tasks: # Fallback to network.tasks if node.brain.tasks isn't the source
+             for task in network.tasks:
+                 if not agent_id_filter or (hasattr(task, 'assigned_to') and task.assigned_to == agent_id_filter):
+                    all_tasks.append(task.to_dict())
 
     return jsonify(all_tasks)
 
@@ -222,22 +231,78 @@ def show_projects():
     if not network:
         return jsonify({"error": "Network not initialized"}), 500
 
+    agent_id_filter = request.args.get('agent_id')
     all_projects = {}
-    for node_id, node in network.nodes.items():
-        # Check if the node has a brain and the brain has projects
+
+    for node_id_loop, node in network.nodes.items():
+        # If filtering by agent, only process projects for that agent
+        # A project is relevant if the agent is the owner or a participant
         if hasattr(node, 'brain') and node.brain and hasattr(node.brain, 'projects'):
-            # Access projects stored within the node's Brain instance
-            for project_id, project in node.brain.projects.items():
-                if project_id not in all_projects:
-                    all_projects[project_id] = {
-                        "name": project.get("name", ""),
-                        "participants": list(project.get("participants", set())),
-                        "owner": node_id
-                    }
+            for project_id, project_data in node.brain.projects.items():
+                is_owner = (node_id_loop == agent_id_filter)
+                is_participant = agent_id_filter in project_data.get("participants", set())
+
+                if not agent_id_filter or is_owner or is_participant:
+                    if project_id not in all_projects: # Avoid duplicates if multiple agents share a project view
+                        all_projects[project_id] = {
+                            "name": project_data.get("name", project_id),
+                            "participants": list(project_data.get("participants", set())),
+                            "owner": node_id_loop # The node that owns/manages this project entry
+                        }
         else:
-            log_warning(f"Node {node_id} does not have a brain or projects attribute.")
+            log_warning(f"Node {node_id_loop} does not have a brain or projects attribute for filtering.")
 
     return jsonify(all_projects)
+
+
+@app.route('/meetings')
+def show_meetings():
+    global network
+    if not network:
+        return jsonify({"error": "Network not initialized"}), 500
+
+    agent_id_filter = request.args.get('agent_id')
+    all_node_meetings = []
+
+    for node_id_loop, node in network.nodes.items():
+        # If filtering by agent_id, only fetch meetings for that specific agent's scheduler
+        if agent_id_filter and node_id_loop != agent_id_filter:
+            continue
+            
+        if hasattr(node, 'scheduler') and node.scheduler and hasattr(node.scheduler, 'get_upcoming_meetings'):
+            try:
+                node_meetings = node.scheduler.get_upcoming_meetings()
+                if node_meetings:
+                    for meeting in node_meetings:
+                        # Ensure organizer info is present
+                        if 'organizer' not in meeting or not meeting['organizer']:
+                            meeting['organizer'] = {'email': f'{node_id_loop}@agent.ai', 'self': True}
+                        elif 'email' not in meeting['organizer']:
+                             meeting['organizer']['email'] = f'{node_id_loop}@agent.ai'
+                        
+                        # Further filter: include if the agent_id_filter is an attendee
+                        # This re-iterates the frontend logic on the backend for robustness
+                        if agent_id_filter:
+                            is_attendee = False
+                            if meeting.get('attendees'):
+                                for attendee in meeting['attendees']:
+                                    if attendee.get('email', '').lower().startswith(agent_id_filter.lower()):
+                                        is_attendee = True
+                                        break
+                            if is_attendee:
+                                all_node_meetings.append(meeting)
+                        else:
+                            # No filter, add all meetings from this node (though outer loop already filters by node if agent_id_filter is set)
+                            all_node_meetings.append(meeting)
+            except Exception as e:
+                log_error(f"Error fetching meetings for node {node_id_loop}: {str(e)}")
+        else:
+            log_warning(f"Node {node_id_loop} does not have a scheduler with get_upcoming_meetings method.")
+    
+    # Optional: sort all_node_meetings if combining from multiple sources and not pre-sorted
+    # For now, get_upcoming_meetings sorts, and if agent_id_filter is used, we only get from one agent.
+
+    return jsonify(all_node_meetings)
 
 
 @app.route('/transcribe_audio', methods=['POST'])

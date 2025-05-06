@@ -3,7 +3,7 @@ import base64
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta, timezone 
 
-from secretary.utilities.logging import log_user_message, log_network_message, log_warning
+from secretary.utilities.logging import log_user_message, log_network_message, log_warning, log_system_message
 from secretary.utilities.google import initialize_google_services
 from secretary.scheduler import Scheduler
 from secretary.brain import Confirmation
@@ -130,6 +130,7 @@ class Communication:
             proposed_start = self.brain.confirmation_context['start_datetime']
             proposed_end = self.brain.confirmation_context['end_datetime']
             return self.scheduler._create_calendar_meeting(meeting_id, meeting_title, participants, proposed_start, proposed_end)
+            
 
     def _handle_quick_command(self, message: str, sender_id: str) -> Optional[str]:
         """

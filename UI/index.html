@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+<meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent AI Network</title>
     <!-- Add Google Fonts -->
@@ -23,13 +23,13 @@
             --card-shadow: 0 4px 6px rgba(0,0,0,0.07);
             --transition-speed: 0.3s;
         }
-
+        
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
-
+        
         body {
             font-family: 'Inter', sans-serif;
             background-color: var(--bg-light);
@@ -38,13 +38,13 @@
             padding: 0;
             margin: 0;
         }
-
+        
         .container {
             max-width: 1200px;
             margin: 20px auto;
             padding: 0 20px;
         }
-
+        
         .dashboard-header {
             display: flex;
             justify-content: space-between;
@@ -53,14 +53,14 @@
             padding-bottom: 15px;
             border-bottom: 1px solid var(--border-color);
         }
-
+        
         .dashboard-header h1 {
             font-size: 28px;
             font-weight: 600;
             color: var(--primary-dark);
             margin: 0;
         }
-
+        
         .dashboard-subheader {
             color: var(--text-light);
             font-size: 15px;
@@ -82,14 +82,14 @@
             cursor: pointer;
             margin-left: 8px;
         }
-
+        
         .dashboard-grid {
             display: grid;
             grid-template-columns: 1fr;
             gap: 25px;
             margin-bottom: 25px;
         }
-
+        
         @media (min-width: 992px) {
              .dashboard-grid {
                 grid-template-columns: 2fr 1fr; /* Chat takes more space */
@@ -105,7 +105,25 @@
             gap: 25px;
         }
 
+        /* Specific styling for the chat card to control its height and internal layout */
+        .dashboard-grid > .card:first-child { /* Assuming chat card is the first card in the main grid */
+            max-height: 600px; /* Adjust as needed, slightly more than chat-container height for card header etc. */
+            display: flex;
+            flex-direction: column;
+        }
 
+        .dashboard-grid > .card:first-child > .card-header {
+            flex-shrink: 0; /* Header should not shrink */
+        }
+
+        .dashboard-grid > .card:first-child > .card-body {
+            flex-grow: 1; /* Body takes up remaining space in the card */
+            overflow: hidden; /* Ensure body itself doesn't overflow if chat-container was to misbehave */
+            display: flex; /* Make body a flex container for chat-container */
+            /* padding: 0; is already an inline style, which is fine */
+        }
+        /* End of specific chat card styling */
+        
         .card {
             background-color: white;
             border-radius: 10px;
@@ -114,12 +132,12 @@
             transition: transform var(--transition-speed), box-shadow var(--transition-speed);
             border: 1px solid var(--border-color);
         }
-
+        
         .card:hover {
             transform: translateY(-3px);
             box-shadow: 0 6px 12px rgba(0,0,0,0.1);
         }
-
+        
         .card-header {
             padding: 18px 20px;
             border-bottom: 1px solid var(--border-color);
@@ -128,18 +146,18 @@
             align-items: center;
             background-color: #fafafa;
         }
-
+        
         .card-header h2 {
             font-size: 18px;
             font-weight: 600;
             color: var(--text-dark);
             margin: 0;
         }
-
+        
         .card-body {
             padding: 20px;
         }
-
+        
         /* Task card styles */
         .task {
             border-left: 4px solid var(--success-color);
@@ -150,34 +168,34 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             transition: transform var(--transition-speed);
         }
-
+        
         .task:hover {
             transform: translateX(3px);
         }
-
+        
         .task h3 {
             font-size: 16px;
             margin-bottom: 8px;
             color: var(--text-dark);
         }
-
+        
         .task p {
             font-size: 14px;
             color: var(--text-light);
             margin-bottom: 8px;
         }
-
+        
         .task-meta {
             display: flex;
             justify-content: space-between;
             font-size: 12px;
             color: var(--text-light);
         }
-
+        
         .high { border-left-color: var(--danger-color); }
         .medium { border-left-color: var(--warning-color); }
         .low { border-left-color: var(--success-color); }
-
+        
         /* Project card styles */
         .project {
             padding: 15px;
@@ -186,20 +204,20 @@
             border-radius: 8px;
             border: 1px solid var(--border-color);
         }
-
+        
         .project h3 {
             font-size: 16px;
             margin-bottom: 8px;
             color: var(--primary-dark);
         }
-
+        
         .project-participants {
             display: flex;
             flex-wrap: wrap; /* Allow participants to wrap */
             gap: 5px;
             margin-top: 10px;
         }
-
+        
         .project-participant {
             background-color: #e0e0e0;
             padding: 4px 8px;
@@ -207,19 +225,19 @@
             font-size: 12px;
             white-space: nowrap; /* Prevent participant names from breaking */
         }
-
+        
         /* Chat interface styles */
         .chat-container {
             display: flex;
             flex-direction: column;
-            height: 500px; /* Increased height */
-            border-radius: 8px;
+            flex-grow: 1; /* Make chat-container take available space in its parent (card-body) */
             overflow: hidden;
             background-color: white;
         }
-
+        
         .chat-messages {
             flex-grow: 1;
+            min-height: 0;
             padding: 20px;
             overflow-y: auto;
             background-color: #f9f9f9;
@@ -236,7 +254,7 @@
             position: relative;
             animation: messageAppear 0.3s ease-out;
         }
-
+        
         @keyframes messageAppear {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
@@ -259,7 +277,7 @@
         .message-content {
             word-wrap: break-word;
         }
-
+        
         .user-message {
             background-color: var(--primary-light);
             color: white;
@@ -270,7 +288,7 @@
         .user-message .message-header {
             color: rgba(255, 255, 255, 0.8);
         }
-
+        
         .agent-message {
             background-color: white;
             color: var(--text-dark);
@@ -303,6 +321,7 @@
             background-color: white;
             border-top: 1px solid var(--border-color);
             align-items: center; /* Align items vertically */
+            flex-shrink: 0; /* Ensure this container does not shrink if space is tight, but also doesn't force growth */
         }
 
         .chat-input {
@@ -375,6 +394,18 @@
             font-size: 14px;
         }
 
+        /* Loading Message Style */
+        .loading-message {
+            align-self: flex-start; /* Align like an agent message */
+            background-color: #e9ecef; /* Similar to system messages or a neutral color */
+            color: var(--text-dark);
+            border: 1px solid var(--border-color);
+        }
+        .loading-message .message-content {
+            display: flex;
+            align-items: center;
+        }
+        
         /* Loading indicator */
         .loading-dots:after {
             content: '.';
@@ -402,14 +433,14 @@
                 <select id="agentSelect" class="agent-select-dropdown">
                     <!-- Options will be populated by JavaScript -->
                 </select>
-            </div>
         </div>
-
+        </div>
+        
         <!-- Main Grid (Chat on Left, Projects/Tasks on Right) -->
         <div class="dashboard-grid">
             <!-- Chat Card -->
             <div class="card">
-                 <div class="card-header">
+                <div class="card-header">
                     <h2>Agent Communication</h2>
                 </div>
                 <div class="card-body" style="padding: 0;">
@@ -425,36 +456,47 @@
                             <button id="sendBtn" class="chat-button">
                                 <i class="fas fa-paper-plane"></i> Send
                             </button>
-                        </div>
                     </div>
                 </div>
             </div>
-
+        </div>
+        
             <!-- Projects & Tasks Side Column -->
             <div class="dashboard-grid-bottom">
                  <div class="card">
                     <div class="card-header">
-                        <h2>Projects</h2>
+                        <h2>Meetings</h2>
                     </div>
                     <div class="card-body">
-                        <div id="projectsList">
-                             <div class="empty-state">Loading Projects<span class="loading-dots"></span></div>
+                        <div id="meetingsList">
+                             <div class="empty-state">Loading Meetings<span class="loading-dots"></span></div>
                          </div>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <h2>Tasks</h2>
-                    </div>
-                    <div class="card-body">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Projects</h2>
+                </div>
+                <div class="card-body">
+                        <div id="projectsList">
+                             <div class="empty-state">Loading Projects<span class="loading-dots"></span></div>
+                         </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h2>Tasks</h2>
+                </div>
+                <div class="card-body">
                         <div id="tasksList">
                              <div class="empty-state">Loading Tasks<span class="loading-dots"></span></div>
                          </div>
-                    </div>
                 </div>
-             </div>
+            </div>
         </div>
+    </div>
 
     </div>
 
@@ -470,6 +512,7 @@
             fetchNodes(); // Fetch nodes to populate the dropdown
             fetchTasks();
             fetchProjects();
+            fetchMeetings();
             setupWebSocket();
             setupEventListeners();
 
@@ -511,6 +554,11 @@
                 fetchProjects();
             });
 
+            socket.on('update_meetings', () => {
+                console.log('Meeting update received via WebSocket');
+                fetchMeetings();
+            });
+
             socket.on('connect_error', (err) => {
                 console.error('WebSocket connection error:', err);
             });
@@ -536,6 +584,9 @@
                 console.log(`Agent selected: ${event.target.value}`);
                 clearChatMessages();
                 addSystemMessage(`Switched context to ${event.target.value}`);
+                fetchMeetings(); // Re-fetch and filter meetings when agent changes
+                fetchProjects(); // Re-fetch and filter projects
+                fetchTasks();    // Re-fetch and filter tasks
             });
         }
 
@@ -562,7 +613,7 @@
                         });
                         // Trigger change event manually to update initial state if needed
                         agentSelect.dispatchEvent(new Event('change'));
-                    } else {
+                            } else {
                         const option = document.createElement('option');
                         option.textContent = "No agents available";
                         option.disabled = true;
@@ -572,8 +623,8 @@
                          document.getElementById('sendBtn').disabled = true;
                          document.getElementById('recordBtn').disabled = true;
                     }
-                })
-                .catch(error => {
+                    })
+                    .catch(error => {
                     console.error('Error fetching nodes:', error)
                     const agentSelect = document.getElementById('agentSelect');
                     agentSelect.innerHTML = '<option disabled>Error loading agents</option>';
@@ -581,15 +632,19 @@
         }
 
         function fetchTasks() {
-            fetch('/tasks')
+            const agentSelect = document.getElementById('agentSelect');
+            const selectedAgentId = agentSelect.value;
+            const fetchUrl = selectedAgentId ? `/tasks?agent_id=${selectedAgentId}` : '/tasks';
+
+            fetch(fetchUrl)
                 .then(response => response.json())
                 .then(tasks => {
                     const tasksList = document.getElementById('tasksList');
                     tasksList.innerHTML = ''; // Clear previous tasks
                     if (!tasks || tasks.length === 0) {
                         tasksList.innerHTML = '<div class="empty-state">No tasks found.</div>';
-                        return;
-                    }
+                return;
+            }
                     tasks.forEach(task => {
                         const taskElement = document.createElement('div');
                         // Determine priority class, default to 'low' if undefined/invalid
@@ -614,7 +669,11 @@
         }
 
          function fetchProjects() {
-            fetch('/projects')
+            const agentSelect = document.getElementById('agentSelect');
+            const selectedAgentId = agentSelect.value;
+            const fetchUrl = selectedAgentId ? `/projects?agent_id=${selectedAgentId}` : '/projects';
+
+            fetch(fetchUrl)
                 .then(response => response.json())
                 .then(projects => {
                     const projectsList = document.getElementById('projectsList');
@@ -635,21 +694,73 @@
                         } else {
                             participantsHtml = '<span>No participants</span>';
                         }
-
+                        
                         projectElement.innerHTML = `
                             <h3>${project.name || projectId}</h3>
                             <p>Owner: ${project.owner || 'Unknown'}</p>
                             <div class="project-participants">
-                                ${participantsHtml}
+                            ${participantsHtml}
                             </div>
                         `;
                         projectsList.appendChild(projectElement);
                     }
                 })
                 .catch(error => {
-                     console.error('Error fetching projects:', error);
+                    console.error('Error fetching projects:', error);
                      document.getElementById('projectsList').innerHTML = '<div class="empty-state">Error loading projects.</div>';
                  });
+        }
+
+        function fetchMeetings() {
+            const agentSelect = document.getElementById('agentSelect');
+            const selectedAgentId = agentSelect.value;
+            // Pass selectedAgentId as a query parameter to the backend
+            const fetchUrl = selectedAgentId ? `/meetings?agent_id=${selectedAgentId}` : '/meetings';
+
+            fetch(fetchUrl) // Use the modified URL
+                .then(response => response.json())
+                .then(meetings => {
+                    const meetingsList = document.getElementById('meetingsList');
+                    meetingsList.innerHTML = ''; // Clear previous meetings
+
+                    // Backend now handles filtering, so UI just displays what it receives
+                    if (!meetings || meetings.length === 0) {
+                        const agentName = selectedAgentId || "any agent";
+                        meetingsList.innerHTML = `<div class="empty-state">No upcoming meetings found for ${agentName}.</div>`;
+                        return;
+                    }
+                    
+                    meetings.forEach(meeting => {
+                        const meetingElement = document.createElement('div');
+                        meetingElement.className = 'meeting'; // Add a CSS class for styling if needed
+
+                        const startDate = meeting.start ? new Date(meeting.start.dateTime || meeting.start.date).toLocaleString() : 'N/A';
+                        const endDate = meeting.end ? new Date(meeting.end.dateTime || meeting.end.date).toLocaleString() : 'N/A';
+                        // Display full emails or just prefixes for attendees
+                        const attendeesDisplay = meeting.attendees 
+                            ? meeting.attendees.map(a => a.email ? a.email.split('@')[0] : 'Unknown').join(', ') 
+                            : 'None';
+
+                        // Basic styling for now, can be enhanced with a CSS class later
+                        meetingElement.style.padding = "10px";
+                        meetingElement.style.marginBottom = "10px";
+                        meetingElement.style.border = "1px solid #eee";
+                        meetingElement.style.borderRadius = "4px";
+
+                        meetingElement.innerHTML = `
+                            <h3>${meeting.summary || 'Untitled Meeting'}</h3>
+                            <p><strong>Starts:</strong> ${startDate}</p>
+                            <p><strong>Ends:</strong> ${endDate}</p>
+                            <p><strong>Attendees:</strong> ${attendeesDisplay}</p>
+                            ${meeting.hangoutLink ? `<p><a href="${meeting.hangoutLink}" target="_blank">Join Meeting</a></p>` : ''}
+                        `;
+                        meetingsList.appendChild(meetingElement);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching meetings:', error);
+                    document.getElementById('meetingsList').innerHTML = '<div class="empty-state">Error loading meetings.</div>';
+                });
         }
 
         function sendMessage() {
@@ -664,10 +775,12 @@
                 addSystemMessage("Error: Please select an agent first.");
                 return;
             }
-
+            
             addUserMessage(message);
             messageInput.value = '';
             messageInput.focus(); // Keep focus on input
+
+            const loadingIndicatorId = showLoadingIndicator(); // Show loading indicator
 
             // Send message to server
             fetch('/send_message', {
@@ -692,6 +805,9 @@
             .catch(error => {
                 console.error('Error sending message:', error);
                 addSystemMessage('Error sending message. Check console.');
+            })
+            .finally(() => {
+                removeLoadingIndicator(loadingIndicatorId); // Remove loading indicator
             });
         }
 
@@ -789,6 +905,7 @@
 
                  console.log(`Sending audio for node: ${nodeId} from sender: ${senderId}`);
                  addSystemMessage("Processing audio...");
+                 const loadingIndicatorId = showLoadingIndicator(); // Show loading indicator
 
                  fetch('/transcribe_audio', {
                      method: 'POST',
@@ -796,7 +913,7 @@
                      // Send target node_id and sender_id
                      body: JSON.stringify({ node_id: nodeId, audio_data: base64AudioData, sender_id: senderId })
                  })
-                 .then(response => response.json())
+                    .then(response => response.json())
                  .then(data => {
                     console.log("Transcription response:", data);
                      if (data.error) {
@@ -819,6 +936,9 @@
                  .catch(error => {
                     console.error('Error sending audio:', error);
                     addSystemMessage('Error sending audio. Check console.');
+                 })
+                 .finally(() => {
+                    removeLoadingIndicator(loadingIndicatorId); // Remove loading indicator
                  });
              }
              reader.readAsDataURL(audioBlob);
@@ -897,6 +1017,37 @@
         function clearChatMessages() {
             const messagesContainer = document.getElementById('chatMessages');
             if (messagesContainer) messagesContainer.innerHTML = '';
+        }
+
+        function showLoadingIndicator() {
+            const messagesContainer = document.getElementById('chatMessages');
+            if (!messagesContainer) return null;
+
+            const loadingElement = document.createElement('div');
+            const indicatorId = 'loading-' + Date.now();
+            loadingElement.id = indicatorId;
+            loadingElement.classList.add('chat-message', 'agent-message', 'loading-message'); // Style like an agent message
+
+            loadingElement.innerHTML = `
+                <div class="message-header">
+                    <i class="fas fa-robot"></i>
+                    <strong>Agent:</strong>
+                </div>
+                <div class="message-content">
+                    Thinking<span class="loading-dots"></span>
+                                </div>
+                            `;
+            messagesContainer.appendChild(loadingElement);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            return indicatorId;
+        }
+
+        function removeLoadingIndicator(indicatorId) {
+            if (!indicatorId) return;
+            const loadingElement = document.getElementById(indicatorId);
+            if (loadingElement) {
+                loadingElement.remove();
+            }
         }
 
     </script>
