@@ -7,6 +7,7 @@ from network.tasks import Task
 from network.internal_communication import Intercom  
 from secretary.utilities.logging import log_system_message, log_warning, log_error  
 from secretary.brain import LLMClient
+from config.agents import AGENT_CONFIG
 
 class Scheduler:
 
@@ -541,7 +542,7 @@ class Scheduler:
         participants = []
         for p in meeting_data.get("participants", []):
             p_lower = p.lower().strip()
-            if p_lower in ["ceo", "marketing", "engineering", "design"]:
+            if p_lower in AGENT_CONFIG:
                 participants.append(p_lower)
         
         # Ensure the current node is included among the participants
