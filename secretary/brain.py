@@ -305,6 +305,8 @@ class Brain:
             objective (str): The objective or goal of the project.
         """
         
+        log_system_message(f"[Brain] [{self.node_id}] Planning project '{project_id}' with objective: {objective}")
+        
         if project_id not in self.projects:
             self.projects[project_id] = {
                 "name": objective,
@@ -347,12 +349,12 @@ class Brain:
                 pass # Assume it's already JSON
             else:
                 # If no fences and doesn't look like JSON, it's likely an error message
-                print(f"[{self.node_id}] LLM response doesn't appear to be JSON: {json_to_parse}")
-                print(f"[{self.node_id}] Response: Could not generate project plan. The AI's response was not in the expected format.")
+                log_error(f"[Brain] [{self.node_id}] LLM response doesn't appear to be JSON: {json_to_parse}")
                 return "Could not generate project plan. The AI's response was not in the expected format."
         # --- End: Extract JSON ---
 
         try:
+            log_system_message(f"[Brain] [{self.node_id}] Starting project extraction for '{project_id}'")
             # Attempt to parse the extracted JSON response
             data = json.loads(json_to_parse) 
             stakeholders = data.get("stakeholders", [])
@@ -423,6 +425,8 @@ class Brain:
             socketio.emit('update_projects') 
             socketio.emit('update_tasks')
             
+            log_system_message(f"[Brain] [{self.node_id}] Project '{project_id}' plan created successfully.")
+            
             return plan_summary.strip() # Return the summary
             
         except json.JSONDecodeError as e:
@@ -446,6 +450,8 @@ class Brain:
             steps (list): List of steps from the project plan.
             participants (list): List of node identifiers who are the project participants.
         """
+        
+        log_system_message(f"[Brain] [{self.node_id}] Generating tasks for project '{project_id}'")
         
         # Define the function for task creation
         functions = [
@@ -488,6 +494,8 @@ class Brain:
         # Process each project plan step
         for i, step in enumerate(steps):
             step_description = step.get("description", "")
+            
+            log_system_message(f"[Brain] [{self.node_id}] Generating tasks for step {i+1}: {step_description}")
             
             prompt = f"""
             For project '{project_id}', analyze this step and create appropriate tasks:
@@ -546,17 +554,23 @@ class Brain:
             str: A formatted string of tasks with their titles, due dates, priority, and descriptions.
         """
         
+        log_system_message(f"[Brain] Entered task-listing for {self.node_id}.")
+        
         if not self.network:
+            log_warning(f"[Brain] [{self.node_id}] No network connected for task listing.")
             return "No network connected."
             
         tasks = self.network.get_tasks_for_node(self.node_id)
         if not tasks:
+            log_warning(f"[Brain] [{self.node_id}] No tasks found for this node.")
             return f"No tasks assigned to {self.node_id}."
             
         result = f"Tasks for {self.node_id}:\n"
+        log_system_message(f"[Brain] [{self.node_id}] Found {len(tasks)} tasks.")
         for i, task in enumerate(tasks, 1):
             result += f"{i}. {task.title} (Due: {task.due_date.strftime('%Y-%m-%d')}, Priority: {task.priority})\n"
             result += f"   Description: {task.description}\n"
+            log_system_message(f"[Brain] [{self.node_id}] Task {i}: {task.title} (Due: {task.due_date.strftime('%Y-%m-%d')}, Priority: {task.priority})")
             
         return result
 

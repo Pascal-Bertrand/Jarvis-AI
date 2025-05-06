@@ -48,12 +48,15 @@ class Scheduler:
         If the calendar service is not available, it will log that and skip reminder creation.
         """
         
+        log_system_message(f"[Scheduler] Entered calendar-reminder creation for task: {task.title}")
+        
         if not self.calendar_service:
-            log_warning(f"[{self.node_id}] Calendar service not available, skipping reminder creation")
+            log_warning(f"[Scheduler] [[{self.node_id}] Calendar service not available, skipping reminder creation")
             print(f"[{self.node_id}] Calendar service not available, skipping reminder creation")
-            return
+            return      # No return: Don't want to spam the users
             
         try:
+            log_system_message(f"[Scheduler] [{self.node_id}] Creating calendar reminder for task: {task.title}")
             # Construct the event details in the format expected by Google Calendar
             event = {
                 'summary': f"TASK: {task.title}",
@@ -78,7 +81,7 @@ class Scheduler:
 
             # Insert the event into the primary calendar
             event = self.calendar_service.events().insert(calendarId='primary', body=event).execute()
-            log_system_message(f"[{self.node_id}] Task reminder created: {event.get('htmlLink')}")
+            log_system_message(f"[Scheduler] [{self.node_id}] Task reminder created: {event.get('htmlLink')}")
             
         except Exception as e:
             log_warning(f"[{self.node_id}] Failed to create calendar reminder: {e}")

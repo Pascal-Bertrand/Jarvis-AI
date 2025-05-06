@@ -59,27 +59,28 @@ class Communication:
 
         Args:
             message (str): The incoming message text.
-            sender_id (str): Who sent the message (e.g. 'cli_user' or a node ID).
+            sender_id (str): Who sent the message (e.g. a node ID).
             
         Returns:
             Optional[str]: The textual response to be sent back, or None if handled internally.
         """
         
         # Log the message
-        log_network_message(sender_id, self.node_id, message)
+        log_network_message(f"[Communication] {sender_id, self.node_id, message}")
         print(f"[{self.node_id}] Received from {sender_id}: {message}")
 
         # quick CLI command handling
         quick_cmd_response = self._handle_quick_command(message, sender_id)
         if quick_cmd_response is not None:
-            log_system_message(f"Quick command response: {quick_cmd_response}")
+            log_system_message(f"[Communication] Quick command response: {quick_cmd_response}")
             return quick_cmd_response
 
         # Check if the message is the response to a confirmation question
         if self.brain and self.brain.confirmation_context['active'] == True:
+            log_system_message(f"[Communication] Confirmation response: {message}")
+            
             if Confirmation.request(self, message):
                 self.brain.confirmation_context['active'] = False
-                log_system_message(f"Confirmation response: {message}")
                 return self._handle_confirmation_response(message, sender_id)
             else:
                 self.brain.confirmation_context['active'] = False
@@ -87,10 +88,13 @@ class Communication:
 
         # Calendar commands -> delegate entirely to Scheduler
         if self.scheduler:
-           cal_intent = self.brain._detect_calendar_intent(message)
+            cal_intent = self.brain._detect_calendar_intent(message)
+            log_system_message(f"[Communication] Calendar intent detected: {cal_intent}")
            if cal_intent.get('is_calendar_command', False):
+               log_system_message(f"[Communication] Routing calendar command to scheduler")")
                return self.scheduler.handle_calendar(cal_intent, message)
            if self.brain.meeting_context['active'] == True:
+                log_system_message(f"[Communication] Meeting creation in progress")
                return self.scheduler._continue_meeting_creation(message, sender_id)
 
         # Email commands - only check if message looks like an email-related command
@@ -157,12 +161,14 @@ class Communication:
         
         # Command: List all tasks
         if cmd == 'tasks' or cmd == 'list tasks' or cmd == 'show tasks':
+            log_system_message(f"[Communication] Quick command: Listing tasks")
             tasks_list = self.brain.list_tasks()
             return tasks_list
         
         # Command: Create project with 'plan <project_id>=<objective>' syntax
         plan_match = re.match(r"^plan\s+([\w-]+)\s*=\s*(.+)$", message.strip(), re.IGNORECASE)
         if plan_match:
+            log_system_message(f"[Communication] Quick command: Creating project with plan_match")
             project_id, objective = plan_match.groups()
             plan_summary = self.brain.plan_project(project_id.strip(), objective.strip())
             return plan_summary
@@ -170,6 +176,7 @@ class Communication:
         # Command: Create project with 'create/new/start project <project_id> <objective>' syntax
         create_project_match = re.match(r"^(create|new|start)?\s*project\s+([\w-]+)\s+(.+)$", message.strip(), re.IGNORECASE)
         if create_project_match:
+            log_system_message(f"[Communication] Quick command: Creating project with create_project_match")
             _, project_id, objective = create_project_match.groups()
             plan_summary = self.brain.plan_project(project_id.strip(), objective.strip())
             return plan_summary
@@ -177,9 +184,11 @@ class Communication:
         # Command: Generate tasks for an existing project
         gen_tasks_match = re.match(r"^(generate|create|make)\s+tasks\s+(?:for|on)\s+([\w-]+)$", message.strip(), re.IGNORECASE)
         if gen_tasks_match:
+            log_system_message(f"[Communication] Quick command: Generating tasks for plan with gen_tasks_match")
             project_id = gen_tasks_match.group(2).strip()
             # Check if project exists in Brain
             if project_id not in self.brain.projects:
+                log_warning(f"[Communication] Project '{project_id}' does not exist.")
                 return f"Project '{project_id}' does not exist. Please create it first with 'plan {project_id}=<objective>'."
             
             # Get project steps and participants from Brain
@@ -187,6 +196,7 @@ class Communication:
             participants = list(self.brain.projects[project_id].get("participants", set()))
             
             if not steps:
+                log_warning(f"[Communication] Project '{project_id}' has no steps defined.")
                 return f"Project '{project_id}' has no steps defined. Please create a plan first."
             
             # Generate tasks based on the project plan
