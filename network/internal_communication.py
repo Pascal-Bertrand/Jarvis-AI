@@ -2,7 +2,7 @@ from typing import List
 
 from network.people import People
 from network.tasks import Task
-from secretary.utilities.logging import log_network_message
+from secretary.utilities.logging import log_network_message, log_system_message, log_warning, log_agent_message
 
 class Intercom(People):
     """
@@ -44,6 +44,7 @@ class Intercom(People):
                 pass
         else:
             # Print an error message if recipient is not found.
+            log_system_message(f"[Intercom] Attempted to send message to unknown recipient: {recipient_id}.")
             print(f"[Intercom] Unknown recipient: {recipient_id}.")
 
     def _log_message(self, sender_id: str, recipient_id: str, content: str) -> None:
@@ -83,12 +84,14 @@ class Intercom(People):
                         - assigned_to (str): The node ID of the node to which the task is assigned.
         """
         
+        log_system_message(f"[Intercom] Adding task: {task.title} to {task.assigned_to}.")
+        
         self.tasks.append(task) # Add the new task to the list.
         
         # Build a notification message with task details.
         if task.assigned_to in self.nodes:
             message = f"New task assigned: {task.title}. Due: {task.due_date.strftime('%Y-%m-%d')}. Priority: {task.priority}."
-
+            log_system_message(f"[Intercom] Sending task notification to {task.assigned_to}: {message}.")
             # Send the notification message from a system-originated sender.
             self.send_message("system", task.assigned_to, message)
     
