@@ -542,7 +542,8 @@ class Scheduler:
         participants = []
         for p in meeting_data.get("participants", []):
             p_lower = p.lower().strip()
-            if p_lower in AGENT_CONFIG:
+            valid_agent_ids = {agent["id"].lower() for agent in AGENT_CONFIG}
+            if p_lower in valid_agent_ids:         
                 participants.append(p_lower)
         
         # Ensure the current node is included among the participants
