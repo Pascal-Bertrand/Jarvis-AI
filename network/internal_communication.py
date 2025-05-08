@@ -110,6 +110,6 @@ class Intercom(People):
         """
 
         # Use a list comprehension to filter tasks by comparing the assigned_to attribute.
-        return [task for task in self.tasks if task.assigned_to == node_id]
+        return [task for task in self.tasks if task.assigned_to == node_id.lower()]
 
 #TODO: Add more functionalities

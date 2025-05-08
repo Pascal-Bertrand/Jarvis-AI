@@ -15,21 +15,16 @@ from flask_cors import CORS
 import base64
 import tempfile
 import re
-
-# --- Import Configuration ---
 from config.agents import AGENT_CONFIG
 
 # --- Import Logging ---
 from secretary.utilities.logging import log_user_message, log_agent_message, log_system_message, log_network_message, log_error, log_warning, log_api_request, log_api_response
 
-# --- Import CV Parser (if you decide to use it here) ---
-# from src.cv_parser.parser import CVParser
 
 # --- Import Network Components ---
 from network.internal_communication import Intercom
 from network.tasks import Task
-# Remove People import if not directly used
-# from network.people import People
+
 
 # --- Import Secretary Components (needed for LLMNode) ---
 from secretary.communication import Communication
@@ -501,9 +496,6 @@ def start_flask():
 
 
 def open_browser():
-    # Wait a bit for Flask to start
-    import time
-    time.sleep(1)  # Give Flask a second to start
 
     # Try different ports
     for port in range(5001, 5010):
@@ -616,7 +608,6 @@ if __name__ == "__main__":
     # Make sure network is initialized before flask starts using it
     network = Intercom(log_file="communication_log.txt") # Use Intercom
 
-    # --- Create nodes dynamically from configuration --- 
     for agent_config in AGENT_CONFIG:
         node = LLMNode(
             node_id=agent_config["id"],

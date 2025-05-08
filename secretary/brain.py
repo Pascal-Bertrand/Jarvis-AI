@@ -13,6 +13,8 @@ from secretary.utilities.logging import (
     log_api_request, log_api_response
 )
 from secretary.socketio_ext import socketio
+from config.agents import AGENT_CONFIG
+
 
 class LLMClient:
     """
@@ -317,19 +319,21 @@ class Brain:
         
         if project_id not in self.projects:
             self.projects[project_id] = {
-                "name": objective,
+                "name": "Project " + project_id,
                 "plan": [],
                 "participants": set()
             }
+
+        roles = list({agent["id"].lower() for agent in AGENT_CONFIG})
 
         plan_prompt = f"""
         You are creating a detailed project plan for project '{project_id}'.
         Objective: {objective}
 
         The plan should include:
-        1. All stakeholders involved in the project. Use only these roles: CEO, Marketing, Engineering, Design.
+        1. All stakeholders involved in the project. Use only these roles: {roles}.
         2. Detailed steps needed to execute the plan, including time and cost estimates.
-        Each step should be written in paragraphs and full sentences.
+        Each step should be written in bullet points (with correct spacing) and full sentences.
 
         Return valid JSON only, with this structure:
         {{
@@ -381,40 +385,34 @@ class Brain:
 
             # Save the project plan to a text file
             with open(f"{project_id}_plan.txt", "w", encoding="utf-8") as file:
-                file.write(f"Project ID: {project_id}\\n")
-                file.write(f"Objective: {objective}\\n")
-                file.write("Stakeholders:\\n")
+                file.write(f"Project ID: {project_id}\n")
+                file.write(f"Objective: {objective}\n")
+                file.write("Stakeholders:\n")
                 for stakeholder in stakeholders:
-                    file.write(f"  - {stakeholder}\\n")
-                file.write("Steps:\\n")
+                    file.write(f"  - {stakeholder}\n")
+                file.write("Steps:\n")
                 for step in steps:
-                    file.write(f"  - {step.get('description', '')}\\n")
-
-            # Map stakeholder roles to node identifiers, case-insensitively
-            role_to_node = {
-                "ceo": "ceo",
-                "marketing": "marketing",
-                "engineering": "engineering",
-                "design": "design"
-            }
+                    file.write(f"  - {step.get('description', '')}\n")
 
             participants = []
-            for stakeholder in stakeholders:
-                # Normalize the role name (lowercase and remove extra spaces)
-                role = stakeholder.lower().strip()
+            # 'roles' is a list of lowercased agent IDs, e.g., ['ceo', 'marketing', 'engineering']
+            for stakeholder_from_llm in stakeholders: # e.g. "The CEO", "Marketing Team"
+                # Normalize the stakeholder name from LLM (lowercase and remove extra spaces)
+                normalized_stakeholder_name = stakeholder_from_llm.lower().strip() # e.g. "the ceo", "marketing team"
                 
-                # Check for partial matches
-                matched = False
-                for key in role_to_node:
-                    if key in role:
-                        node_id = role_to_node[key]
-                        participants.append(node_id)
-                        self.projects[project_id]["participants"].add(node_id)
-                        matched = True
-                        break
+                matched_agent_id = None
+                # Iterate through each configured agent ID
+                for agent_id in roles: # agent_id is e.g. 'ceo', 'marketing'
+                    # Check if the agent_id is a substring of the normalized stakeholder name
+                    if agent_id in normalized_stakeholder_name: # e.g. 'ceo' in 'the ceo'
+                        matched_agent_id = agent_id # The agent_id itself is what we need
+                        break # Found a match, no need to check other agent_ids for this stakeholder
                 
-                if not matched:
-                    print(f"[{self.node_id}] No mapping for stakeholder '{stakeholder}'. Skipping.")
+                if matched_agent_id:
+                    participants.append(matched_agent_id)
+                    self.projects[project_id]["participants"].add(matched_agent_id)
+                else:
+                    print(f"[{self.node_id}] No mapping for stakeholder '{stakeholder_from_llm}'. Skipping.")
 
             print(f"[{self.node_id}] Project participants: {participants}")
             #TODO
@@ -461,6 +459,10 @@ class Brain:
         
         log_system_message(f"[Brain] [{self.node_id}] Generating tasks for project '{project_id}'")
         
+        # Create a string representation of participants for the tool description
+        # participants is a list like ['ceo', 'engineering']
+        participant_roles_str = ", ".join(participants) if participants else "any relevant project role"
+
         # Define the function for task creation
         functions = [
             {
@@ -481,7 +483,7 @@ class Brain:
                             },
                             "assigned_to": {
                                 "type": "string",
-                                "description": "Role responsible for this task (marketing, engineering, design, ceo)"
+                                "description": f"Role responsible for this task. Assign to one or more of the project participants: {participant_roles_str}. These are the available roles from the project plan."
                             },
                             "due_date_offset": {
                                 "type": "integer",
@@ -505,14 +507,15 @@ class Brain:
             
             log_system_message(f"[Brain] [{self.node_id}] Generating tasks for step {i+1}: {step_description}")
             
+            # Refined prompt to be very clear about using the provided participants
+            current_participants_list_str = ", ".join(participants) if participants else "the designated project roles"
             prompt = f"""
-            For project '{project_id}', analyze this step and create appropriate tasks:
+            For project '{project_id}', analyze this step: "{step_description}"
             
-            Step: {step_description}
+            Based on this step, create 1 to 3 specific tasks.
             
-            Available roles: {', '.join(participants)}
-            
-            Create 1-3 specific tasks from this step. Each task should be assigned to the most appropriate role.
+            The project participants for assigning these tasks are: {current_participants_list_str}.
+            Each task MUST be assigned to one or more of these participants. Do not assign tasks to roles not in this list.
             """
             
             try:

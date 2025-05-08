@@ -24,7 +24,7 @@ AGENT_CONFIG = [
         "knowledge": "Knows UI/UX best practices, design system guidelines, user research findings, and current design tools.",
     },
  {
-        "id": "HR",
+        "id": "hr",
         "title": "Human Resources Lead",
         "description": "Leads the team that handles all HR related tasks.",
         "knowledge": "Knows all HR related tasks, including hiring, firing, and employee relations.",
