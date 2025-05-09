@@ -250,7 +250,7 @@ class Scheduler:
         if not self.calendar_service:
             log_warning(f"[{self.node_id}] Calendar service not available, using local scheduling")
             print(f"[{self.node_id}] Calendar service not available, using local scheduling")
-            return self._fallback_schedule_meeting(project_id, participants, start_time, end_time)  
+            return self._fallback_schedule_meeting(project_id, participants, start_time, end_time, meeting_title=meeting_description)  
 
         # Build the meeting event structure
         event = {
@@ -278,11 +278,17 @@ class Scheduler:
                  self.socketio.emit('update_meetings')
 
             # Add meeting details to the node's local calendar
-            self.brain.calendar.append({
+            meeting_info_str = f"'{meeting_description}' for project '{project_id}' scheduled on {start_time.strftime('%Y-%m-%d %H:%M')} with {', '.join(participants)} (Google Calendar Event)"
+            brain_calendar_entry = {
                 'project_id': project_id,
-                'meeting_info': meeting_description,
+                'title': meeting_description,
+                'meeting_info': meeting_info_str,
+                'start_time': start_time.isoformat(),
+                'end_time': end_time.isoformat(),
+                'participants': participants,
                 'event_id': event['id']
-            })
+            }
+            self.brain.calendar.append(brain_calendar_entry)
 
             # Notify each participant (except self), skipping any unknown participants
             for p in participants:
@@ -297,11 +303,16 @@ class Scheduler:
                 if not hasattr(node, 'calendar'):
                     setattr(node, 'calendar', [])
                 # Append the meeting details to the participant's local calendar
-                node.calendar.append({
+                participant_calendar_entry = {
                     'project_id': project_id,
-                    'meeting_info': meeting_description,
+                    'title': meeting_description,
+                    'meeting_info': meeting_info_str, # Same meeting_info_str as above
+                    'start_time': start_time.isoformat(),
+                    'end_time': end_time.isoformat(),
+                    'participants': participants,
                     'event_id': event['id']
-                })
+                }
+                node.brain.calendar.append(participant_calendar_entry)
                 notification = (
                     f"New meeting: '{meeting_description}' scheduled by {self.node_id} "
                     f"for {start_time.strftime('%Y-%m-%d %H:%M')}"
@@ -314,9 +325,9 @@ class Scheduler:
             log_warning(f"[{self.node_id}] Failed to create calendar event: {e}")
             print(f"[{self.node_id}] Failed to create calendar event: {e}")
             # If creation fails, revert to local scheduling
-            return self._fallback_schedule_meeting(project_id, participants, start_time, end_time)
+            return self._fallback_schedule_meeting(project_id, participants, start_time, end_time, meeting_title=meeting_description)
     
-    def _fallback_schedule_meeting(self, project_id: str, participants: list, start_datetime: datetime, end_datetime: datetime):
+    def _fallback_schedule_meeting(self, project_id: str, participants: list, start_datetime: datetime, end_datetime: datetime, meeting_title: str = None):
         """
         Fallback method to locally schedule a meeting when Google Calendar is unavailable.
         
@@ -325,28 +336,28 @@ class Scheduler:
         Args:
             project_id (str): Identifier for the project related to the meeting.
             participants (list): List of participant identifiers.
+            start_datetime (datetime): The start time of the meeting.
+            end_datetime (datetime): The end time of the meeting.
+            meeting_title (str, optional): The title of the meeting. Defaults to None.
         """
 
-        # TODO: Store in a more user-friendly format (e.g. write a summary of the meeting info)
-        meeting_info = f"Meeting for project '{project_id}' scheduled for {start_datetime.strftime('%Y-%m-%d %H:%M')} for a duration of {(end_datetime - start_datetime).seconds // 60} minutes."
-        # self.calendar.append({
-        #     'project_id': project_id,
-        #     'start_time': start_datetime.isoformat(),
-        #     'end_time': end_datetime.isoformat(),
-        #     'meeting_info': meeting_info,
-        #     'participants': participants
-        # })
+        effective_title = meeting_title if meeting_title else f"Meeting for project '{project_id}'"
+        meeting_info_str = f"'{effective_title}' scheduled for {start_datetime.strftime('%Y-%m-%d %H:%M')} with {', '.join(participants)}, duration {(end_datetime - start_datetime).seconds // 60} minutes."
         
-        # Save to the brain's calendar
-        self.brain.calendar.append({
+        brain_calendar_entry = {
             'project_id': project_id,
+            'title': effective_title,
+            'meeting_info': meeting_info_str,
             'start_time': start_datetime.isoformat(),
             'end_time': end_datetime.isoformat(),
-            'meeting_info': meeting_info,
-            'participants': participants
-        })
+            'participants': participants,
+            'event_id': None # No GCal event ID for fallback
+        }
+        
+        # Save to the brain's calendar
+        self.brain.calendar.append(brain_calendar_entry)
 
-        log_system_message(f"[Scheduler] [{self.node_id}] Scheduled local meeting: {meeting_info}")        
+        log_system_message(f"[Scheduler] [{self.node_id}] Scheduled local meeting: {meeting_info_str}")        
 
         # Notify every participant in the network, skipping any unknown participants
         
@@ -361,19 +372,17 @@ class Scheduler:
 
                 node = self.network.nodes[p]
                 # Safety check to ensure the node has a calendar attribute
-                if not hasattr(node, 'calendar'):
-                    setattr(node, 'calendar', [])
+                if not hasattr(node, 'calendar'): # Should be node.brain.calendar if we are consistent
+                    setattr(node, 'brain', type('Brain', (), {'calendar': []})()) # Ensure brain and calendar exist
+                elif not hasattr(node.brain, 'calendar'):
+                     setattr(node.brain, 'calendar', [])
+
                 # Append the meeting details to the participant's local calendar
-                node.brain.calendar.append({
-                    'project_id': project_id,
-                    'start_time': start_datetime.isoformat(),
-                    'end_time': end_datetime.isoformat(),
-                    'meeting_info': meeting_info,
-                    'participants': participants
-                })
+                # Ensure this is node.brain.calendar as per existing logic pattern in this func
+                node.brain.calendar.append(brain_calendar_entry)
                 
                 # Notify them
-                notification = f"[(INFO)]Meeting '{project_id}': '{meeting_info}' has been scheduled by {self.node_id}"
+                notification = f"[(INFO)]Meeting '{effective_title}' ({project_id}) has been scheduled by {self.node_id} for {start_datetime.strftime('%Y-%m-%d %H:%M')}"
                 self.network.send_message(self.node_id, p, notification)
                 
                 log_system_message(f"[{self.node_id}] Notified {p} about meeting for project '{project_id}'.")
@@ -382,7 +391,7 @@ class Scheduler:
         if self.socketio:
             self.socketio.emit('update_meetings')
 
-        return meeting_info
+        return meeting_info_str
 
     def _start_meeting_creation(self, initial_message, missing_info):
         """
@@ -561,6 +570,9 @@ class Scheduler:
         # Add the current node if not already included
         if self.node_id not in participants:
             participants.append(self.node_id)
+
+        # Get the meeting title
+        meeting_title = meeting_data.get("title")
         
         # Process meeting date and time: use provided values or defaults
         meeting_date = meeting_data.get("date", datetime.now().strftime("%Y-%m-%d"))
@@ -595,7 +607,7 @@ class Scheduler:
                 # If date parsing fails, notify user instead of auto-fixing
                 print(f"[{self.node_id}] Response: I couldn't understand the date/time format. Please provide the date in YYYY-MM-DD format and time in HH:MM format.")
                 # Store context for follow-up
-                self.meeting_context = {
+                self.brain.meeting_context = {
                     'active': True,
                     'collected_info': {
                         'title': meeting_data.get("title"),
@@ -1285,8 +1297,7 @@ class Scheduler:
         except Exception as e:
             msg = f"[{self.node_id}] Error cancelling meeting: {str(e)}"
             print(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
-            return msg
-    
+            return msg    
     # TODO: Work on the logic! Right now it just cancels all meetings with minor criteria    
     def _fallback_cancel_meeting(self, cancel_data: dict) -> str:
         """
