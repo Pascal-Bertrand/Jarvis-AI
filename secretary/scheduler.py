@@ -80,17 +80,22 @@ class Scheduler:
                 if start_time_str:
                     try:
                         # Assuming ISO format from _fallback_schedule_meeting
-
-                        dt_obj = datetime.fromisoformat(start_time_str)
-                        start_obj = {'dateTime': dt_obj.isoformat(), 'timeZone': str(dt_obj.tzinfo or tzlocal.get_localzone_name())}
+                        if type(start_time_str) == str:
+                            dt_obj = datetime.fromisoformat(start_time_str)
+                            start_obj = {'dateTime': dt_obj.isoformat(), 'timeZone': str(dt_obj.tzinfo or tzlocal.get_localzone_name())}
+                        else:
+                            start_obj = {'date': start_time_str} # Fallback if not full dateTime
                     except ValueError:
                         start_obj = {'date': start_time_str} # Fallback if not full dateTime
                 
                 end_obj = {}
                 if end_time_str:
                     try:
-                        dt_obj = datetime.fromisoformat(end_time_str)
-                        end_obj = {'dateTime': dt_obj.isoformat(), 'timeZone': str(dt_obj.tzinfo or tzlocal.get_localzone_name())}
+                        if type(end_time_str) == str:
+                            dt_obj = datetime.fromisoformat(end_time_str)
+                            end_obj = {'dateTime': dt_obj.isoformat(), 'timeZone': str(dt_obj.tzinfo or tzlocal.get_localzone_name())}
+                        else:
+                            end_obj = {'date': end_time_str} # Fallback if not full dateTime
                     except ValueError:
                         end_obj = {'date': end_time_str}
 
@@ -431,10 +436,10 @@ class Scheduler:
         
         # Predefined questions for standard meeting details
         questions = {
-            'time': "What time should the meeting be scheduled? (Please use the 12-hour time format, e.g., 2:30 PM)",
-            'duration': "How long should the meeting be? (Please use a number in minutes, e.g., 30)",
-            'date': "On what date should the meeting be scheduled? (Please use YYYY-MM-DD format, e.g., 2023-12-31)",
-            'participants': "Who should attend the meeting? Please list all participants.",
+            'date': "On what date should the meeting be scheduled?",
+            'time': "What time should the meeting be scheduled?",
+            'duration': "How long should the meeting be?",
+            'participants': "Who should attend the meeting?",
             'title': "What is the title or topic of the meeting?"
         }
         
