@@ -30,28 +30,42 @@
             padding: 0;
         }
         
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        
         body {
             font-family: 'Inter', sans-serif;
             background-color: var(--bg-light);
             color: var(--text-dark);
             line-height: 1.6;
-            padding: 0;
-            margin: 0;
+            min-height: 100vh;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
         }
         
         .container {
-            max-width: 1200px;
-            margin: 20px auto;
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
             padding: 0 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
         
         .dashboard-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 15px;
+            margin-bottom: 0;
+            padding: 15px 0;
             border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
         }
         
         .dashboard-header h1 {
@@ -86,13 +100,17 @@
         .dashboard-grid {
             display: grid;
             grid-template-columns: 1fr;
-            gap: 25px;
-            margin-bottom: 25px;
+            gap: 20px;
+            margin-bottom: 0;
+            flex: 1;
+            min-height: 0;
+            height: 100%;
         }
         
         @media (min-width: 992px) {
              .dashboard-grid {
-                grid-template-columns: 2fr 1fr; /* Chat takes more space */
+                grid-template-columns: 2fr 1fr;
+                height: 100%;
              }
              .dashboard-grid-bottom {
                  grid-template-columns: 1fr 1fr;
@@ -102,12 +120,14 @@
         .dashboard-grid-bottom {
             display: grid;
             grid-template-columns: 1fr;
-            gap: 25px;
+            gap: 20px;
+            height: 100%;
+            overflow-y: auto;
         }
 
         /* Specific styling for the chat card to control its height and internal layout */
-        .dashboard-grid > .card:first-child { /* Assuming chat card is the first card in the main grid */
-            max-height: 600px; /* Adjust as needed, slightly more than chat-container height for card header etc. */
+        .dashboard-grid > .card:first-child {
+            height: 100%;
             display: flex;
             flex-direction: column;
         }
@@ -117,10 +137,10 @@
         }
 
         .dashboard-grid > .card:first-child > .card-body {
-            flex-grow: 1; /* Body takes up remaining space in the card */
-            overflow: hidden; /* Ensure body itself doesn't overflow if chat-container was to misbehave */
-            display: flex; /* Make body a flex container for chat-container */
-            /* padding: 0; is already an inline style, which is fine */
+            flex: 1;
+            display: flex;
+            padding: 0;
+            min-height: 0; /* Allow body to shrink */
         }
         /* End of specific chat card styling */
         
@@ -230,20 +250,20 @@
         .chat-container {
             display: flex;
             flex-direction: column;
-            flex-grow: 1; /* Make chat-container take available space in its parent (card-body) */
-            overflow: hidden;
+            flex: 1;
+            min-height: 0; /* Allow container to shrink */
             background-color: white;
         }
         
         .chat-messages {
-            flex-grow: 1;
-            min-height: 0;
+            flex: 1;
             padding: 20px;
             overflow-y: auto;
             background-color: #f9f9f9;
             display: flex;
             flex-direction: column;
-            gap: 10px; /* Add gap between messages */
+            gap: 10px;
+            min-height: 0; /* Allow messages to shrink */
         }
 
         .chat-message {
@@ -320,8 +340,8 @@
             padding: 15px;
             background-color: white;
             border-top: 1px solid var(--border-color);
-            align-items: center; /* Align items vertically */
-            flex-shrink: 0; /* Ensure this container does not shrink if space is tight, but also doesn't force growth */
+            align-items: center;
+            flex-shrink: 0; /* Prevent input container from shrinking */
         }
 
         .chat-input {
@@ -418,33 +438,85 @@
             80%, 100% { content: ''; }
         }
 
-        .chat-container {
+        /* Make Meetings, Projects, and Tasks card bodies scrollable like the chat field */
+        .dashboard-grid-bottom .card {
             display: flex;
             flex-direction: column;
-            flex-grow: 1;
-            overflow: hidden;
-            background-color: white;
-            transition: height 0.3s ease; /* Add smooth transition */
+            height: 100%;
         }
-
-        .chat-messages {
-            flex-grow: 1;
+        .dashboard-grid-bottom .card-body {
+            flex: 1;
             min-height: 0;
-            padding: 20px;
             overflow-y: auto;
-            background-color: #f9f9f9;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            transition: height 0.3s ease; /* Add smooth transition */
+        }
+        #meetingsList, #projectsList, #tasksList {
+            max-height: none;
         }
 
-        /* Add this new style */
-        .chat-messages.empty {
-            height: 0;
-            padding: 0;
+        .task h3 a {
+            text-decoration: none; /* Remove underline from task title links */
+            color: inherit; /* Make link color same as surrounding text */
         }
 
+        .task h3 a:hover {
+            text-decoration: underline; /* Optional: add underline on hover for links */
+        }
+
+        /* Style for project title links, similar to tasks */
+        .project h3 a {
+            text-decoration: none;
+            color: inherit;
+        }
+        .project h3 a:hover {
+            text-decoration: underline;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1000; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity for backdrop */
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto; /* 15% from the top and centered */
+            padding: 0; /* Padding will be from the card inside */
+            border: 1px solid #888;
+            width: 80%; /* Could be more or less, depending on screen size */
+            max-width: 600px; /* Max width */
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .modal-content .card-header {
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+        }
+        
+        .modal-close-button {
+            display: inline-block;
+            margin-top: 15px;
+            margin-left: 20px; /* Align with card padding */
+            margin-bottom: 20px; /* Spacing at the bottom */
+            padding: 10px 15px;
+            background-color: var(--danger-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .modal-close-button:hover {
+            background-color: darkred;
+        }
 
     </style>
 </head>
@@ -468,7 +540,7 @@
             <!-- Chat Card -->
             <div class="card">
                 <div class="card-header">
-                    <h2>Jarvis-AI</h2>
+                    <h2>Agent Communication</h2>
                 </div>
                 <div class="card-body" style="padding: 0;">
                      <div class="chat-container">
@@ -525,6 +597,18 @@
         </div>
     </div>
 
+    <!-- The Modal for Tasks -->
+    <div id="taskModal" class="modal">
+        <div class="modal-content" id="taskModalContentContainer">
+            <!-- Task details will be injected here -->
+        </div>
+    </div>
+
+    <!-- The Modal for Projects -->
+    <div id="projectModal" class="modal">
+        <div class="modal-content" id="projectModalContentContainer">
+            <!-- Project details will be injected here -->
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.2/socket.io.js"></script>
@@ -536,12 +620,15 @@
         let socket;
 
         document.addEventListener('DOMContentLoaded', () => {
-            fetchNodes(); // Fetch nodes to populate the dropdown
-            fetchTasks();
-            fetchProjects();
-            fetchMeetings();
+            const messageInput = document.getElementById('messageInput');
+            if (messageInput) {
+                messageInput.focus();
+            }
+            
             setupWebSocket();
-            setupEventListeners();
+            setupEventListeners(); // Ensure this is set up early
+
+            handlePageLoadView(); // Decides what to load
 
             // Attempt to get microphone access early
             navigator.mediaDevices.getUserMedia({ audio: true })
@@ -670,22 +757,23 @@
                     tasksList.innerHTML = ''; // Clear previous tasks
                     if (!tasks || tasks.length === 0) {
                         tasksList.innerHTML = '<div class="empty-state">No tasks found.</div>';
-                return;
-            }
+                        return;
+                    }
                     tasks.forEach(task => {
+                        if (!task.id) {
+                            console.warn("Task object is missing an 'id'. Cannot create link.", task);
+                            const taskElement = document.createElement('div');
+                            const priorityClassFallback = ['high', 'medium', 'low'].includes(task.priority?.toLowerCase()) ? task.priority.toLowerCase() : 'low';
+                            taskElement.className = `task ${priorityClassFallback}`;
+                            taskElement.innerHTML = `<h3>${task.title || 'Untitled Task (ID missing)'}</h3>`;
+                            tasksList.appendChild(taskElement);
+                            return;
+                        }
                         const taskElement = document.createElement('div');
-                        // Determine priority class, default to 'low' if undefined/invalid
                         const priorityClass = ['high', 'medium', 'low'].includes(task.priority?.toLowerCase()) ? task.priority.toLowerCase() : 'low';
                         taskElement.className = `task ${priorityClass}`;
-                        const dueDate = task.due_date ? new Date(task.due_date).toLocaleDateString() : 'N/A';
-                        taskElement.innerHTML = `
-                            <h3>${task.title || 'Untitled Task'}</h3>
-                            <p>${task.description || 'No description.'}</p>
-                            <div class="task-meta">
-                                <span>Assigned to: ${task.assigned_to || 'Unassigned'}</span>
-                                <span>Due: ${dueDate}</span>
-                            </div>
-                        `;
+                        // Changed to call openTaskPopup instead of being a direct link
+                        taskElement.innerHTML = `<h3><a href="#" onclick="openTaskPopup('${task.id}'); return false;">${task.title || 'Untitled Task'}</a></h3>`;
                         tasksList.appendChild(taskElement);
                     });
                 })
@@ -713,29 +801,15 @@
                         const project = projects[projectId];
                         const projectElement = document.createElement('div');
                         projectElement.className = 'project';
-                        let participantsHtml = '';
-                        if (project.participants && project.participants.length > 0) {
-                           participantsHtml = project.participants.map(p =>
-                                `<span class="project-participant">${p}</span>`
-                            ).join('');
-                        } else {
-                            participantsHtml = '<span>No participants</span>';
-                        }
-                        
-                        projectElement.innerHTML = `
-                            <h3>${project.name || projectId}</h3>
-                            <p>Owner: ${project.owner || 'Unknown'}</p>
-                            <div class="project-participants">
-                            ${participantsHtml}
-                            </div>
-                        `;
+                        // Display only the project name as a clickable title for the popup
+                        projectElement.innerHTML = `<h3><a href="#" onclick="openProjectPopup('${projectId}'); return false;">${project.name || projectId}</a></h3>`;
                         projectsList.appendChild(projectElement);
                     }
                 })
                 .catch(error => {
                     console.error('Error fetching projects:', error);
-                     document.getElementById('projectsList').innerHTML = '<div class="empty-state">Error loading projects.</div>';
-                 });
+                    document.getElementById('projectsList').innerHTML = '<div class="empty-state">Error loading projects.</div>';
+                });
         }
 
         function fetchMeetings() {
@@ -775,7 +849,8 @@
                         meetingElement.style.borderRadius = "4px";
 
                         meetingElement.innerHTML = `
-                            <h3>${meeting.summary || 'Untitled Meeting'}</h3>
+                            <h3>${meeting.title || 'Untitled Meeting'}</h3>
+                            <p><strong>Summary:</strong> ${meeting.summary || 'No summary available'}</p>
                             <p><strong>Starts:</strong> ${startDate}</p>
                             <p><strong>Ends:</strong> ${endDate}</p>
                             <p><strong>Attendees:</strong> ${attendeesDisplay}</p>
@@ -1077,46 +1152,134 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
-            const messageInput = document.getElementById('messageInput');
-            const chatMessages = document.getElementById('chatMessages');
-            
-            // Focus the input field when the page loads
-            messageInput.focus();
-            
-            // Function to adjust chat height based on content
-            function adjustChatHeight() {
-                if (chatMessages.children.length === 0) {
-                    chatMessages.classList.add('empty');
-                } else {
-                    chatMessages.classList.remove('empty');
-                }
+        function handlePageLoadView() {
+            // Ensure modals are hidden on normal page load
+            const taskModal = document.getElementById('taskModal');
+            if (taskModal) taskModal.style.display = 'none';
+            const projectModal = document.getElementById('projectModal');
+            if (projectModal) projectModal.style.display = 'none';
+
+            // Load dashboard components - this is always done now for the main page
+            fetchNodes();
+            fetchTasks();
+            fetchProjects();
+            fetchMeetings();
+        }
+
+        function openTaskPopup(taskId) {
+            const modal = document.getElementById('taskModal');
+            const modalContentContainer = document.getElementById('taskModalContentContainer');
+            if (!modal || !modalContentContainer) {
+                console.error('Modal elements not found!');
+                return;
             }
-            
-            // Call adjustChatHeight initially
-            adjustChatHeight();
-            
-            // Modify the existing addMessage function to include height adjustment
-            const originalAddMessage = addMessage;
-            addMessage = function(sender, message, type) {
-                originalAddMessage(sender, message, type);
-                adjustChatHeight();
-            };
-            
-            // Modify the existing clearChatMessages function to include height adjustment
-            const originalClearChatMessages = clearChatMessages;
-            clearChatMessages = function() {
-                originalClearChatMessages();
-                adjustChatHeight();
-            };
-            
-            // Ensure input stays focused after sending messages
-            const originalSendMessage = sendMessage;
-            sendMessage = function() {
-                originalSendMessage();
-                messageInput.focus();
-            };
-        });
+
+            modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Loading task...</p></div></div>'; // Basic loading state
+            modal.style.display = 'block';
+
+            const agentSelect = document.getElementById('agentSelect');
+            const selectedAgentId = agentSelect ? agentSelect.value : null;
+            const fetchUrl = selectedAgentId ? `/tasks?agent_id=${selectedAgentId}` : '/tasks';
+
+            fetch(fetchUrl)
+                .then(response => response.json())
+                .then(tasks => {
+                    const task = tasks.find(t => String(t.id) === String(taskId));
+                    if (task) {
+                        const dueDate = task.due_date ? new Date(task.due_date).toLocaleDateString() : 'N/A';
+                        modalContentContainer.innerHTML = `
+                            <div class="card">
+                                <div class="card-header">
+                                    <h2>Task Details</h2>
+                                </div>
+                                <div class="card-body">
+                                    <h3>${task.title || 'Untitled Task'}</h3>
+                                    <p><strong>Description:</strong> ${task.description || 'No description.'}</p>
+                                    <p><strong>Assigned to:</strong> ${task.assigned_to || 'Unassigned'}</p>
+                                    <p><strong>Due:</strong> ${dueDate}</p>
+                                    <p><strong>Priority:</strong> ${task.priority || 'N/A'}</p>
+                                </div>
+                                <button class="modal-close-button" onclick="closeTaskPopup()">Close</button>
+                            </div>
+                        `;
+                    } else {
+                        modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Task not found.</p></div><button class="modal-close-button" onclick="closeTaskPopup()">Close</button></div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching task details for modal:', error);
+                    modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Error loading task details.</p></div><button class="modal-close-button" onclick="closeTaskPopup()">Close</button></div>';
+                });
+        }
+
+        function closeTaskPopup() {
+            const modal = document.getElementById('taskModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        function openProjectPopup(projectId) {
+            const modal = document.getElementById('projectModal');
+            const modalContentContainer = document.getElementById('projectModalContentContainer');
+            if (!modal || !modalContentContainer) {
+                console.error('Project Modal elements not found!');
+                return;
+            }
+
+            modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Loading project...</p></div></div>'; // Basic loading state
+            modal.style.display = 'block';
+
+            const agentSelect = document.getElementById('agentSelect');
+            const selectedAgentId = agentSelect ? agentSelect.value : null;
+            const fetchUrl = selectedAgentId ? `/projects?agent_id=${selectedAgentId}` : '/projects';
+
+            fetch(fetchUrl)
+                .then(response => response.json())
+                .then(projectsData => {
+                    // Note: projectsData is an object where keys are projectIds
+                    const project = projectsData[projectId]; 
+                    if (project) {
+                        let participantsHtml = '<span>No participants</span>';
+                        if (project.participants && project.participants.length > 0) {
+                            participantsHtml = project.participants.map(p =>
+                                `<span class="project-participant">${p}</span>`
+                            ).join('');
+                        }
+
+                        modalContentContainer.innerHTML = `
+                            <div class="card">
+                                <div class="card-header">
+                                    <h2>Project Details</h2>
+                                </div>
+                                <div class="card-body">
+                                    <h3>${project.name || projectId}</h3>
+                                    <p><strong>Owner:</strong> ${project.owner || 'Unknown'}</p>
+                                    <p><strong>Participants:</strong></p>
+                                    <div class="project-participants">
+                                        ${participantsHtml}
+                                    </div>
+                                </div>
+                                <button class="modal-close-button" onclick="closeProjectPopup()">Close</button>
+                            </div>
+                        `;
+                    } else {
+                        modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Project not found.</p></div><button class="modal-close-button" onclick="closeProjectPopup()">Close</button></div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching project details for modal:', error);
+                    modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Error loading project details.</p></div><button class="modal-close-button" onclick="closeProjectPopup()">Close</button></div>';
+                });
+        }
+
+        function closeProjectPopup() {
+            const modal = document.getElementById('projectModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
     </script>
 </body>
 </html>
