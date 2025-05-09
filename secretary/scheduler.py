@@ -39,7 +39,7 @@ class Scheduler:
         if self.network and self.node_id is not None:
             self.network.register_node(self.node_id, self)
 
-    def get_upcoming_meetings(self, max_results=10):
+    def get_upcoming_meetings(self, max_results=100):
         """
         Fetch upcoming meetings from Google Calendar and local storage for this node.
 
@@ -80,6 +80,7 @@ class Scheduler:
                 if start_time_str:
                     try:
                         # Assuming ISO format from _fallback_schedule_meeting
+
                         dt_obj = datetime.fromisoformat(start_time_str)
                         start_obj = {'dateTime': dt_obj.isoformat(), 'timeZone': str(dt_obj.tzinfo or tzlocal.get_localzone_name())}
                     except ValueError:
@@ -150,7 +151,10 @@ class Scheduler:
                     if 'T' in date_time_str:
                         return datetime.fromisoformat(date_time_str.replace('Z', '+00:00'))
                     else:
-                        return datetime.strptime(date_time_str, '%Y-%m-%d')
+                        # This creates a naive datetime
+                        naive_dt = datetime.strptime(date_time_str, '%Y-%m-%d')
+                        # Make it offset-aware by assuming UTC midnight
+                        return naive_dt.replace(tzinfo=timezone.utc)
                 except ValueError:
                     return datetime.max # Put unparsable dates at the end
             return datetime.max
