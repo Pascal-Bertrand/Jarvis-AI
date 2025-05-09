@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent AI Network</title>
+    <title>Jarvis-AI</title>
     <!-- Add Google Fonts -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -418,6 +418,33 @@
             80%, 100% { content: ''; }
         }
 
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            overflow: hidden;
+            background-color: white;
+            transition: height 0.3s ease; /* Add smooth transition */
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            min-height: 0;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            transition: height 0.3s ease; /* Add smooth transition */
+        }
+
+        /* Add this new style */
+        .chat-messages.empty {
+            height: 0;
+            padding: 0;
+        }
+
 
     </style>
 </head>
@@ -425,8 +452,8 @@
     <div class="container">
         <div class="dashboard-header">
             <div>
-                <h1>Agent AI Network</h1>
-                <div class="dashboard-subheader">Control and monitor your AI agents</div>
+                <h1>Jarvis-AI</h1>
+                <div class="dashboard-subheader">[demo] Control and monitor your AI agents</div>
             </div>
             <div class="agent-selector">
                 <label for="agentSelect" style="margin-right: 8px; font-weight: 500;">Act as:</label>
@@ -441,7 +468,7 @@
             <!-- Chat Card -->
             <div class="card">
                 <div class="card-header">
-                    <h2>Agent Communication</h2>
+                    <h2>Jarvis-AI</h2>
                 </div>
                 <div class="card-body" style="padding: 0;">
                      <div class="chat-container">
@@ -1050,6 +1077,46 @@
             }
         }
 
+        document.addEventListener('DOMContentLoaded', function() {
+            const messageInput = document.getElementById('messageInput');
+            const chatMessages = document.getElementById('chatMessages');
+            
+            // Focus the input field when the page loads
+            messageInput.focus();
+            
+            // Function to adjust chat height based on content
+            function adjustChatHeight() {
+                if (chatMessages.children.length === 0) {
+                    chatMessages.classList.add('empty');
+                } else {
+                    chatMessages.classList.remove('empty');
+                }
+            }
+            
+            // Call adjustChatHeight initially
+            adjustChatHeight();
+            
+            // Modify the existing addMessage function to include height adjustment
+            const originalAddMessage = addMessage;
+            addMessage = function(sender, message, type) {
+                originalAddMessage(sender, message, type);
+                adjustChatHeight();
+            };
+            
+            // Modify the existing clearChatMessages function to include height adjustment
+            const originalClearChatMessages = clearChatMessages;
+            clearChatMessages = function() {
+                originalClearChatMessages();
+                adjustChatHeight();
+            };
+            
+            // Ensure input stays focused after sending messages
+            const originalSendMessage = sendMessage;
+            sendMessage = function() {
+                originalSendMessage();
+                messageInput.focus();
+            };
+        });
     </script>
 </body>
 </html>
