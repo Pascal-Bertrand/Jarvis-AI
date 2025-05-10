@@ -507,6 +507,8 @@ class Brain:
             
             log_system_message(f"[Brain] [{self.node_id}] Generating tasks for step {i+1}: {step_description}")
             
+
+
             # Refined prompt to be very clear about using the provided participants
             current_participants_list_str = ", ".join(participants) if participants else "the designated project roles"
             prompt = f"""

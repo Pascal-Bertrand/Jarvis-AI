@@ -653,6 +653,10 @@ class Scheduler:
                     confirm_prompt = (f"Conflict found for {conflicting_participant}. The next available slot for all participants seems to be "
                                       f"{formatted_proposed_time}. Schedule then? (yes/no)")
                     
+                    
+                    # Emit an update to the UI via SocketIO
+                    if self.socketio:
+                        self.socketio.emit('update_meetings')
                     return confirm_prompt
                     
                     # Use the Confirmation class via the brain instance

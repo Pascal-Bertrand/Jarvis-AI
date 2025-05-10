@@ -111,7 +111,7 @@ class LLMNode:
         # self.conversation_history = [] # Remove, handled by Communication
 
         # Dictionary to store project information (managed by Brain)
-        self.projects = {} # Remove, handled by Brain
+        #self.projects = {} # Remove, handled by Brain
 
         # Local calendar list (potentially redundant if Scheduler manages all calendar state)
         # self.calendar = [] # Remove, handled by Scheduler/Google Calendar
@@ -198,11 +198,15 @@ def show_tasks():
         if hasattr(node, 'brain') and node.brain and hasattr(node.brain, 'tasks') and node.brain.tasks:
             for task in node.brain.tasks: # Iterate over tasks in the node's brain
                 # If not filtering OR if task is assigned to the agent_id_filter
-                if not agent_id_filter or (hasattr(task, 'assigned_to') and task.assigned_to == agent_id_filter):
+                if not agent_id_filter or (hasattr(task, 'assigned_to') and 
+                    (task.assigned_to == agent_id_filter or 
+                     any(role.strip() == agent_id_filter for role in task.assigned_to.split(',')))):
                     all_tasks.append(task.to_dict())
         elif network.tasks: # Fallback to network.tasks if node.brain.tasks isn't the source
              for task in network.tasks:
-                 if not agent_id_filter or (hasattr(task, 'assigned_to') and task.assigned_to == agent_id_filter):
+                 if not agent_id_filter or (hasattr(task, 'assigned_to') and 
+                    (task.assigned_to == agent_id_filter or 
+                     any(role.strip() == agent_id_filter for role in task.assigned_to.split(',')))):
                     all_tasks.append(task.to_dict())
 
     return jsonify(all_tasks)
