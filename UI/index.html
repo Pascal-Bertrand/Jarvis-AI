@@ -576,6 +576,9 @@
             <div class="card">
                 <div class="card-header">
                     <h2>Projects</h2>
+                    <button id="newProjectBtn" class="chat-button" style="padding: 5px 10px; font-size: 12px;">
+                        <i class="fas fa-plus"></i> New Project
+                    </button>
                 </div>
                 <div class="card-body">
                         <div id="projectsList">
@@ -608,6 +611,25 @@
     <div id="projectModal" class="modal">
         <div class="modal-content" id="projectModalContentContainer">
             <!-- Project details will be injected here -->
+        </div>
+    </div>
+
+    <!-- The Modal for New Project -->
+    <div id="newProjectModal" class="modal">
+        <div class="modal-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Create New Project</h2>
+                </div>
+                <div class="card-body">
+                    <div style="margin-bottom: 15px;">
+                        <label for="projectDescription" style="display: block; margin-bottom: 5px;">Project Description:</label>
+                        <textarea id="projectDescription" style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;"></textarea>
+                    </div>
+                    <button class="modal-close-button" onclick="closeNewProjectModal()">Cancel</button>
+                    <button class="chat-button" onclick="submitNewProject()" style="margin-left: 10px;">Create Project</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -683,6 +705,7 @@
             const messageInput = document.getElementById('messageInput');
             const recordBtn = document.getElementById('recordBtn');
             const agentSelect = document.getElementById('agentSelect');
+            const newProjectBtn = document.getElementById('newProjectBtn');
 
             sendBtn.addEventListener('click', sendMessage);
             messageInput.addEventListener('keypress', (e) => {
@@ -693,6 +716,8 @@
             });
 
             recordBtn.addEventListener('click', toggleRecording);
+
+            newProjectBtn.addEventListener('click', openNewProjectModal);
 
             agentSelect.addEventListener('change', (event) => {
                 console.log(`Agent selected: ${event.target.value}`);
@@ -1278,6 +1303,102 @@
             if (modal) {
                 modal.style.display = 'none';
             }
+        }
+
+        // Array of loading messages for project creation
+        const projectLoadingMessages = [
+            "Looking through past projects",
+            "Searching for suitable approaches",
+            "Analyzing project requirements",
+            "Generating project plan",
+            "Finalizing project structure"
+        ];
+
+        let currentLoadingMessageIndex = 0;
+        let loadingMessageInterval = null;
+
+        function openNewProjectModal() {
+            const modal = document.getElementById('newProjectModal');
+            if (modal) {
+                modal.style.display = 'block';
+                document.getElementById('projectDescription').focus();
+            }
+        }
+
+        function closeNewProjectModal() {
+            const modal = document.getElementById('newProjectModal');
+            if (modal) {
+                modal.style.display = 'none';
+                document.getElementById('projectDescription').value = '';
+            }
+        }
+
+        function updateLoadingMessage(loadingElement) {
+            if (loadingElement) {
+                const messageContent = loadingElement.querySelector('.message-content');
+                if (messageContent) {
+                    messageContent.innerHTML = `${projectLoadingMessages[currentLoadingMessageIndex]}<span class="loading-dots"></span>`;
+                    currentLoadingMessageIndex = (currentLoadingMessageIndex + 1) % projectLoadingMessages.length;
+                }
+            }
+        }
+
+        function submitNewProject() {
+            const description = document.getElementById('projectDescription').value.trim();
+            if (!description) {
+                addSystemMessage("Please enter a project description.");
+                return;
+            }
+
+            const agentSelect = document.getElementById('agentSelect');
+            const selectedNodeId = agentSelect.value;
+            
+            if (!selectedNodeId) {
+                addSystemMessage("Error: Please select an agent first.");
+                return;
+            }
+
+            // Close the modal
+            closeNewProjectModal();
+
+            // Show initial loading message
+            const loadingIndicatorId = showLoadingIndicator();
+            const loadingElement = document.getElementById(loadingIndicatorId);
+            
+            // Start cycling through loading messages
+            currentLoadingMessageIndex = 0;
+            loadingMessageInterval = setInterval(() => {
+                updateLoadingMessage(loadingElement);
+            }, 3000); // Change message every 3 seconds //TODO delete hardcode
+
+            // Send the project creation request
+            fetch('/send_message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    node_id: selectedNodeId,
+                    message: `project Alpha = ${description}`, //TODO delete hardcode
+                    sender_id: selectedNodeId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                clearInterval(loadingMessageInterval);
+                removeLoadingIndicator(loadingIndicatorId);
+                
+                if (data.error) {
+                    addSystemMessage(`Error: ${data.error}`);
+                } else {
+                    addAgentMessage(data.response || "Project created successfully");
+                    fetchProjects(); // Refresh the projects list
+                }
+            })
+            .catch(error => {
+                clearInterval(loadingMessageInterval);
+                removeLoadingIndicator(loadingIndicatorId);
+                console.error('Error creating project:', error);
+                addSystemMessage('Error creating project. Check console.');
+            });
         }
 
     </script>

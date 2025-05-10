@@ -1,37 +1,26 @@
 import openai
-import json
 from typing import Dict, Optional, List
 import os
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-import pickle
-from datetime import datetime, timedelta
-from flask import Flask, render_template, jsonify, request, send_from_directory
+from flask import Flask, render_template, jsonify, request
 import threading
 import webbrowser
 from flask_cors import CORS
 import base64
 import tempfile
-import re
 from config.agents import AGENT_CONFIG
 
-# --- Import Logging ---
-from secretary.utilities.logging import log_user_message, log_agent_message, log_system_message, log_network_message, log_error, log_warning, log_api_request, log_api_response
-
-
-# --- Import Network Components ---
+from secretary.utilities.logging import log_system_message, log_error, log_warning
 from network.internal_communication import Intercom
-from network.tasks import Task
 
-
-# --- Import Secretary Components (needed for LLMNode) ---
 from secretary.communication import Communication
 from secretary.brain import Brain, LLMClient
 from secretary.scheduler import Scheduler
 from secretary.utilities.google import initialize_google_services
-from secretary.socketio_ext import socketio # Import shared socketio instance
+from secretary.socketio_ext import socketio
 
 # Initialize the OpenAI client with your API key
 try:
@@ -66,15 +55,6 @@ SCOPES = [
 GOOGLE_CLIENT_ID = '473172815719-uqsf1bv6rior1ctebkernlnamca3mv3e.apps.googleusercontent.com'
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')  # Fallback to empty string if not set
 
-# Path to store user tokens - each user gets their own token file
-TOKEN_FILE_DIR = os.path.join(os.path.expanduser('~'), '.agentai', 'tokens')
-if not os.path.exists(TOKEN_FILE_DIR):
-    os.makedirs(TOKEN_FILE_DIR, exist_ok=True)
-
-
-def get_token_file_path(user_id):
-    """Get the token file path for a specific user"""
-    return os.path.join(TOKEN_FILE_DIR, f'token_{user_id}.pickle')
 
 
 class LLMNode:
@@ -106,15 +86,6 @@ class LLMNode:
             "temperature": 0.1,
             "max_tokens": 1000
         }
-
-        # Initialize an empty conversation history list (managed by Communication)
-        # self.conversation_history = [] # Remove, handled by Communication
-
-        # Dictionary to store project information (managed by Brain)
-        #self.projects = {} # Remove, handled by Brain
-
-        # Local calendar list (potentially redundant if Scheduler manages all calendar state)
-        # self.calendar = [] # Remove, handled by Scheduler/Google Calendar
 
         # Network reference (passed in)
         self.network: Optional[Intercom] = network
