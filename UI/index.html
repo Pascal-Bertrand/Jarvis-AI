@@ -594,6 +594,9 @@
             <div class="card">
                 <div class="card-header">
                     <h2>Projects</h2>
+                    <button id="newProjectBtn" class="chat-button" style="padding: 5px 10px; font-size: 12px;">
+                        <i class="fas fa-plus"></i> New Project
+                    </button>
                 </div>
                 <div class="card-body">
                         <div id="projectsList">
@@ -626,6 +629,25 @@
     <div id="projectModal" class="modal">
         <div class="modal-content" id="projectModalContentContainer">
             <!-- Project details will be injected here -->
+        </div>
+    </div>
+
+    <!-- The Modal for New Project -->
+    <div id="newProjectModal" class="modal">
+        <div class="modal-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Create New Project</h2>
+                </div>
+                <div class="card-body">
+                    <div style="margin-bottom: 15px;">
+                        <label for="projectDescription" style="display: block; margin-bottom: 5px;">Project Description:</label>
+                        <textarea id="projectDescription" style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;"></textarea>
+                    </div>
+                    <button class="modal-close-button" onclick="closeNewProjectModal()">Cancel</button>
+                    <button class="chat-button" onclick="submitNewProject()" style="margin-left: 10px;">Create Project</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -708,6 +730,7 @@
             const messageInput = document.getElementById('messageInput');
             const recordBtn = document.getElementById('recordBtn');
             const agentSelect = document.getElementById('agentSelect');
+            const newProjectBtn = document.getElementById('newProjectBtn');
 
             sendBtn.addEventListener('click', sendMessage);
             messageInput.addEventListener('keypress', (e) => {
@@ -718,6 +741,8 @@
             });
 
             recordBtn.addEventListener('click', toggleRecording);
+
+            newProjectBtn.addEventListener('click', openNewProjectModal);
 
             agentSelect.addEventListener('change', (event) => {
                 console.log(`Agent selected: ${event.target.value}`);
@@ -1306,63 +1331,100 @@
             }
         }
 
-        function openMeetingPopup(meetingId) {
-            const modal = document.getElementById('meetingModal');
-            const modalContentContainer = document.getElementById('meetingModalContentContainer');
-            if (!modal || !modalContentContainer) {
-                console.error('Meeting Modal elements not found!');
+        // Array of loading messages for project creation
+        const projectLoadingMessages = [
+            "Looking through past projects",
+            "Searching for suitable approaches",
+            "Analyzing project requirements",
+            "Generating project plan",
+            "Finalizing project structure"
+        ];
+
+        let currentLoadingMessageIndex = 0;
+        let loadingMessageInterval = null;
+
+        function openNewProjectModal() {
+            const modal = document.getElementById('newProjectModal');
+            if (modal) {
+                modal.style.display = 'block';
+                document.getElementById('projectDescription').focus();
+            }
+        }
+
+        function closeNewProjectModal() {
+            const modal = document.getElementById('newProjectModal');
+            if (modal) {
+                modal.style.display = 'none';
+                document.getElementById('projectDescription').value = '';
+            }
+        }
+
+        function updateLoadingMessage(loadingElement) {
+            if (loadingElement) {
+                const messageContent = loadingElement.querySelector('.message-content');
+                if (messageContent) {
+                    messageContent.innerHTML = `${projectLoadingMessages[currentLoadingMessageIndex]}<span class="loading-dots"></span>`;
+                    currentLoadingMessageIndex = (currentLoadingMessageIndex + 1) % projectLoadingMessages.length;
+                }
+            }
+        }
+
+        function submitNewProject() {
+            const description = document.getElementById('projectDescription').value.trim();
+            if (!description) {
+                addSystemMessage("Please enter a project description.");
                 return;
             }
 
-            modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Loading meeting...</p></div></div>';
-            modal.style.display = 'block';
-
             const agentSelect = document.getElementById('agentSelect');
-            const selectedAgentId = agentSelect ? agentSelect.value : null;
-            const fetchUrl = selectedAgentId ? `/meetings?agent_id=${selectedAgentId}` : '/meetings';
-
-            fetch(fetchUrl)
-                .then(response => response.json())
-                .then(meetings => {
-                    const meeting = meetings.find(m => String(m.id) === String(meetingId));
-                    if (meeting) {
-                        const startDate = meeting.start ? new Date(meeting.start.dateTime || meeting.start.date).toLocaleString() : 'N/A';
-                        const endDate = meeting.end ? new Date(meeting.end.dateTime || meeting.end.date).toLocaleString() : 'N/A';
-                        const attendeesDisplay = meeting.attendees 
-                            ? meeting.attendees.map(a => a.email ? a.email.split('@')[0] : 'Unknown').join(', ') 
-                            : 'None';
-
-                        modalContentContainer.innerHTML = `
-                            <div class="card">
-                                <div class="card-header">
-                                    <h2>Meeting Details</h2>
-                                </div>
-                                <div class="card-body">
-                                    <h3>${meeting.title || 'Untitled Meeting'}</h3>
-                                    <p><strong>Summary:</strong> ${meeting.summary || 'No summary available'}</p>
-                                    <p><strong>Starts:</strong> ${startDate}</p>
-                                    <p><strong>Ends:</strong> ${endDate}</p>
-                                    <p><strong>Attendees:</strong> ${attendeesDisplay}</p>
-                                    ${meeting.hangoutLink ? `<p><a href="${meeting.hangoutLink}" target="_blank">Join Meeting</a></p>` : ''}
-                                </div>
-                                <button class="modal-close-button" onclick="closeMeetingPopup()">Close</button>
-                            </div>
-                        `;
-                    } else {
-                        modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Meeting not found.</p></div><button class="modal-close-button" onclick="closeMeetingPopup()">Close</button></div>';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching meeting details for modal:', error);
-                    modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Error loading meeting details.</p></div><button class="modal-close-button" onclick="closeMeetingPopup()">Close</button></div>';
-                });
-        }
-
-        function closeMeetingPopup() {
-            const modal = document.getElementById('meetingModal');
-            if (modal) {
-                modal.style.display = 'none';
+            const selectedNodeId = agentSelect.value;
+            
+            if (!selectedNodeId) {
+                addSystemMessage("Error: Please select an agent first.");
+                return;
             }
+
+            // Close the modal
+            closeNewProjectModal();
+
+            // Show initial loading message
+            const loadingIndicatorId = showLoadingIndicator();
+            const loadingElement = document.getElementById(loadingIndicatorId);
+            
+            // Start cycling through loading messages
+            currentLoadingMessageIndex = 0;
+            loadingMessageInterval = setInterval(() => {
+                updateLoadingMessage(loadingElement);
+            }, 3000); // Change message every 3 seconds //TODO delete hardcode
+
+            // Send the project creation request
+            fetch('/send_message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    node_id: selectedNodeId,
+                    message: `project Alpha = ${description}`, //TODO delete hardcode
+                    sender_id: selectedNodeId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                clearInterval(loadingMessageInterval);
+                removeLoadingIndicator(loadingIndicatorId);
+                
+                if (data.error) {
+                    addSystemMessage(`Error: ${data.error}`);
+                } else {
+                    addAgentMessage(data.response || "Project created successfully");
+                    fetchProjects(); // Refresh the projects list
+                }
+            })
+            .catch(error => {
+                clearInterval(loadingMessageInterval);
+                removeLoadingIndicator(loadingIndicatorId);
+                console.error('Error creating project:', error);
+                addSystemMessage('Error creating project. Check console.');
+            });
         }
 
     </script>
