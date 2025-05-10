@@ -101,6 +101,7 @@ class Scheduler:
 
                 transformed = {
                     'summary': local_meeting.get('meeting_info', 'Local Meeting'),
+                    'title': local_meeting.get('title', local_meeting.get('meeting_info', 'Local Meeting')),  # Use title if available, fallback to meeting_info
                     'start': start_obj,
                     'end': end_obj,
                     'attendees': [{'email': f'{p}@example.com'} for p in local_meeting.get('participants', [])],
@@ -136,6 +137,8 @@ class Scheduler:
         # Simple de-duplication based on event ID (Google event ID or generated local ID)
         all_meetings_dict = {}
         for meeting in google_meetings:
+            # Add title field to Google Calendar meetings
+            meeting['title'] = meeting.get('summary', 'Untitled Meeting')
             all_meetings_dict[meeting['id']] = meeting
         
         for meeting in local_meetings_transformed:
@@ -360,28 +363,25 @@ class Scheduler:
         # Save to the brain's calendar
         self.brain.calendar.append(brain_calendar_entry)
 
-        log_system_message(f"[Scheduler] [{self.node_id}] Scheduled local meeting: {meeting_info_str}")        
+        log_system_message(f"[Scheduler] [{self.node_id}] Scheduled local meeting: {meeting_info_str}")
 
         # Notify every participant in the network, skipping any unknown participants
-        
         for p in participants:
             log_system_message(f"[Scheduler] {type(self.node_id)} , {type(p)}")
             
             if p != self.node_id:
-                
                 if p not in self.network.nodes:
                     log_warning(f"[{self.node_id}] Cannot notify unknown participant '{p}' in fallback; skipping.")
                     continue
 
                 node = self.network.nodes[p]
                 # Safety check to ensure the node has a calendar attribute
-                if not hasattr(node, 'calendar'): # Should be node.brain.calendar if we are consistent
-                    setattr(node, 'brain', type('Brain', (), {'calendar': []})()) # Ensure brain and calendar exist
+                if not hasattr(node, 'brain'):
+                    setattr(node, 'brain', type('Brain', (), {'calendar': []})())
                 elif not hasattr(node.brain, 'calendar'):
-                     setattr(node.brain, 'calendar', [])
+                    setattr(node.brain, 'calendar', [])
 
                 # Append the meeting details to the participant's local calendar
-                # Ensure this is node.brain.calendar as per existing logic pattern in this func
                 node.brain.calendar.append(brain_calendar_entry)
                 
                 # Notify them
@@ -1439,7 +1439,7 @@ class Scheduler:
         
         Args:
             meeting_id (str): Unique identifier for the meeting.
-            title (str): The title or summary for the meeting.
+            title (str): The title of the meeting.
             participants (list): List of participant identifiers.
             start_datetime (datetime): The start time of the meeting.
             end_datetime (datetime): The end time of the meeting.
@@ -1448,7 +1448,7 @@ class Scheduler:
         # If calendar service is not available, fall back to local scheduling
         if not self.calendar_service:
             print(f"[{self.node_id}] Calendar service not available, using local scheduling")
-            return self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime)
+            return self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime, meeting_title=title)
             
         
         try:
@@ -1458,7 +1458,7 @@ class Scheduler:
 
         # Create event
         event = {
-            'summary': title,
+            'summary': title,  # Use title as the summary for Google Calendar
             'start': {
                 'dateTime': start_datetime.isoformat(),
                 'timeZone': local_tz_name,
@@ -1480,27 +1480,30 @@ class Scheduler:
             print(f"[{self.node_id}] Meeting created: {event.get('htmlLink')}")
             print(f"[{self.node_id}] Meeting '{title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}")
             
+            # Create meeting info string
+            meeting_info = f"Meeting '{title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}"
+            
             # Add the meeting to the local calendar
-            self.calendar.append({
+            calendar_entry = {
                 'project_id': meeting_id,
-                'start_time': start_datetime,
-                'end_time': end_datetime,
+                'start_time': start_datetime.isoformat(),
+                'end_time': end_datetime.isoformat(),
                 'participants': participants,
-                'meeting_info': title,
+                'meeting_info': meeting_info,
+                'title': title,  # Store the title separately
                 'event_id': event['id']
-            })
+            }
+            self.calendar.append(calendar_entry)
             
             # Update the brain's calendar with the new event
-            self.brain.calendar.append(self.calendar[-1])
+            self.brain.calendar.append(calendar_entry)
 
             # Notify each participant (if not the sender) about the scheduled meeting
             for p in participants:
                 if p != self.node_id and p in self.network.nodes:
-                    self.network.nodes[p].calendar.append({
-                        'project_id': meeting_id,
-                        'meeting_info': title,
-                        'event_id': event['id']
-                    })
+                    # Create a copy of the calendar entry for the participant
+                    participant_entry = calendar_entry.copy()
+                    self.network.nodes[p].brain.calendar.append(participant_entry)
                     notification = f"New meeting: '{title}' scheduled by {self.node_id} for {meeting_date} at {meeting_time}"
                     self.network.send_message(self.node_id, p, notification)
 
@@ -1512,10 +1515,7 @@ class Scheduler:
         except Exception as e:
             print(f"[{self.node_id}] Failed to create calendar event: {e}")
             # Fallback to local calendar
-            # The emit will be handled by _fallback_schedule_meeting if it's called
-            self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime)
-            # Ensure a return value even in fallback after GCal error
-            return f"Meeting '{title}' scheduled locally due to Google Calendar error."
+            return self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime, meeting_title=title)
 
     #TODO: Add correct return statements to this function and handle separation of concerns nicely
     def _complete_meeting_rescheduling(self):

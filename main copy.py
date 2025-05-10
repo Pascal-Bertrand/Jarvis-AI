@@ -279,10 +279,6 @@ def show_meetings():
                         elif 'email' not in meeting['organizer']:
                              meeting['organizer']['email'] = f'{node_id_loop}@agent.ai'
                         
-                        # Ensure title is present
-                        if 'title' not in meeting:
-                            meeting['title'] = meeting.get('summary', 'Untitled Meeting')
-                        
                         # Further filter: include if the agent_id_filter is an attendee
                         # This re-iterates the frontend logic on the backend for robustness
                         if agent_id_filter:
