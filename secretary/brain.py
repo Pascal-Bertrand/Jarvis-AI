@@ -324,125 +324,16 @@ class Brain:
                 "participants": set()
             }
 
-        roles = list({agent["id"].lower() for agent in AGENT_CONFIG})
+        # Import and use the demo functionality
+        from demo import handle_project_submission
+        return handle_project_submission(project_id, objective)
 
-        plan_prompt = f"""
-        You are creating a detailed project plan for project '{project_id}'.
-        Objective: {objective}
-
-        The plan should include:
-        1. All stakeholders involved in the project. Use only these roles: {roles}.
-        2. Detailed steps needed to execute the plan, including time and cost estimates.
-        Each step should be written in bullet points (with correct spacing) and full sentences.
-
-        Return valid JSON only, with this structure:
-        {{
-          "stakeholders": ["list of stakeholders"],
-          "steps": [
-            {{
-              "description": "Detailed step description with time and cost estimates"
-            }}
-          ]
-        }}
-        Keep it concise. End after providing the JSON. No extra words.
-        """
-
-        response = self.query_llm([{"role": "user", "content": plan_prompt}])
-        print(f"[{self.node_id}] LLM raw response (project '{project_id}'): {response}")
-
-        # --- Start: Extract JSON from potential markdown fences ---
-        json_to_parse = response.strip()
-        match = re.search(r"```json\n(.+)\n```", json_to_parse, re.DOTALL | re.IGNORECASE)
-        if match:
-            json_to_parse = match.group(1).strip()
-        else:
-            # If the response appears to be plain JSON without fences, use it as is.
-            if json_to_parse.startswith("{") and json_to_parse.endswith("}"):
-                pass # Assume it's already JSON
-            else:
-                # If no fences and doesn't look like JSON, it's likely an error message
-                log_error(f"[Brain] [{self.node_id}] LLM response doesn't appear to be JSON: {json_to_parse}")
-                return "Could not generate project plan. The AI's response was not in the expected format."
-        # --- End: Extract JSON ---
-
-        try:
-            log_system_message(f"[Brain] [{self.node_id}] Starting project extraction for '{project_id}'")
-            # Attempt to parse the extracted JSON response
-            data = json.loads(json_to_parse) 
-            stakeholders = data.get("stakeholders", [])
-            steps = data.get("steps", [])
-            self.projects[project_id]["plan"] = steps
-
-            # --- Start: Format and print plan details for UI response ---
-            plan_summary = f"Project '{project_id}' plan created:\n"
-            plan_summary += f"Stakeholders: {', '.join(stakeholders)}\n"
-            plan_summary += "Steps:\n"
-            for i, step in enumerate(steps, 1):
-                plan_summary += f"  {i}. {step.get('description', 'No description')}\n"
-            # Print the summary which will be captured as the response
-            # print(f"[{self.node_id}] Response: {plan_summary.strip()}") # Remove print
-            # --- End: Format and print plan details ---
-
-            # Save the project plan to a text file
-            with open(f"{project_id}_plan.txt", "w", encoding="utf-8") as file:
-                file.write(f"Project ID: {project_id}\n")
-                file.write(f"Objective: {objective}\n")
-                file.write("Stakeholders:\n")
-                for stakeholder in stakeholders:
-                    file.write(f"  - {stakeholder}\n")
-                file.write("Steps:\n")
-                for step in steps:
-                    file.write(f"  - {step.get('description', '')}\n")
-
-            participants = []
-            # 'roles' is a list of lowercased agent IDs, e.g., ['ceo', 'marketing', 'engineering']
-            for stakeholder_from_llm in stakeholders: # e.g. "The CEO", "Marketing Team"
-                # Normalize the stakeholder name from LLM (lowercase and remove extra spaces)
-                normalized_stakeholder_name = stakeholder_from_llm.lower().strip() # e.g. "the ceo", "marketing team"
-                
-                matched_agent_id = None
-                # Iterate through each configured agent ID
-                for agent_id in roles: # agent_id is e.g. 'ceo', 'marketing'
-                    # Check if the agent_id is a substring of the normalized stakeholder name
-                    if agent_id in normalized_stakeholder_name: # e.g. 'ceo' in 'the ceo'
-                        matched_agent_id = agent_id # The agent_id itself is what we need
-                        break # Found a match, no need to check other agent_ids for this stakeholder
-                
-                if matched_agent_id:
-                    participants.append(matched_agent_id)
-                    self.projects[project_id]["participants"].add(matched_agent_id)
-                else:
-                    print(f"[{self.node_id}] No mapping for stakeholder '{stakeholder_from_llm}'. Skipping.")
-
-            print(f"[{self.node_id}] Project participants: {participants}")
-            #TODO
-            # Schedule a meeting if valid participants were identified
-            #if participants:
-            #    self.schedule_meeting(project_id, participants)
-            #else:
-            #    print(f"[{self.node_id}] No valid participants identified for project '{project_id}'. Skipping meeting schedule.")
-            
-            # Generate tasks based on the plan
-            self.generate_tasks_from_plan(project_id, steps, participants)
-
-            # Emit update events (assuming a global socketio object)
-            print(f"[{self.node_id}] Emitting update events for UI.")
-            # Make sure socketio is accessible here. Assuming it's global for simplicity.
-            socketio.emit('update_projects') 
-            socketio.emit('update_tasks')
-            
-            log_system_message(f"[Brain] [{self.node_id}] Project '{project_id}' plan created successfully.")
-            
-            return plan_summary.strip() # Return the summary
-            
-        except json.JSONDecodeError as e:
-            # Handle JSON parsing failure
-            print(f"[{self.node_id}] Failed to parse JSON plan: {e}")
-            print(f"[{self.node_id}] Received non-JSON response from LLM: {response}")
-            # Inform the user via the response mechanism
-            # print(f"[{self.node_id}] Response: Could not generate project plan. The AI's response was not in the expected format.")
-            # return # Stop processing the plan if JSON is invalid
-            return "Could not generate project plan. The AI's response was not in the expected format." # Return error message
+        # The rest of the original method is commented out since we're using the demo
+        # roles = list({agent["id"].lower() for agent in AGENT_CONFIG})
+        # plan_prompt = f"""
+        # You are creating a detailed project plan for project '{project_id}'.
+        # Objective: {objective}
+        # ...
 
     def generate_tasks_from_plan(self, project_id: str, steps: list, participants: list):
         """

@@ -1409,21 +1409,24 @@
             })
             .then(response => response.json())
             .then(data => {
-                clearInterval(loadingMessageInterval);
-                removeLoadingIndicator(loadingIndicatorId);
+                // Clear the loading message interval
+                if (loadingMessageInterval) {
+                    clearInterval(loadingMessageInterval);
+                }
                 
                 if (data.error) {
                     addSystemMessage(`Error: ${data.error}`);
                 } else {
-                    addAgentMessage(data.response || "Project created successfully");
-                    fetchProjects(); // Refresh the projects list
+                    // The response will contain HTML for candidate widgets
+                    addAgentMessage(data.response);
                 }
             })
             .catch(error => {
-                clearInterval(loadingMessageInterval);
-                removeLoadingIndicator(loadingIndicatorId);
                 console.error('Error creating project:', error);
                 addSystemMessage('Error creating project. Check console.');
+            })
+            .finally(() => {
+                removeLoadingIndicator(loadingIndicatorId);
             });
         }
 
