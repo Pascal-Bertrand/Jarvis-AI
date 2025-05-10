@@ -321,7 +321,11 @@ class Brain:
             self.projects[project_id] = {
                 "name": "Project " + project_id,
                 "plan": [],
-                "participants": set()
+                "participants": set(),
+                "objective": objective,
+                "description": objective,  # Use objective as initial description
+                "status": "active",
+                "created_at": datetime.now().isoformat()
             }
 
         # Import and use the demo functionality

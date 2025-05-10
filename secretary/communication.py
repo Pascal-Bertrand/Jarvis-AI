@@ -209,6 +209,24 @@ class Communication:
             self.brain.generate_tasks_from_plan(project_id, steps, participants)
             return f"Tasks generated for project '{project_id}'."
         
+        # Command: Add participant to project
+        add_participant_match = re.match(r"^add\s+([\w\s-]+)\s+to\s+project\s+([\w-]+)$", message.strip(), re.IGNORECASE)
+        if add_participant_match:
+            log_system_message(f"[Communication] Quick command: Adding participant to project")
+            participant_name, project_id = add_participant_match.groups()
+            participant_name = participant_name.strip()
+            project_id = project_id.strip()
+            
+            # Check if project exists
+            if project_id not in self.brain.projects:
+                log_warning(f"[Communication] Project '{project_id}' does not exist.")
+                return f"Project '{project_id}' does not exist."
+            
+            # Add participant to project
+            self.brain.projects[project_id]["participants"].add(participant_name)
+            log_system_message(f"[Communication] Added {participant_name} to project {project_id}")
+            return f"Added {participant_name} to project {project_id}"
+        
         return None
 
     def _chat_with_llm(self, message: str) -> str:

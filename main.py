@@ -12,6 +12,7 @@ from flask_cors import CORS
 import base64
 import tempfile
 from config.agents import AGENT_CONFIG
+from datetime import datetime
 
 from secretary.utilities.logging import log_system_message, log_error, log_warning
 from network.internal_communication import Intercom
@@ -217,7 +218,11 @@ def show_projects():
                         all_projects[project_id] = {
                             "name": project_data.get("name", project_id),
                             "participants": list(project_data.get("participants", set())),
-                            "owner": node_id_loop # The node that owns/manages this project entry
+                            "owner": node_id_loop, # The node that owns/manages this project entry
+                            "objective": project_data.get("objective", ""),
+                            "description": project_data.get("description", ""),
+                            "status": project_data.get("status", "active"),
+                            "created_at": project_data.get("created_at", datetime.now().isoformat())
                         }
         else:
             log_warning(f"Node {node_id_loop} does not have a brain or projects attribute for filtering.")
