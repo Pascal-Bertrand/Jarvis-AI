@@ -303,41 +303,217 @@ class Brain:
             log_error(error_msg)
             return "LLM query failed."
         
-    def plan_project(self, project_id: str, objective: str):
+    def initiate_project_planning_v2(self, project_id: str, objective: str):
         """
-        Create a detailed project plan using the LLM.
-        
-        This method sends the project objective to the LLM to generate a plan in JSON format, parses
-        the resulting plan for stakeholders and steps, writes the plan to a file, and schedules a meeting.
-        
-        Args:
-            project_id (str): The identifier for the project.
-            objective (str): The objective or goal of the project.
+        V2: Initiates project planning by first getting candidate suggestions.
+        The actual planning and task generation will happen after participants are confirmed.
         """
-        
-        log_system_message(f"[Brain] [{self.node_id}] Planning project '{project_id}' with objective: {objective}")
-        
+        log_system_message(f"[Brain] [{self.node_id}] Initiating project '{project_id}' with objective: {objective}")
+
         if project_id not in self.projects:
             self.projects[project_id] = {
                 "name": "Project " + project_id,
-                "plan": [],
-                "participants": set(),
                 "objective": objective,
-                "description": objective,  # Use objective as initial description
-                "status": "active",
+                "description": objective,
+                "plan_steps": [], # Plan steps will be populated later
+                "participants": set(), # Participants will be added by user
+                "status": "pending_final_participants", # New status
                 "created_at": datetime.now().isoformat()
             }
+        else: # If project exists, update objective and reset status if needed
+            self.projects[project_id]["objective"] = objective
+            self.projects[project_id]["description"] = objective
+            self.projects[project_id]["status"] = "pending_final_participants"
+            self.projects[project_id]["participants"] = set() # Reset participants for new planning phase
 
-        # Import and use the demo functionality
+        # Import and use the demo functionality for initial candidate proposal
         from demo import handle_project_submission
+        # This will return HTML for candidate widgets
         return handle_project_submission(project_id, objective)
 
-        # The rest of the original method is commented out since we're using the demo
-        # roles = list({agent["id"].lower() for agent in AGENT_CONFIG})
-        # plan_prompt = f"""
-        # You are creating a detailed project plan for project '{project_id}'.
-        # Objective: {objective}
-        # ...
+    def add_participant_to_project(self, project_id: str, participant_name: str) -> str:
+        """
+        Adds a participant to the specified project.
+        """
+        log_system_message(f"[Brain] [{self.node_id}] Adding participant '{participant_name}' to project '{project_id}'")
+        if project_id not in self.projects:
+            log_warning(f"[Brain] [{self.node_id}] Project '{project_id}' not found for adding participant.")
+            return f"Project '{project_id}' not found."
+
+        # Ensure participants is a set
+        if not isinstance(self.projects[project_id].get("participants"), set):
+            self.projects[project_id]["participants"] = set()
+
+        self.projects[project_id]["participants"].add(participant_name)
+        log_system_message(f"[Brain] [{self.node_id}] Current participants for '{project_id}': {self.projects[project_id]['participants']}")
+        # Emit an update to the UI if socketio is available
+        if self.socketio:
+            self.socketio.emit('update_projects', room=self.node_id) # Or a general room if needed
+        return f"Added '{participant_name}' to project '{project_id}'. Current participants: {', '.join(self.projects[project_id]['participants'])}."
+
+    def finalize_and_plan_project(self, project_id: str) -> str:
+        """
+        Finalizes the participant list and proceeds with detailed planning and task generation.
+        This is called after the user indicates they are done adding participants.
+        """
+        log_system_message(f"[Brain] [{self.node_id}] Finalizing planning for project '{project_id}'")
+        if project_id not in self.projects:
+            log_warning(f"[Brain] [{self.node_id}] Project '{project_id}' not found for finalization.")
+            return f"Project '{project_id}' not found."
+
+        project_data = self.projects[project_id]
+        if project_data["status"] != "pending_final_participants":
+            log_warning(f"[Brain] [{self.node_id}] Project '{project_id}' is not in 'pending_final_participants' state. Current state: {project_data['status']}")
+            return f"Project '{project_id}' is not awaiting finalization. Current status: {project_data['status']}."
+
+        objective = project_data["objective"]
+        final_participants = list(project_data["participants"])
+
+        if not final_participants:
+            log_warning(f"[Brain] [{self.node_id}] No participants added to project '{project_id}'. Cannot proceed with planning.")
+            project_data["status"] = "failed_no_participants"
+            return f"No participants were added to project '{project_id}'. Planning cannot proceed. Please add participants and try finalizing again."
+
+        log_system_message(f"[Brain] [{self.node_id}] Proceeding to detailed plan generation for '{project_id}' with participants: {final_participants}")
+        
+        # Call the refactored plan_project method
+        plan_result = self.plan_project_v2(project_id, objective, final_participants)
+        
+        # Update project status based on planning outcome
+        # plan_project_v2 will internally call generate_tasks_from_plan
+        # The status update will reflect that planning and task generation has been attempted.
+        if "successfully planned" in plan_result.lower(): # Check for success message from plan_project_v2
+            project_data["status"] = "planned_and_tasks_generated"
+        else:
+            project_data["status"] = "planning_failed" # Or a more specific error status
+
+        # Emit an update to the UI
+        if self.socketio:
+            self.socketio.emit('update_projects', room=self.node_id)
+            self.socketio.emit('update_tasks', room=self.node_id) # Since tasks are generated
+
+        return plan_result
+
+    def plan_project_v2(self, project_id: str, objective: str, final_participants: list):
+        """
+        V2: Create a detailed project plan using the LLM with a finalized list of participants.
+        Then generates tasks for those participants.
+        """
+        log_system_message(f"[Brain] [{self.node_id}] Generating detailed plan for '{project_id}' with objective: {objective} and participants: {final_participants}")
+
+        if project_id not in self.projects:
+            # This case should ideally be handled before calling this, but as a safeguard:
+            self.projects[project_id] = {
+                "name": "Project " + project_id,
+                "objective": objective,
+                "description": objective,
+                "plan_steps": [],
+                "participants": set(final_participants),
+                "status": "planning", # Intermediate status
+                "created_at": datetime.now().isoformat()
+            }
+        else:
+            self.projects[project_id]["objective"] = objective
+            self.projects[project_id]["participants"] = set(final_participants) # Ensure it's a set and updated
+            self.projects[project_id]["status"] = "planning"
+
+
+        # Define roles based on AGENT_CONFIG or a simpler list if AGENT_CONFIG is not directly usable here
+        # For simplicity, let's assume final_participants contains the exact roles/names to be used.
+        # If AGENT_CONFIG is needed for more complex role mapping, it should be accessible here.
+        # For now, we'll use the provided final_participants list directly.
+        
+        plan_prompt = f"""
+        You are creating a detailed project plan for project '{project_id}'.
+        Objective: {objective}
+        Project Participants: {', '.join(final_participants)}. These are the only individuals/roles involved.
+
+        Break down the objective into a sequence of 3-5 high-level steps.
+        For each step, provide:
+        - A short "name" for the step.
+        - A concise "description" of what the step entails.
+        - Assign "responsible_participants" from the provided Project Participants list. This should be a list of one or more participants.
+
+        Respond ONLY with a valid JSON object containing a single key "plan_steps",
+        which is an array of these step objects.
+        Example:
+        {{
+          "plan_steps": [
+            {{
+              "name": "Initial Research",
+              "description": "Conduct market research and gather initial requirements.",
+              "responsible_participants": ["marketing", "ceo"]
+            }},
+            {{
+              "name": "Development Phase 1",
+              "description": "Develop core features based on research.",
+              "responsible_participants": ["engineering"]
+            }}
+          ]
+        }}
+        Ensure all "responsible_participants" are strictly from the list: {', '.join(final_participants)}.
+        """
+
+        try:
+            raw_response = self.query_llm([{"role": "user", "content": plan_prompt}])
+            
+            # Attempt to parse JSON, cleaning if necessary
+            json_text = raw_response.strip()
+            if json_text.startswith("```json"):
+                json_text = json_text[7:]
+            if json_text.endswith("```"):
+                json_text = json_text[:-3]
+            json_text = json_text.strip()
+
+            plan_data = json.loads(json_text)
+            plan_steps = plan_data.get("plan_steps", [])
+
+
+            self.projects[project_id]["plan_steps"] = plan_steps
+            self.projects[project_id]["status"] = "plan_generated" # Plan is generated, tasks next
+            log_system_message(f"[Brain] [{self.node_id}] Project plan generated for '{project_id}': {plan_steps}")
+
+            if not plan_steps:
+                log_error(f"[Brain] [{self.node_id}] LLM did not return valid plan steps for project '{project_id}'. Response: {raw_response}")
+                self.projects[project_id]["status"] = "planning_failed_no_steps"
+                return f"Failed to generate a project plan for '{project_id}'. The LLM did not provide actionable steps."
+
+            
+            # Write plan to a file (optional, can be removed if not needed)
+            # try:
+            #     with open(f"project_{project_id}_plan.json", "w") as f:
+            #         json.dump({"objective": objective, "participants": final_participants, "plan_steps": plan_steps}, f, indent=4)
+            #     log_system_message(f"[Brain] [{self.node_id}] Project plan for '{project_id}' saved to file.")
+            # except Exception as e:
+            #     log_warning(f"[Brain] [{self.node_id}] Could not save project plan to file: {e}")
+
+            # Generate tasks from the created plan
+            # The `final_participants` list is crucial here for task assignment.
+            task_generation_result = self.generate_tasks_from_plan(project_id, plan_steps, final_participants)
+            
+            # Update project status based on task generation
+            if "task generation process completed" in task_generation_result.lower(): # Check for success from generate_tasks_from_plan
+                 self.projects[project_id]["status"] = "tasks_generated"
+                 final_message = f"Project '{project_id}' successfully planned and tasks generated for participants: {', '.join(final_participants)}. {task_generation_result}"
+            else:
+                 self.projects[project_id]["status"] = "task_generation_failed"
+                 final_message = f"Project '{project_id}' planned, but task generation failed. {task_generation_result}"
+            
+            # Emit updates to UI
+            if self.socketio:
+                self.socketio.emit('update_projects', room=self.node_id) # Update project details (status, plan)
+                self.socketio.emit('update_tasks', room=self.node_id)    # Update tasks list
+
+            return final_message
+
+        except json.JSONDecodeError as e:
+            log_error(f"[Brain] [{self.node_id}] Failed to parse LLM response for project plan '{project_id}'. Error: {e}. Response: {raw_response}")
+            self.projects[project_id]["status"] = "planning_failed_parse_error"
+            return f"Failed to parse project plan for '{project_id}'. Invalid format from LLM."
+        except Exception as e:
+            log_error(f"[Brain] [{self.node_id}] Error during project planning for '{project_id}': {str(e)}")
+            self.projects[project_id]["status"] = "planning_failed_exception"
+            return f"An unexpected error occurred while planning project '{project_id}': {str(e)}"
 
     def generate_tasks_from_plan(self, project_id: str, steps: list, participants: list):
         """
@@ -402,17 +578,35 @@ class Brain:
             
             log_system_message(f"[Brain] [{self.node_id}] Generating tasks for step {i+1}: {step_description}")
             
+            # Ensure responsible_participants are from the main project participants list for this step
+            step_responsible_participants = step.get("responsible_participants", [])
+            # Filter to ensure only valid project participants are considered for this step's tasks
+            valid_task_assignees_for_step = [p for p in step_responsible_participants if p in participants]
+            if not valid_task_assignees_for_step:
+                # If a step in the plan has no valid assignees from the project's final list,
+                # fall back to the general project participants for task assignment for this step.
+                # This can happen if the LLM hallucinated participants during plan generation.
+                log_warning(f"[Brain] [{self.node_id}] Step '{step.get('name')}' had no valid assignees from project participants. Using project participants: {participants} for task assignment.")
+                valid_task_assignees_for_step = participants
+            
+            if not valid_task_assignees_for_step: # Still no one? Skip task gen for this step.
+                log_warning(f"[Brain] [{self.node_id}] No valid assignees for step '{step.get('name')}' in project '{project_id}'. Skipping task generation for this step.")
+                continue
 
 
             # Refined prompt to be very clear about using the provided participants
-            current_participants_list_str = ", ".join(participants) if participants else "the designated project roles"
+            current_participants_list_str = ", ".join(valid_task_assignees_for_step) # Use filtered list for this step
             prompt = f"""
-            For project '{project_id}', analyze this step: "{step_description}"
+            For project '{project_id}', analyze this step: "{step_description}" (Step Name: "{step.get("name", "N/A")}")
             
-            Based on this step, create 1 to 3 specific tasks.
+            Based on this step, create a suitable number of specific, actionable tasks (generally 1-3 tasks, but up to a maximum of 5 tasks for this step if necessary to ensure all participants are assigned a task).
             
-            The project participants for assigning these tasks are: {current_participants_list_str}.
-            Each task MUST be assigned to one or more of these participants. Do not assign tasks to roles not in this list.
+            The ONLY available assignees for these tasks are from this list: {current_participants_list_str}.
+            Each task MUST be assigned to one or more of these participants. Do not assign tasks to roles/names not in this list.
+            Ensure the 'assigned_to' field in your function call strictly uses names from this list.
+            For example, if '{current_participants_list_str}' contains 'engineering' and 'marketing', 'assigned_to' can be 'engineering', or 'marketing', or 'engineering, marketing'.
+
+            CRITICAL REQUIREMENT: Every participant in the list ({current_participants_list_str}) MUST be assigned to at least one of the tasks you create for this step. Distribute task responsibilities logically among them. If a participant cannot be logically assigned a task from the primary step description, you can create a related sub-task or a review task for them, ensuring it's relevant to the step and the project.
             """
             
             try:
@@ -447,10 +641,24 @@ class Brain:
                                     print(f"[{self.node_id}] Created task: {task}")
                                     
                                     # Create a calendar reminder for the task
-                                    return self.scheduler.create_calendar_reminder(task)
+                                    # This should probably return a collective result after all steps.
+                                    # For now, let's assume scheduler.create_calendar_reminder is robust.
+                                    if hasattr(self, 'scheduler') and self.scheduler:
+                                         self.scheduler.create_calendar_reminder(task) # Fire-and-forget for now
+                                else:
+                                    log_warning(f"[{self.node_id}] Network not available, task '{task.title}' not added to network tasks.")
             
             except Exception as e:
                 print(f"[{self.node_id}] Error generating tasks for step {i+1}: {e}")
+                log_error(f"[Brain] [{self.node_id}] Error generating tasks for project '{project_id}', step '{step.get('name')}': {e}")
+                # Continue to next step, don't let one step's failure stop all task generation.
+
+        # After processing all steps, emit a task update through socketio if available
+        if self.socketio:
+            self.socketio.emit('update_tasks', room=self.node_id) # Or a general room
+            log_system_message(f"[Brain] [{self.node_id}] Emitted update_tasks for project '{project_id}'")
+            
+        return f"Task generation process completed for project '{project_id}'. Check task list for details."
 
     def list_tasks(self):
         """

@@ -36,8 +36,8 @@ AGENT_CONFIG = [
         "knowledge": "Knows UI/UX best practices, design system guidelines, user research findings, and current design tools.",
     },
  {
-        "id": "Dustin Kleber",
-        "name": "Dustin Kleber",
+        "id": "Dustin Klebe",
+        "name": "Dustin Klebe",
         "department": "HR",
         "skills": ["English", "HR", "Employee Relations"],
         "title": "Human Resources Lead",

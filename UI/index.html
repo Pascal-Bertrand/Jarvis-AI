@@ -1592,9 +1592,15 @@
 
             const remainingCards = container.querySelectorAll('.candidate-card');
             if (remainingCards.length === 0) {
-                // If no cards left, remove the container
+                // If no cards left, remove the container and guide user to next steps
                 container.remove();
-                addSystemMessage('All candidates have been processed.');
+                const systemMessage = `All initial candidates for project '${projectId}' have been processed. <br><br>
+                                     You can now add more stakeholders by typing: <br>
+                                     <code>add [Participant Name] to project ${projectId}</code> <br><br>
+                                     When you are finished adding participants, type: <br>
+                                     <code>done with project ${projectId}</code> or <code>finalize project ${projectId}</code> <br>
+                                     to generate the project plan and tasks.`;
+                addSystemMessage(systemMessage);
             }
         };
 

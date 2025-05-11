@@ -176,7 +176,7 @@ class Communication:
         if plan_match:
             log_system_message(f"[Communication] Quick command: Creating project with plan_match")
             project_id, objective = plan_match.groups()
-            plan_summary = self.brain.plan_project(project_id.strip(), objective.strip())
+            plan_summary = self.brain.initiate_project_planning_v2(project_id.strip(), objective.strip())
             return plan_summary
         
         # Command: Create project with 'create/new/start project <project_id> <objective>' syntax
@@ -184,7 +184,7 @@ class Communication:
         if create_project_match:
             log_system_message(f"[Communication] Quick command: Creating project with create_project_match")
             _, project_id, objective = create_project_match.groups()
-            plan_summary = self.brain.plan_project(project_id.strip(), objective.strip())
+            plan_summary = self.brain.initiate_project_planning_v2(project_id.strip(), objective.strip())
             return plan_summary
         
         # Command: Generate tasks for an existing project
@@ -198,7 +198,7 @@ class Communication:
                 return f"Project '{project_id}' does not exist. Please create it first with 'plan {project_id}=<objective>'."
             
             # Get project steps and participants from Brain
-            steps = self.brain.projects[project_id].get("plan", [])
+            steps = self.brain.projects[project_id].get("plan_steps", [])
             participants = list(self.brain.projects[project_id].get("participants", set()))
             
             if not steps:
@@ -217,16 +217,16 @@ class Communication:
             participant_name = participant_name.strip()
             project_id = project_id.strip()
             
-            # Check if project exists
-            if project_id not in self.brain.projects:
-                log_warning(f"[Communication] Project '{project_id}' does not exist.")
-                return f"Project '{project_id}' does not exist."
-            
-            # Add participant to project
-            self.brain.projects[project_id]["participants"].add(participant_name)
-            log_system_message(f"[Communication] Added {participant_name} to project {project_id}")
-            return f"Added {participant_name} to project {project_id}"
+            # Call the Brain method to add participant
+            return self.brain.add_participant_to_project(project_id, participant_name)
         
+        # Command: Finalize project planning and generate tasks
+        finalize_project_match = re.match(r"^(done with|finalize)\s+project\s+([\w-]+)$", message.strip(), re.IGNORECASE)
+        if finalize_project_match:
+            log_system_message(f"[Communication] Quick command: Finalizing project")
+            project_id = finalize_project_match.group(2).strip()
+            return self.brain.finalize_and_plan_project(project_id)
+
         return None
 
     def _chat_with_llm(self, message: str) -> str:
