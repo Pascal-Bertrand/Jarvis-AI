@@ -351,6 +351,16 @@ class Scheduler:
         effective_title = meeting_title if meeting_title else f"Meeting for project '{project_id}'"
         meeting_info_str = f"'{effective_title}' scheduled for {start_datetime.strftime('%Y-%m-%d %H:%M')} with {', '.join(participants)}, duration {(end_datetime - start_datetime).seconds // 60} minutes."
         
+        # Ensure the creator is included in the participants list
+        creator_present = False
+        for p_existing in participants:
+            if p_existing.lower() == self.node_id.lower():
+                creator_present = True
+                print("DEBUG", self.node_id, p_existing)
+                break
+        if not creator_present:
+            participants.append(self.node_id)
+            log_system_message(f"[{self.node_id}] Re-added self to participants list: {self.node_id} before flexible scheduling creation.")
 
         unique_local_event_id = f"local_{project_id.replace(' ', '_')}_{start_datetime.strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
 
@@ -631,6 +641,13 @@ class Scheduler:
             duration_mins = int(meeting_data.get("duration"))
             end_datetime = start_datetime + timedelta(minutes=duration_mins)
 
+            self.brain.meeting_context['collected_info'] = {
+                'title': meeting_data.get("title"),
+                'participants': meeting_data.get("participants", []),
+                'start_datetime': start_datetime,
+                'end_datetime': end_datetime
+            }
+
             # --- Start: Conflict Check and Resolution ---
             conflict_found = False
             conflicting_participant = None
@@ -657,29 +674,50 @@ class Scheduler:
                     confirm_prompt = (f"Conflict found for {conflicting_participant}. The next available slot for all participants seems to be "
                                       f"{formatted_proposed_time}. Schedule then? (yes/no)")
                     
-
+                    creator_present = False
+                    for p_existing in participants:
+                        if p_existing.lower() == self.node_id.lower():
+                            creator_present = True
+                            break
+                    if not creator_present:
+                        participants.append(self.node_id)
+                        log_system_message(f"[{self.node_id}] Re-added self to participants list: {self.node_id} before flexible scheduling creation.")
+                    
 
                     # Emit an update to the UI via SocketIO
                     if self.socketio:
                         self.socketio.emit('update_meetings')
                     return confirm_prompt
                     
-                    # Use the Confirmation class via the brain instance
-                    if self.brain.confirmation.request(confirm_prompt):
-                        # User confirmed, schedule at proposed time
-                        log_system_message(f"[{self.node_id}] User confirmed alternative time: {formatted_proposed_time}")
-                        meeting_id = f"meeting_{int(datetime.now().timestamp())}" # Regenerate ID maybe?
-                        meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
-                        self._create_calendar_meeting(meeting_id, meeting_title, participants, proposed_start, proposed_end)
-                        msg = f"[{self.node_id}] Meeting '{meeting_title}' scheduled for {formatted_proposed_time} with {', '.join(participants)} after finding a conflict."
-                        print(msg)
-                        return msg
-                    else:
-                        # User declined the proposed time
-                        msg = f"[{self.node_id}] User declined the proposed alternative time. Meeting not scheduled."
-                        print(msg)
-                        # If declined, we stop here as per current requirement.
-                        return msg
+                    # # Use the Confirmation class via the brain instance
+                    # if self.brain.confirmation.request(confirm_prompt):
+                    #     # User confirmed, schedule at proposed time
+                    #     log_system_message(f"[{self.node_id}] User confirmed alternative time: {formatted_proposed_time}")
+                    #     meeting_id = f"meeting_{int(datetime.now().timestamp())}"
+                    #     current_meeting_title = meeting_data.get("title", f"Meeting scheduled by {self.node_id}")
+                        
+                    #     # Ensure the creator (self.node_id) is in the participants list before creating the meeting
+                    #     # This is a safeguard for the conflict resolution path.
+                    #     creator_present = False
+                    #     for p_existing in participants:
+                    #         if p_existing.lower() == self.node_id.lower():
+                    #             creator_present = True
+                    #             print("DEBUG", self.node_id, p_existing)
+                    #             break
+                    #     if not creator_present:
+                    #         participants.append(self.node_id)
+                    #         log_system_message(f"[{self.node_id}] Re-added self to participants list: {self.node_id} before flexible scheduling creation.")
+                        
+                    #     self._create_calendar_meeting(meeting_id, current_meeting_title, participants, proposed_start, proposed_end)
+                    #     msg = f"[{self.node_id}] Meeting '{current_meeting_title}' scheduled for {formatted_proposed_time} with {', '.join(participants)} after finding a conflict."
+                    #     print(msg)
+                    #     return msg
+                    # else:
+                    #     # User declined the proposed time
+                    #     msg = f"[{self.node_id}] User declined the proposed alternative time. Meeting not scheduled."
+                    #     print(msg)
+                    #     # If declined, we stop here as per current requirement.
+                    #     return msg
                 else:
                      # LLM indicated no conflict OR suggested the original time was fine?
                      # Schedule at the time the LLM proposed (which might be the original time if it found no conflict)

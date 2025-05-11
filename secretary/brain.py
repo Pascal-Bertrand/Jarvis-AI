@@ -137,12 +137,8 @@ class Brain:
             'active': False,
             'initial_message': None,
             'missing_info': [],
-            'title': None,
-            'participants': [],
-            'context': None,
-            'start_datetime': datetime.now().isoformat(),
-            'end_datetime': (datetime.now() + timedelta(hours=1)).isoformat(),
-            'event_id': None
+            'collected_info': {},
+            'is_rescheduling': False
         }
 
         self.people = People()     # local cache of people (if needed)

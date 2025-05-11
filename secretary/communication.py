@@ -134,11 +134,11 @@ class Communication:
         
         if self.brain.confirmation_context['context'] == 'schedule meeting':
             meeting_id = f"meeting_{int(datetime.now().timestamp())}"
-            meeting_title = self.brain.meeting_context['title']
-            participants = self.brain.meeting_context['participants']
+            meeting_title = self.brain.meeting_context['collected_info'].get('title', 'Meeting')
+            participants = self.brain.meeting_context['collected_info'].get('participants', [])
             print(participants, meeting_title)
-            proposed_start = self.brain.meeting_context['start_datetime']
-            proposed_end = self.brain.meeting_context['end_datetime']
+            proposed_start = self.brain.confirmation_context['start_datetime']
+            proposed_end = self.brain.confirmation_context['end_datetime']
             return self.scheduler._create_calendar_meeting(meeting_id, meeting_title, participants, proposed_start, proposed_end)
         
         if self.brain.confirmation_context['context'] == 'plan project':
