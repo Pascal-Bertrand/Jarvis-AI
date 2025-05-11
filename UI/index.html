@@ -997,11 +997,45 @@
                 if (data.error) {
                     addSystemMessage(`Error: ${data.error}`);
                 } else {
-                    addAgentMessage(data.response || "(Agent processed the message)");
-                    // Optionally display terminal output if needed, e.g., in a separate debug area
+                    const agentResponse = data.response || "(Agent processed the message)";
+                    addAgentMessage(agentResponse);
+
+                    // Check if this message indicates project planning completion
+                    if (agentResponse.includes("successfully planned and tasks generated for participants")) {
+                        // Attempt to parse projectId from the message
+                        // Example: "Project 'Alpha' successfully planned..."
+                        const match = agentResponse.match(/Project '([^']+)' successfully planned/);
+                        if (match && match[1]) {
+                            const projectId = match[1];
+                            
+                            // Fetch project details to get participants
+                            const agentSelect = document.getElementById('agentSelect');
+                            const selectedAgentId = agentSelect.value; // Assumes agentSelect is available
+                            const projectDetailsFetchUrl = selectedAgentId ? `/projects?agent_id=${selectedAgentId}` : '/projects';
+
+                            fetch(projectDetailsFetchUrl)
+                                .then(res => res.json())
+                                .then(projectsData => {
+                                    const project = projectsData[projectId];
+                                    if (project && project.participants && project.participants.length > 0) {
+                                        project.participants.forEach(participant => {
+                                            addSystemMessage(`Notified "${participant}" about project ${projectId}.`);
+                                        });
+                                    } else {
+                                        console.warn(`Could not retrieve participants for project ${projectId} after planning, or no participants found.`);
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error(`Error fetching project details for notification after planning project ${projectId}:`, error);
+                                });
+                        } else {
+                            console.warn("Project planning message received, but could not parse projectId:", agentResponse);
+                        }
+                    }
+
+                    // Optionally display terminal output if needed
                     if (data.terminal_output) {
                         console.log("Terminal Output:", data.terminal_output);
-                        // addSystemMessage(`Terminal Output available (check console)`);
                     }
                 }
             })
@@ -1251,29 +1285,6 @@
             if (loadingElement) {
                 loadingElement.remove();
             }
-        }
-
-        function showConfirmationMessage() {
-            const messagesContainer = document.getElementById('chatMessages');
-            if (!messagesContainer) return null;
-
-            const loadingElement = document.createElement('div');
-            const indicatorId = 'loading-' + Date.now();
-            loadingElement.id = indicatorId;
-            loadingElement.classList.add('chat-message', 'agent-message', 'loading-message'); // Style like an agent message
-
-            loadingElement.innerHTML = `
-                <div class="message-header">
-                    <i class="fas fa-robot"></i>
-                    <strong>Agent:</strong>
-                </div>
-                <div class="message-content">
-                    Thinking<span class="loading-dots"></span>
-                                </div>
-                            `;
-            messagesContainer.appendChild(loadingElement);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            return indicatorId;
         }
 
         function handlePageLoadView() {
@@ -1597,7 +1608,6 @@
             // After animation completes, remove the card and adjust layout
             setTimeout(() => {
                 card.remove();
-                checkRemainingCandidates(projectId);
                 
                 if (action === 'accept') {
                     // Send message to add candidate to project
@@ -1634,6 +1644,9 @@
                         addSystemMessage('Error adding candidate to project. Check console.');
                     });
                 }
+
+                checkRemainingCandidates(projectId);
+            
             }, 300);
         };
 
@@ -1646,14 +1659,16 @@
             if (remainingCards.length === 0) {
                 // If no cards left, remove the container and guide user to next steps
                 container.remove();
-                const systemMessage = `All initial candidates for project '${projectId}' have been processed. <br><br>
-                                     You can now add more stakeholders by typing: <br>
-                                     <code>add [Participant Name] to project ${projectId}</code> <br><br>
-                                     When you are finished adding participants, type: <br>
-                                     <code>done with project ${projectId}</code> or <code>finalize project ${projectId}</code> <br>
-                                     to generate the project plan and tasks.`;
-                addSystemMessage(systemMessage);
-                // TODO: Call the endpoint to set the confirmation pending (i.e. set_confirmation_pending)
+                // const systemMessage = `All initial candidates for project '${projectId}' have been processed. <br><br>
+                //                      You can now add more stakeholders by typing: <br>
+                //                      <code>add [Participant Name] to project ${projectId}</code> <br><br>
+                //                      When you are finished adding participants, type: <br>
+                //                      <code>done with project ${projectId}</code> or <code>finalize project ${projectId}</code> <br>
+                //                      to generate the project plan and tasks.`;
+                // addSystemMessage(systemMessage);
+                setTimeout(() => {
+                    addAgentMessage("Do you want to continue with these participants? (yes/no)")
+                }, 500);
             }
         };
 
