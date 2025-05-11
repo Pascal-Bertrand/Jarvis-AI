@@ -861,7 +861,7 @@
                         const project = projects[projectId];
                         const projectElement = document.createElement('div');
                         projectElement.className = 'project';
-                        
+
                         // Create participants HTML
                         let participantsHtml = '';
                         if (project.participants && project.participants.length > 0) {
@@ -957,7 +957,15 @@
             messageInput.value = '';
             messageInput.focus(); // Keep focus on input
 
-            const loadingIndicatorId = showLoadingIndicator(); // Show loading indicator
+            // Show initial loading message
+            const loadingIndicatorId = showLoadingIndicator();
+            const loadingElement = document.getElementById(loadingIndicatorId);
+            
+            // Start cycling through loading messages
+            currentLoadingMessageIndex = 0;
+            loadingMessageInterval = setInterval(() => {
+                updateLoadingMessage(loadingElement);
+            }, 3000);
 
             // Send message to server
             fetch('/send_message', {
@@ -1597,6 +1605,7 @@
                             // Emit socket.io event to update projects for all connected clients
                             if (socket) {
                                 socket.emit('update_projects');
+                                socket.emit('update_tasks');
                             }
                         }
                     })
