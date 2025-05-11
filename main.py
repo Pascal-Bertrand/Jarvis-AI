@@ -62,7 +62,7 @@ GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')  # Fallback to empt
 
 
 class LLMNode:
-    def __init__(self, node_id: str, knowledge: str = "",
+    def __init__(self, node_id: str, node_name:str, knowledge: str = "",
                  llm_api_key_override: str = "", llm_params: dict = None, network: Optional[Intercom] = None):
         """
         Initialize a new LLMNode instance.
@@ -76,6 +76,7 @@ class LLMNode:
         """
 
         self.node_id = node_id
+        self.node_name = node_name
         self.knowledge = knowledge # Note: knowledge is not actively used by Brain/Communication yet
 
         # Determine API key to use
@@ -214,10 +215,28 @@ def show_nodes():
     if not network:
         return jsonify({"error": "Network not initialized"}), 500
 
-    # Use the method from People/Intercom if preferred, otherwise this is fine
-    nodes = network.get_all_nodes() # Use Intercom's method
-    # nodes = list(network.nodes.keys())
-    return jsonify(nodes)
+    # Get all nodes with their names
+    nodes_with_names = []
+    for node_id, node_obj in network.nodes.items():
+        nodes_with_names.append({
+            "id": node_obj.node_id,  # or just node_id
+            "name": node_obj.node_name 
+        })
+    
+    # If network.get_all_nodes() returns a list of LLMNode objects:
+    # nodes_with_names = []
+    # for node_obj in network.get_all_nodes(): # If it returns a list of node objects
+    #     nodes_with_names.append({
+    #         "id": node_obj.node_id,
+    #         "name": node_obj.node_name
+    #     })
+
+    return jsonify(nodes_with_names)
+
+    # # Use the method from People/Intercom if preferred, otherwise this is fine
+    # nodes = network.get_all_nodes() # Use Intercom's method
+    # # nodes = list(network.nodes.keys())
+    # return jsonify(nodes)
 
 
 @app.route('/projects')
@@ -621,6 +640,7 @@ if __name__ == "__main__":
     for agent_config in AGENT_CONFIG:
         node = LLMNode(
             node_id=agent_config["id"],
+            node_name=agent_config["name"],
             knowledge=agent_config["knowledge"], # Pass knowledge from config
             network=network,
             llm_api_key_override=openai_api_key

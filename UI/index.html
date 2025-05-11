@@ -789,17 +789,16 @@
                     agentSelect.innerHTML = ''; // Clear previous options
 
                     if (nodes && nodes.length > 0) {
-                        nodes.forEach((nodeId, index) => {
+                        nodes.forEach((node, index) => {
                             const option = document.createElement('option');
-                            option.value = nodeId;
-                            // Capitalize first letter for display
-                            option.textContent = nodeId.charAt(0).toUpperCase() + nodeId.slice(1);
+                            option.value = node.id;
+                            option.textContent = node.name;
                             agentSelect.appendChild(option);
 
                             // Set the first node as the default selected agent
                             if (index === 0) {
-                                agentSelect.value = nodeId;
-                                console.log(`Default agent set to: ${nodeId}`);
+                                agentSelect.value = node.id;
+                                console.log(`Default agent set to: ${node.name}`);
                                 // currentAgentRoom will be set and room joined by the dispatched 'change' event.
                             }
                         });
@@ -1413,6 +1412,84 @@
 
         function closeProjectPopup() {
             const modal = document.getElementById('projectModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        function openMeetingPopup(meetingId) {
+            const modal = document.getElementById('meetingModal');
+            const modalContentContainer = document.getElementById('meetingModalContentContainer');
+            if (!modal || !modalContentContainer) {
+                console.error('Meeting Modal elements not found!');
+                return;
+            }
+
+            modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Loading meeting...</p></div></div>';
+            modal.style.display = 'block';
+
+            const agentSelect = document.getElementById('agentSelect');
+            const selectedAgentId = agentSelect ? agentSelect.value : null;
+            const fetchUrl = selectedAgentId ? `/meetings?agent_id=${selectedAgentId}` : '/meetings';
+
+            fetch(fetchUrl)
+                .then(response => response.json())
+                .then(meetings => {
+                    const meeting = meetings.find(m => String(m.id) === String(meetingId));
+
+                    if (meeting) {
+                        const startDate = meeting.start ? new Date(meeting.start.dateTime || meeting.start.date) : null;
+                        const endDate = meeting.end ? new Date(meeting.end.dateTime || meeting.end.date) : null;
+
+                        const formattedStart = startDate ? startDate.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'N/A';
+                        const formattedEnd = endDate ? endDate.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'N/A';
+
+                        let attendeesHtml = '<span>No attendees specified</span>';
+                        if (meeting.attendees && meeting.attendees.length > 0) {
+                            attendeesHtml = meeting.attendees.map(att => {
+                                const email = att.email || 'Unknown';
+                                const name = email.split('@')[0]; // Simple name from email prefix
+                                return `<span class="project-participant">${name}</span>`;
+                            }).join('');
+                        }
+                        
+                        const organizerEmail = meeting.organizer && meeting.organizer.email ? meeting.organizer.email.split('@')[0] : 'N/A';
+
+                        modalContentContainer.innerHTML = `
+                            <div class="card">
+                                <div class="card-header">
+                                    <h2>Meeting Details</h2>
+                                </div>
+                                <div class="card-body">
+                                    <h3>${meeting.title || meeting.summary || 'Untitled Meeting'}</h3>
+                                    <p><strong>Start:</strong> ${formattedStart}</p>
+                                    <p><strong>End:</strong> ${formattedEnd}</p>
+                                    <p><strong>Organizer:</strong> ${organizerEmail}</p>
+                                    <p><strong>Attendees:</strong></p>
+                                    <div class="project-participants" style="margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 5px;">
+                                        ${attendeesHtml}
+                                    </div>
+                                    ${meeting.description ? `<p><strong>Description:</strong> ${meeting.description}</p>` : ''}
+                                    ${meeting.location ? `<p><strong>Location:</strong> ${meeting.location}</p>` : ''}
+                                    ${meeting.id ? `<p style="font-size:0.8em; color: #777;"><strong>ID:</strong> ${meeting.id}</p>` : ''}
+                                    ${meeting.source ? `<p style="font-size:0.8em; color: #777;"><strong>Source:</strong> ${meeting.source}</p>` : ''}
+                                </div>
+                                <button class="modal-close-button" onclick="closeMeetingPopup()">Close</button>
+                            </div>
+                        `;
+                    } else {
+                        modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Meeting not found (ID: ' + meetingId + '). Please refresh and try again.</p></div><button class="modal-close-button" onclick="closeMeetingPopup()">Close</button></div>';
+                        console.warn("Meeting not found with ID:", meetingId, "in fetched list:", meetings);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching meeting details for modal:', error);
+                    modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Error loading meeting details. Check console.</p></div><button class="modal-close-button" onclick="closeMeetingPopup()">Close</button></div>';
+                });
+        }
+
+        function closeMeetingPopup() {
+            const modal = document.getElementById('meetingModal');
             if (modal) {
                 modal.style.display = 'none';
             }

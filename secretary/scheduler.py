@@ -27,13 +27,12 @@ class Scheduler:
         self.network = network
         self.brain = brain
         self.socketio = socketio_instance
-        self.calendar = self.network.local_calendar if self.network and node_id in self.network.nodes else []
         self.node = self.network.nodes.get(node_id) if self.network and node_id in self.network.nodes else None
 
-        # Attach this calendar list to the Brain node so meetings show up
-        if self.network and self.node_id in self.network.nodes:
-            setattr(self.network.nodes[self.node_id], 'calendar', self.calendar)
-            log_system_message(f"[Scheduler:{self.node_id}] Calendar attached to node.")  
+        if self.brain:
+            log_system_message(f"[Scheduler:{self.node_id}] Operations will use the Brain's calendar directly.")
+        else:
+            log_warning(f"[Scheduler:{self.node_id}] Brain instance not provided. Calendar operations might fail or be inconsistent.")
         
         # Register this Scheduler instance under its node_id
         if self.network and self.node_id is not None:
@@ -594,10 +593,8 @@ class Scheduler:
                     # Store context for follow-up
                     self.brain.meeting_context = {
                         'active': True,
-                        'collected_info': {
-                            'title': meeting_data.get("title"),
-                            'participants': meeting_data.get("participants", [])
-                        },
+                        'title': meeting_data.get("title"),
+                        'participants': meeting_data.get("participants", []),
                         'missing_info': ['date', 'time'],
                         'is_rescheduling': False
                     }
@@ -653,12 +650,31 @@ class Scheduler:
                     confirm_prompt = (f"Conflict found for {conflicting_participant}. The next available slot for all participants seems to be "
                                       f"{formatted_proposed_time}. Schedule then? (yes/no)")
                     
+                    self.brain.confirmation_context['active'] = True
+                    self.brain.confirmation_context['context'] = 'schedule meeting'
+                    self.brain.confirmation_context['participants'] = participants
+                    self.brain.confirmation_context['title'] = meeting_data.get("title")
+                    self.brain.confirmation_context['initial_message'] = confirm_prompt
+                    self.brain.confirmation_context['start_datetime'] = proposed_start
+                    self.brain.confirmation_context['end_datetime'] = proposed_end
                     
+                    self.brain.meeting_context = {
+                        'active': True,
+                        'context': 'schedule meeting',
+                        'participants': participants,
+                        'title': meeting_data.get("title"),
+                        'initial_message': confirm_prompt,
+                        'start_datetime': proposed_start,
+                        'end_datetime': proposed_end,
+                        'missing_info': []
+                    }
+
                     # Emit an update to the UI via SocketIO
                     if self.socketio:
                         self.socketio.emit('update_meetings')
                     return confirm_prompt
                     
+                    # TODO: Change the logic, pylance doesn't see this code!
                     # Use the Confirmation class via the brain instance
                     if self.brain.confirmation.request(confirm_prompt):
                         # User confirmed, schedule at proposed time
@@ -829,13 +845,15 @@ class Scheduler:
         
         proposed_end_time = proposed_start_time + (end_datetime - start_datetime)
 
-        self.brain.confirmation_context = {
-            'active': True,
-            'context': 'schedule meeting',
-            'initial_message': f"Proposed meeting time: {proposed_start_time} to {proposed_end_time}",
-            'start_datetime': proposed_start_time,
-            'end_datetime': proposed_end_time
-        }
+        # self.brain.confirmation_context = {
+        #     'active': True,
+        #     'context': 'schedule meeting',
+        #     'participants': participants,
+        #     'title': 'test', # TODO: Change this to the actual title
+        #     'initial_message': f"Proposed meeting time: {proposed_start_time} to {proposed_end_time}",
+        #     'start_datetime': proposed_start_time,
+        #     'end_datetime': proposed_end_time
+        # }
 
         print(exist_conflict, proposed_start_time, proposed_end_time)
 
@@ -855,7 +873,7 @@ class Scheduler:
             msg = f"[{self.node_id}] Calendar service not available, showing local meetings only"
             print(f"[{self.node_id}] Calendar service not available, showing local meetings only")
 
-            if not self.calendar:
+            if not self.brain.calendar:
                 msg += f"[{self.node_id}] No meetings scheduled."
                 print(msg)
                 return msg
@@ -1141,7 +1159,7 @@ class Scheduler:
                 print(f"[{self.node_id}] Response: Meeting '{meeting_title}' has been rescheduled to {formatted_date} at {formatted_time}.")
                 
                 # Update local calendar records
-                for meeting in self.calendar:
+                for meeting in self.brain.calendar:
                     if meeting.get('event_id') == updated_event['id']:
                         meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
                 
@@ -1268,7 +1286,7 @@ class Scheduler:
                     ).execute()
                     
                     # Remove the event from the local calendar records
-                    self.calendar = [m for m in self.calendar if m.get('event_id') != event['id']]
+                    self.brain.calendar = [m for m in self.brain.calendar if m.get('event_id') != event['id']]
                     
                     # Notify attendees about the cancellation
                     event_attendees = [a.get('email', '').split('@')[0] for a in event.get('attendees', [])]
@@ -1493,7 +1511,7 @@ class Scheduler:
                 'title': title,  # Store the title separately
                 'event_id': event['id']
             }
-            self.calendar.append(calendar_entry)
+            # self.calendar.append(calendar_entry) # REMOVED: This was redundant or incorrect after fixing __init__
             
             # Update the brain's calendar with the new event
             self.brain.calendar.append(calendar_entry)
@@ -1579,8 +1597,8 @@ class Scheduler:
             # Success message
             print(f"[{self.node_id}] Response: Meeting '{meeting_title}' has been rescheduled to {formatted_date} at {formatted_time}.")
             
-            # Update local calendar records and notify participants
-            for meeting in self.calendar:
+            # Update local calendar records
+            for meeting in self.brain.calendar:
                 if meeting.get('event_id') == updated_event['id']:
                     meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
             

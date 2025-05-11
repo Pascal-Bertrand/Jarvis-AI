@@ -137,7 +137,9 @@ class Brain:
             'active': False,
             'initial_message': None,
             'missing_info': [],
-            'collected_info': {}
+            'title': None,
+            'participants': [],
+            'context': None
         }
 
         self.people = People()     # local cache of people (if needed)
@@ -237,7 +239,7 @@ class Brain:
         
         Return JSON with:
         - title: meeting title
-        - participants: array of participants (use only: ceo, marketing, engineering, design)
+        - participants: array of participants
         - date: meeting date (YYYY-MM-DD format, leave empty to use current date)
         - time: meeting time (HH:MM format, leave empty to use current time + 1 hour)
         - duration: duration in minutes (default 60)
@@ -663,7 +665,22 @@ class Brain:
             self.socketio.emit('update_tasks', room=self.node_id) # Or a general room
             log_system_message(f"[Brain] [{self.node_id}] Emitted update_tasks for project '{project_id}'")
             
-        return f"Task generation process completed for project '{project_id}'. Check task list for details."
+        # Format the project plan for the output, assuming HTML rendering
+        project_plan_details = self.projects[project_id].get("plan_steps", [])
+        formatted_plan = f"<br><br><b>Project Plan for '{project_id}':</b><br>"
+        if project_plan_details:
+            for step in project_plan_details:
+                participants_str = ", ".join(step.get("responsible_participants", ["N/A"]))
+                # Using HTML for formatting
+                formatted_plan += (
+                    f"<br>- <b>Step:</b> {step.get('name', 'N/A')}<br>"
+                    f"&nbsp;&nbsp;- <b>Description:</b> {step.get('description', 'N/A')}<br>"
+                    f"&nbsp;&nbsp;- <b>Responsible:</b> {participants_str}<br>"
+                )
+        else:
+            formatted_plan += "<br>No plan steps found.<br>"
+
+        return f"Task generation process completed for project '{project_id}'. Check task list for details.{formatted_plan}"
 
     def list_tasks(self):
         """
