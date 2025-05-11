@@ -139,7 +139,10 @@ class Brain:
             'missing_info': [],
             'title': None,
             'participants': [],
-            'context': None
+            'context': None,
+            'start_datetime': datetime.now().isoformat(),
+            'end_datetime': (datetime.now() + timedelta(hours=1)).isoformat(),
+            'event_id': None
         }
 
         self.people = People()     # local cache of people (if needed)
