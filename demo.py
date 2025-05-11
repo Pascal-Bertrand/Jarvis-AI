@@ -142,6 +142,8 @@ Do not include any explanation or other text outside the JSON object.
         processed_agent_ids = process_agent_ids(selected_agent_ids)
         log_system_message(f"Processed agent IDs: {processed_agent_ids}")
         
+        time.sleep(1.5)
+
         # Create candidate objects from the processed IDs
         candidates = create_candidates_from_ids(processed_agent_ids)
         if candidates:
