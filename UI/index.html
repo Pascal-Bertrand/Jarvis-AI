@@ -675,6 +675,7 @@
         let audioChunks = [];
         let audioContext;
         let socket;
+        let currentAgentRoom = null; // Added to track current agent room for socket.io
 
         document.addEventListener('DOMContentLoaded', () => {
             const messageInput = document.getElementById('messageInput');
@@ -755,9 +756,25 @@
             newProjectBtn.addEventListener('click', openNewProjectModal);
 
             agentSelect.addEventListener('change', (event) => {
-                console.log(`Agent selected: ${event.target.value}`);
+                const newAgentId = event.target.value;
+                console.log(`Agent selected: ${newAgentId}. Previous room: ${currentAgentRoom}`);
+
+                if (socket) {
+                    if (currentAgentRoom && currentAgentRoom !== newAgentId) {
+                        socket.emit('leave_room', { room: currentAgentRoom });
+                        console.log(`Emitted leave_room for ${currentAgentRoom}`);
+                    }
+                    // Join the new room if it's different from the current one.
+                    // This also handles the initial case where currentAgentRoom is null.
+                    if (currentAgentRoom !== newAgentId) {
+                        socket.emit('join_room', { room: newAgentId });
+                        console.log(`Emitted join_room for ${newAgentId}`);
+                    }
+                }
+                currentAgentRoom = newAgentId;
+
                 clearChatMessages();
-                addSystemMessage(`Switched context to ${event.target.value}`);
+                addSystemMessage(`Switched context to ${newAgentId}`);
                 fetchMeetings(); // Re-fetch and filter meetings when agent changes
                 fetchProjects(); // Re-fetch and filter projects
                 fetchTasks();    // Re-fetch and filter tasks
@@ -783,9 +800,10 @@
                             if (index === 0) {
                                 agentSelect.value = nodeId;
                                 console.log(`Default agent set to: ${nodeId}`);
+                                // currentAgentRoom will be set and room joined by the dispatched 'change' event.
                             }
                         });
-                        // Trigger change event manually to update initial state if needed
+                        // Trigger change event manually to update initial state and join the default agent's room
                         agentSelect.dispatchEvent(new Event('change'));
                             } else {
                         const option = document.createElement('option');
@@ -1204,14 +1222,14 @@
             if (messagesContainer) messagesContainer.innerHTML = '';
         }
 
-        function showLoadingIndicator() {
+        function showLoadingIndicator(initialMessage = "Thinking") {
             const messagesContainer = document.getElementById('chatMessages');
             if (!messagesContainer) return null;
 
             const loadingElement = document.createElement('div');
             const indicatorId = 'loading-' + Date.now();
             loadingElement.id = indicatorId;
-            loadingElement.classList.add('chat-message', 'agent-message', 'loading-message'); // Style like an agent message
+            loadingElement.classList.add('chat-message', 'agent-message', 'loading-message');
 
             loadingElement.innerHTML = `
                 <div class="message-header">
@@ -1219,9 +1237,9 @@
                     <strong>Agent:</strong>
                 </div>
                 <div class="message-content">
-                    Thinking<span class="loading-dots"></span>
-                                </div>
-                            `;
+                    ${initialMessage}<span class="loading-dots"></span>
+                </div>
+            `;
             messagesContainer.appendChild(loadingElement);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
             return indicatorId;
@@ -1446,14 +1464,16 @@
             closeNewProjectModal();
 
             // Show initial loading message
-            const loadingIndicatorId = showLoadingIndicator();
+            const loadingIndicatorId = showLoadingIndicator("Looking for possible participants");
             const loadingElement = document.getElementById(loadingIndicatorId);
             
-            // Start cycling through loading messages
-            currentLoadingMessageIndex = 0;
-            loadingMessageInterval = setInterval(() => {
-                updateLoadingMessage(loadingElement);
-            }, 3000);
+            // Start cycling through loading messages if a specific flow for project creation is active
+            // For a generic send, the initial message is enough.
+            // We can refine this if `submitNewProject` should always have cycling messages.
+            // currentLoadingMessageIndex = 0;
+            // loadingMessageInterval = setInterval(() => {
+            // updateLoadingMessage(loadingElement);
+            // }, 3000);
 
             // Send the project creation request
             fetch('/send_message', {

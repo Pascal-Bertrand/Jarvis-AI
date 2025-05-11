@@ -23,6 +23,9 @@ from secretary.scheduler import Scheduler
 from secretary.utilities.google import initialize_google_services
 from secretary.socketio_ext import socketio
 
+from flask_socketio import join_room, leave_room
+from flask import request as flask_request
+
 # Initialize the OpenAI client with your API key
 try:
     # Try loading from .env file first
@@ -144,6 +147,27 @@ CORS(app)  # Enable CORS for all routes
 socketio.init_app(app) 
 
 network: Optional[Intercom] = None  # Will be set by the main function
+
+
+@socketio.on('join_room')
+def handle_join_room_event(data):
+    """Handles client request to join a room."""
+    room = data.get('room')
+    if room:
+        join_room(room)
+        log_system_message(f"Client {flask_request.sid} joined room {room}")
+    else:
+        log_warning(f"Client {flask_request.sid} attempted to join a room without specifying room name.")
+
+@socketio.on('leave_room')
+def handle_leave_room_event(data):
+    """Handles client request to leave a room."""
+    room = data.get('room')
+    if room:
+        leave_room(room)
+        log_system_message(f"Client {flask_request.sid} left room {room}")
+    else:
+        log_warning(f"Client {flask_request.sid} attempted to leave a room without specifying room name.")
 
 
 @app.route('/')
