@@ -73,7 +73,7 @@ class Communication:
         if message.startswith("[(INFO)]"):
             log_system_message(f"[Communication] [{self.node_id}] Information message: {message.replace("[(INFO)]", "")}")
             return message.replace("[(INFO)]", "")        
-        
+
         # quick CLI command handling
         quick_cmd_response = self._handle_quick_command(message, sender_id)
         if quick_cmd_response is not None:
@@ -139,6 +139,9 @@ class Communication:
             proposed_start = self.brain.confirmation_context['start_datetime']
             proposed_end = self.brain.confirmation_context['end_datetime']
             return self.scheduler._create_calendar_meeting(meeting_id, meeting_title, participants, proposed_start, proposed_end)
+        
+        if self.brain.confirmation_context['context'] == 'plan project':
+            return self.brain.finalize_and_plan_project(self.brain.confirmation_context['project_id'])
             
 
     def _handle_quick_command(self, message: str, sender_id: str) -> Optional[str]:

@@ -66,26 +66,26 @@ def get_best_candidates(project_id: str, objective: str) -> List[Candidate]:
 
     # More strongly emphasize JSON format requirement and proper ID format
     prompt = f"""Given the following project objective and available agents, select up to 3 best-suited candidates for the project.
-Consider their skills, experience, and knowledge when making the selection.
+        Consider their skills, experience, and knowledge when making the selection.
 
-Project ID: {project_id}
-Project Objective: {objective}
+        Project ID: {project_id}
+        Project Objective: {objective}
 
-Available Agents:
-{agents_info}
+        Available Agents:
+        {agents_info}
 
-Please analyze the project requirements and select the most suitable candidates. Consider:
-1. Required skills and expertise
-2. Department relevance
-3. Role and responsibilities
-4. Knowledge areas
+        Please analyze the project requirements and select the most suitable candidates. Consider:
+        1. Required skills and expertise
+        2. Department relevance
+        3. Role and responsibilities
+        4. Knowledge areas
 
-IMPORTANT: You must ONLY respond with a valid JSON object containing an array of the EXACT agent IDs as listed above.
-The response MUST follow this exact format: {{"selected_agents": ["exact_id_1", "exact_id_2", "exact_id_3"]}}
-For example, if you select Ueli Maurer, use the exact ID "Ueli Maurer" (not agent_1 or similar).
-Use the exact agent ID strings from the Agent ID field for each agent.
-Do not include any explanation or other text outside the JSON object.
-"""
+        IMPORTANT: You must ONLY respond with a valid JSON object containing an array of the EXACT agent IDs as listed above.
+        The response MUST follow this exact format: {{"selected_agents": ["exact_id_1", "exact_id_2", "exact_id_3"]}}
+        For example, if you select Ueli Maurer, use the exact ID "Ueli Maurer" (not agent_1 or similar).
+        Use the exact agent ID strings from the Agent ID field for each agent.
+        Do not include any explanation or other text outside the JSON object.
+    """
 
     try:
         response = demo_openai_client.chat.completions.create(

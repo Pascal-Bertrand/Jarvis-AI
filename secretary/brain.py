@@ -157,7 +157,8 @@ class Brain:
             'context': None,      # e.g. "schedule meeting", "cancel meeting"
             'initial_message': None,
             'start_datetime': None,
-            'end_datetime': None
+            'end_datetime': None,
+            'project_id': None
         }
 
         # --- Calendar & Email stubs (to be injected or initialized elsewhere) ---
@@ -320,6 +321,10 @@ class Brain:
                 "status": "pending_final_participants", # New status
                 "created_at": datetime.now().isoformat()
             }
+            self.confirmation_context['active'] = True
+            self.confirmation_context['context'] = "plan project"
+            self.confirmation_context['initial_message'] = f"Initiating project planning for '{project_id}' with objective: {objective}"
+            self.confirmation_context['project_id'] = project_id
         else: # If project exists, update objective and reset status if needed
             self.projects[project_id]["objective"] = objective
             self.projects[project_id]["description"] = objective

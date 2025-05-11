@@ -392,6 +392,8 @@ def transcribe_audio():
         log_error(f"Error decoding/transcribing audio: {str(e)}") # Log the error
         return jsonify({"error": f"Error processing audio: {str(e)}"}), 500
 
+@app.route('/set_confirmation_pending', methods=['POST']) # Name changed for clarity
+    #TODO: Implement this
 
 # Update the existing send_message route to use the common function
 @app.route('/send_message', methods=['POST'])

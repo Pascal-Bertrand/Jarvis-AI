@@ -1227,6 +1227,29 @@
             }
         }
 
+        function showConfirmationMessage() {
+            const messagesContainer = document.getElementById('chatMessages');
+            if (!messagesContainer) return null;
+
+            const loadingElement = document.createElement('div');
+            const indicatorId = 'loading-' + Date.now();
+            loadingElement.id = indicatorId;
+            loadingElement.classList.add('chat-message', 'agent-message', 'loading-message'); // Style like an agent message
+
+            loadingElement.innerHTML = `
+                <div class="message-header">
+                    <i class="fas fa-robot"></i>
+                    <strong>Agent:</strong>
+                </div>
+                <div class="message-content">
+                    Thinking<span class="loading-dots"></span>
+                                </div>
+                            `;
+            messagesContainer.appendChild(loadingElement);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            return indicatorId;
+        }
+
         function handlePageLoadView() {
             // Ensure modals are hidden on normal page load
             const taskModal = document.getElementById('taskModal');
@@ -1601,6 +1624,7 @@
                                      <code>done with project ${projectId}</code> or <code>finalize project ${projectId}</code> <br>
                                      to generate the project plan and tasks.`;
                 addSystemMessage(systemMessage);
+                // TODO: Call the endpoint to set the confirmation pending (i.e. set_confirmation_pending)
             }
         };
 
