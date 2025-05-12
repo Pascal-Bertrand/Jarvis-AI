@@ -362,6 +362,7 @@
 
         .chat-button {
             padding: 10px 15px;
+            margin-left: 100px; 
             background-color: var(--primary-color);
             color: white;
             border: none;
@@ -509,9 +510,6 @@
         
         .modal-close-button {
             display: inline-block;
-            margin-top: 15px;
-            margin-left: 20px; /* Align with card padding */
-            margin-bottom: 20px; /* Spacing at the bottom */
             padding: 10px 15px;
             background-color: var(--danger-color);
             color: white;
@@ -519,10 +517,20 @@
             border-radius: 5px;
             border: none;
             cursor: pointer;
+            margin: 10px; /* Fixed margin syntax */
         }
 
         .modal-close-button:hover {
             background-color: darkred;
+        }
+
+        /* Add new style for modal button container */
+        .modal-button-container {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 15px;
+            align-items: center; /* Ensure vertical alignment */
         }
 
         /* Make meeting titles look like normal text but clickable */
@@ -654,8 +662,10 @@
                         <label for="projectDescription" style="display: block; margin-bottom: 5px;">Project Description:</label>
                         <textarea id="projectDescription" style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;"></textarea>
                     </div>
-                    <button class="modal-close-button" onclick="closeNewProjectModal()">Cancel</button>
-                    <button class="chat-button" onclick="submitNewProject()" style="margin-left: 10px;">Create Project</button>
+                    <div class="modal-button-container">
+                        <button class="chat-button" onclick="submitNewProject()">Create Project</button>
+                        <button class="modal-close-button" onclick="closeNewProjectModal()">Cancel</button>
+                    </div>
                 </div>
             </div>
         </div>
