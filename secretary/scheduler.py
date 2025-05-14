@@ -105,8 +105,8 @@ class Scheduler:
                     'title': local_meeting.get('title', local_meeting.get('meeting_info', 'Local Meeting')),  # Use title if available, fallback to meeting_info
                     'start': start_obj,
                     'end': end_obj,
-                    'attendees': [{'email': f'{p}@example.com'} for p in local_meeting.get('participants', [])],
-                    'organizer': {'email': f'{self.node_id}@local.agent'},
+                    'attendees': [{'email': f'{p.replace(" ", "")}@example.com'} for p in local_meeting.get('participants', [])],
+                    'organizer': {'email': f'{self.node_id.replace(" ", "")}@local.agent'},
                     'id': local_meeting.get('event_id', f"local_{local_meeting.get('project_id', '')}_{start_time_str}"),
                     'source': 'local' # To distinguish if needed
                 }
@@ -144,8 +144,9 @@ class Scheduler:
         
         for meeting in local_meetings_transformed:
             # Only add local meeting if no Google meeting with the same ID exists
-            # or if it's a purely local meeting (no event_id matching GCal)
-            if meeting['id'] not in all_meetings_dict or not local_meeting.get('event_id'):
+            # or if it's a purely local meeting. The meeting['id'] already correctly reflects
+            # the GCal event ID if available, or a local-specific ID otherwise.
+            if meeting['id'] not in all_meetings_dict:
                  all_meetings_dict[meeting['id']] = meeting
 
         merged_meetings = list(all_meetings_dict.values())
@@ -208,7 +209,7 @@ class Scheduler:
                     'dateTime': (task.due_date + timedelta(hours=1)).isoformat(),
                     'timeZone': 'UTC',
                 },
-                'attendees': [{'email': f'{task.assigned_to}@example.com'}],
+                'attendees': [{'email': f'{task.assigned_to.replace(" ", "")}@example.com'}],
                 'reminders': {
                     'useDefault': False,
                     'overrides': [
@@ -270,7 +271,7 @@ class Scheduler:
                 'dateTime': end_time.isoformat(),
                 'timeZone': local_tz_name,
             },
-            'attendees': [{'email': f'{p}@example.com'} for p in participants],
+            'attendees': [{'email': f'{p.replace(" ", "")}@example.com', 'displayName': p} for p in participants],
         }
 
         try:
@@ -898,7 +899,7 @@ class Scheduler:
             msg = f"[{self.node_id}] Calendar service not available, showing local meetings only"
             print(f"[{self.node_id}] Calendar service not available, showing local meetings only")
 
-            if not self.calendar:
+            if not self.brain.calendar:
                 msg += f"[{self.node_id}] No meetings scheduled."
                 print(msg)
                 return msg
@@ -936,8 +937,9 @@ class Scheduler:
                 # Get start time from event details
                 start = event['start'].get('dateTime', event['start'].get('date'))
                 start_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
-                # Format attendee emails by extracting the user part
-                attendees = ", ".join([a.get('email', '').split('@')[0] for a in event.get('attendees', [])])
+                # Get attendees names
+                # attendees = ", ".join([a.get('email', '').split('@')[0] for a in event.get('attendees', [])])
+                attendees = ", ".join([a.get('displayName', '') for a in event.get('attendees', [])])
                 msg = msg + f"\n  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}"
                 print(f"  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}")
                 print (start_time)
@@ -1076,6 +1078,7 @@ class Scheduler:
                     score += 1
                 
                 # Check attendees match
+                # TODO: Look for the displayName
                 attendees = []
                 for attendee in event.get('attendees', []):
                     email = attendee.get('email', '')
@@ -1184,17 +1187,18 @@ class Scheduler:
                 print(f"[{self.node_id}] Response: Meeting '{meeting_title}' has been rescheduled to {formatted_date} at {formatted_time}.")
                 
                 # Update local calendar records
-                for meeting in self.calendar:
+                for meeting in self.brain.calendar:
                     if meeting.get('event_id') == updated_event['id']:
                         meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
                 
                 # Notify all attendees about the rescheduled meeting
+                # TODO: Get participants with displayName
                 attendees = updated_event.get('attendees', [])
                 for attendee in attendees:
                     attendee_id = attendee.get('email', '').split('@')[0]
                     if attendee_id in self.network.nodes:
                         # Update their local calendar
-                        for meeting in self.network.nodes[attendee_id].calendar:
+                        for meeting in self.network.nodes[attendee_id].brain.calendar:
                             if meeting.get('event_id') == updated_event['id']:
                                 meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
                         
@@ -1292,7 +1296,7 @@ class Scheduler:
                 
                 # Check participants if specified
                 if participants_filter:
-                    event_attendees = [a.get('email', '').split('@')[0].lower() 
+                    event_attendees = [a.get('displayName', '').lower() 
                                       for a in event.get('attendees', [])]
                     if not any(p in event_attendees for p in participants_filter):
                         should_cancel = False
@@ -1311,15 +1315,16 @@ class Scheduler:
                     ).execute()
                     
                     # Remove the event from the local calendar records
-                    self.calendar = [m for m in self.calendar if m.get('event_id') != event['id']]
+                    self.brain.calendar = [m for m in self.calendar if m.get('event_id') != event['id']]
                     
                     # Notify attendees about the cancellation
-                    event_attendees = [a.get('email', '').split('@')[0] for a in event.get('attendees', [])]
+                    # event_attendees = [a.get('email', '').split('@')[0] for a in event.get('attendees', [])]
+                    event_attendees = [a.get('displayName', '') for a in event.get('attendees', [])]
                     for attendee in event_attendees:
                         if attendee in self.network.nodes:
                             # Update their local calendar
-                            self.network.nodes[attendee].calendar = [
-                                m for m in self.network.nodes[attendee].calendar 
+                            self.network.nodes[attendee].brain.calendar = [
+                                m for m in self.network.nodes[attendee].brain.calendar 
                                 if m.get('event_id') != event['id']
                             ]
                             # Notify them
@@ -1510,7 +1515,7 @@ class Scheduler:
                 'dateTime': end_datetime.isoformat(),
                 'timeZone': local_tz_name,
             },
-            'attendees': [{'email': f'{p}@example.com'} for p in participants],
+            'attendees': [{'email': f'{p.replace(" ", "")}@example.com', 'displayName': p} for p in participants],
         }
 
         try:
@@ -1535,9 +1540,7 @@ class Scheduler:
                 'meeting_info': meeting_info,
                 'title': title,  # Store the title separately
                 'event_id': event['id']
-            }
-            self.calendar.append(calendar_entry)
-            
+            }            
             # Update the brain's calendar with the new event
             self.brain.calendar.append(calendar_entry)
 
@@ -1623,17 +1626,18 @@ class Scheduler:
             print(f"[{self.node_id}] Response: Meeting '{meeting_title}' has been rescheduled to {formatted_date} at {formatted_time}.")
             
             # Update local calendar records and notify participants
-            for meeting in self.calendar:
+            for meeting in self.brain.calendar:
                 if meeting.get('event_id') == updated_event['id']:
                     meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
             
             # Notify each attendee about the updated meeting details
+            # TODO: Do this with displayName
             attendees = updated_event.get('attendees', [])
             for attendee in attendees:
                 attendee_id = attendee.get('email', '').split('@')[0]
                 if attendee_id in self.network.nodes:
                     # Update their local calendar
-                    for meeting in self.network.nodes[attendee_id].calendar:
+                    for meeting in self.network.nodes[attendee_id].brain.calendar:
                         if meeting.get('event_id') == updated_event['id']:
                             meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
                     

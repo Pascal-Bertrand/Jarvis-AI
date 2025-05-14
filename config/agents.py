@@ -1,6 +1,6 @@
 AGENT_CONFIG = [
     {
-        "id": "Ueli Maurer",
+        "id": "ueli maurer",
         "name": "Ueli Maurer",
         "department": "Engineering",
         "skills": ["Swiss German", "AI", "System Design"],
@@ -9,7 +9,7 @@ AGENT_CONFIG = [
         "knowledge": "Knows entire org structure, company goals, and strategic priorities.",
     },
     {
-        "id": "John Doe",
+        "id": "john doe",
         "name": "John Doe",
         "department": "Marketing",
         "skills": ["English", "Marketing", "Market Analysis"],
@@ -18,7 +18,7 @@ AGENT_CONFIG = [
         "knowledge": "Knows about target markets, marketing strategies, campaign performance, and customer segments.",
     },
     {
-        "id": "Michael Chen",
+        "id": "michael chen",
         "name": "Michael Chen",
         "department": "Engineering",
         "skills": ["Chinese", "Agile", "Market Analysis"],
@@ -27,7 +27,7 @@ AGENT_CONFIG = [
         "knowledge": "Knows the current codebase, technical architecture, development processes, and ongoing technical challenges.",
     },
     {
-        "id": "Magnus Müller",
+        "id": "magnus müller",
         "name": "Magnus Müller",
         "department": "Design",
         "skills": ["English", "Figma", "User Research"],
@@ -36,7 +36,7 @@ AGENT_CONFIG = [
         "knowledge": "Knows UI/UX best practices, design system guidelines, user research findings, and current design tools.",
     },
  {
-        "id": "Dustin Klebe",
+        "id": "dustin klebe",
         "name": "Dustin Klebe",
         "department": "HR",
         "skills": ["English", "HR", "Employee Relations"],
