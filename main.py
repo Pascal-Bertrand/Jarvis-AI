@@ -12,6 +12,7 @@ from flask_cors import CORS
 import base64
 import tempfile
 from config.agents import AGENT_CONFIG
+from datetime import datetime
 
 from secretary.utilities.logging import log_system_message, log_error, log_warning
 from network.internal_communication import Intercom
@@ -21,6 +22,9 @@ from secretary.brain import Brain, LLMClient
 from secretary.scheduler import Scheduler
 from secretary.utilities.google import initialize_google_services
 from secretary.socketio_ext import socketio
+
+from flask_socketio import join_room, leave_room
+from flask import request as flask_request
 
 # Initialize the OpenAI client with your API key
 try:
@@ -58,7 +62,7 @@ GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')  # Fallback to empt
 
 
 class LLMNode:
-    def __init__(self, node_id: str, knowledge: str = "",
+    def __init__(self, node_id: str, node_name:str, knowledge: str = "",
                  llm_api_key_override: str = "", llm_params: dict = None, network: Optional[Intercom] = None):
         """
         Initialize a new LLMNode instance.
@@ -72,6 +76,7 @@ class LLMNode:
         """
 
         self.node_id = node_id
+        self.node_name = node_name
         self.knowledge = knowledge # Note: knowledge is not actively used by Brain/Communication yet
 
         # Determine API key to use
@@ -145,6 +150,27 @@ socketio.init_app(app)
 network: Optional[Intercom] = None  # Will be set by the main function
 
 
+@socketio.on('join_room')
+def handle_join_room_event(data):
+    """Handles client request to join a room."""
+    room = data.get('room')
+    if room:
+        join_room(room)
+        log_system_message(f"Client {flask_request.sid} joined room {room}")
+    else:
+        log_warning(f"Client {flask_request.sid} attempted to join a room without specifying room name.")
+
+@socketio.on('leave_room')
+def handle_leave_room_event(data):
+    """Handles client request to leave a room."""
+    room = data.get('room')
+    if room:
+        leave_room(room)
+        log_system_message(f"Client {flask_request.sid} left room {room}")
+    else:
+        log_warning(f"Client {flask_request.sid} attempted to leave a room without specifying room name.")
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -189,10 +215,28 @@ def show_nodes():
     if not network:
         return jsonify({"error": "Network not initialized"}), 500
 
-    # Use the method from People/Intercom if preferred, otherwise this is fine
-    nodes = network.get_all_nodes() # Use Intercom's method
-    # nodes = list(network.nodes.keys())
-    return jsonify(nodes)
+    # Get all nodes with their names
+    nodes_with_names = []
+    for node_id, node_obj in network.nodes.items():
+        nodes_with_names.append({
+            "id": node_obj.node_id,  # or just node_id
+            "name": node_obj.node_name 
+        })
+    
+    # If network.get_all_nodes() returns a list of LLMNode objects:
+    # nodes_with_names = []
+    # for node_obj in network.get_all_nodes(): # If it returns a list of node objects
+    #     nodes_with_names.append({
+    #         "id": node_obj.node_id,
+    #         "name": node_obj.node_name
+    #     })
+
+    return jsonify(nodes_with_names)
+
+    # # Use the method from People/Intercom if preferred, otherwise this is fine
+    # nodes = network.get_all_nodes() # Use Intercom's method
+    # # nodes = list(network.nodes.keys())
+    # return jsonify(nodes)
 
 
 @app.route('/projects')
@@ -217,7 +261,11 @@ def show_projects():
                         all_projects[project_id] = {
                             "name": project_data.get("name", project_id),
                             "participants": list(project_data.get("participants", set())),
-                            "owner": node_id_loop # The node that owns/manages this project entry
+                            "owner": node_id_loop, # The node that owns/manages this project entry
+                            "objective": project_data.get("objective", ""),
+                            "description": project_data.get("description", ""),
+                            "status": project_data.get("status", "active"),
+                            "created_at": project_data.get("created_at", datetime.now().isoformat())
                         }
         else:
             log_warning(f"Node {node_id_loop} does not have a brain or projects attribute for filtering.")
@@ -387,6 +435,8 @@ def transcribe_audio():
         log_error(f"Error decoding/transcribing audio: {str(e)}") # Log the error
         return jsonify({"error": f"Error processing audio: {str(e)}"}), 500
 
+@app.route('/set_confirmation_pending', methods=['POST']) # Name changed for clarity
+    #TODO: Implement this
 
 # Update the existing send_message route to use the common function
 @app.route('/send_message', methods=['POST'])
@@ -590,6 +640,7 @@ if __name__ == "__main__":
     for agent_config in AGENT_CONFIG:
         node = LLMNode(
             node_id=agent_config["id"],
+            node_name=agent_config["name"],
             knowledge=agent_config["knowledge"], # Pass knowledge from config
             network=network,
             llm_api_key_override=openai_api_key

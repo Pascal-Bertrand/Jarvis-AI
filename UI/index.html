@@ -362,6 +362,7 @@
 
         .chat-button {
             padding: 10px 15px;
+            margin-left: 100px; 
             background-color: var(--primary-color);
             color: white;
             border: none;
@@ -509,9 +510,6 @@
         
         .modal-close-button {
             display: inline-block;
-            margin-top: 15px;
-            margin-left: 20px; /* Align with card padding */
-            margin-bottom: 20px; /* Spacing at the bottom */
             padding: 10px 15px;
             background-color: var(--danger-color);
             color: white;
@@ -519,10 +517,20 @@
             border-radius: 5px;
             border: none;
             cursor: pointer;
+            margin: 10px; /* Fixed margin syntax */
         }
 
         .modal-close-button:hover {
             background-color: darkred;
+        }
+
+        /* Add new style for modal button container */
+        .modal-button-container {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 15px;
+            align-items: center; /* Ensure vertical alignment */
         }
 
         /* Make meeting titles look like normal text but clickable */
@@ -536,6 +544,16 @@
             background: #f0f0f0;
         }
 
+        /* Add candidate widget styles */
+        .skill-tag { background: #e9ecef; padding: 4px 8px; border-radius: 12px; font-size: 12px; color: #495057; }
+        .candidate-card { position: relative; transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out; }
+        .projects-overview { margin-top: 30px; padding: 15px; background: #f9f9f9; border-radius: 8px; border: 1px solid #e0e0e0; }
+        .candidate-widgets { position: relative; overflow: hidden; }
+        .project-card { animation: fadeIn 0.5s ease-in-out; }
+        .accept-button:hover { background-color: #45a049 !important; }
+        .reject-button:hover { background-color: #da190b !important; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-100%); } }
     </style>
 </head>
 <body>
@@ -644,8 +662,10 @@
                         <label for="projectDescription" style="display: block; margin-bottom: 5px;">Project Description:</label>
                         <textarea id="projectDescription" style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;"></textarea>
                     </div>
-                    <button class="modal-close-button" onclick="closeNewProjectModal()">Cancel</button>
-                    <button class="chat-button" onclick="submitNewProject()" style="margin-left: 10px;">Create Project</button>
+                    <div class="modal-button-container">
+                        <button class="chat-button" onclick="submitNewProject()">Create Project</button>
+                        <button class="modal-close-button" onclick="closeNewProjectModal()">Cancel</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -665,6 +685,7 @@
         let audioChunks = [];
         let audioContext;
         let socket;
+        let currentAgentRoom = null; // Added to track current agent room for socket.io
 
         document.addEventListener('DOMContentLoaded', () => {
             const messageInput = document.getElementById('messageInput');
@@ -745,9 +766,25 @@
             newProjectBtn.addEventListener('click', openNewProjectModal);
 
             agentSelect.addEventListener('change', (event) => {
-                console.log(`Agent selected: ${event.target.value}`);
+                const newAgentId = event.target.value;
+                console.log(`Agent selected: ${newAgentId}. Previous room: ${currentAgentRoom}`);
+
+                if (socket) {
+                    if (currentAgentRoom && currentAgentRoom !== newAgentId) {
+                        socket.emit('leave_room', { room: currentAgentRoom });
+                        console.log(`Emitted leave_room for ${currentAgentRoom}`);
+                    }
+                    // Join the new room if it's different from the current one.
+                    // This also handles the initial case where currentAgentRoom is null.
+                    if (currentAgentRoom !== newAgentId) {
+                        socket.emit('join_room', { room: newAgentId });
+                        console.log(`Emitted join_room for ${newAgentId}`);
+                    }
+                }
+                currentAgentRoom = newAgentId;
+
                 clearChatMessages();
-                addSystemMessage(`Switched context to ${event.target.value}`);
+                addSystemMessage(`Switched context to ${newAgentId}`);
                 fetchMeetings(); // Re-fetch and filter meetings when agent changes
                 fetchProjects(); // Re-fetch and filter projects
                 fetchTasks();    // Re-fetch and filter tasks
@@ -762,20 +799,20 @@
                     agentSelect.innerHTML = ''; // Clear previous options
 
                     if (nodes && nodes.length > 0) {
-                        nodes.forEach((nodeId, index) => {
+                        nodes.forEach((node, index) => {
                             const option = document.createElement('option');
-                            option.value = nodeId;
-                            // Capitalize first letter for display
-                            option.textContent = nodeId.charAt(0).toUpperCase() + nodeId.slice(1);
+                            option.value = node.id;
+                            option.textContent = node.name;
                             agentSelect.appendChild(option);
 
                             // Set the first node as the default selected agent
                             if (index === 0) {
-                                agentSelect.value = nodeId;
-                                console.log(`Default agent set to: ${nodeId}`);
+                                agentSelect.value = node.id;
+                                console.log(`Default agent set to: ${node.name}`);
+                                // currentAgentRoom will be set and room joined by the dispatched 'change' event.
                             }
                         });
-                        // Trigger change event manually to update initial state if needed
+                        // Trigger change event manually to update initial state and join the default agent's room
                         agentSelect.dispatchEvent(new Event('change'));
                             } else {
                         const option = document.createElement('option');
@@ -851,8 +888,22 @@
                         const project = projects[projectId];
                         const projectElement = document.createElement('div');
                         projectElement.className = 'project';
-                        // Display only the project name as a clickable title for the popup
-                        projectElement.innerHTML = `<h3><a href="#" onclick="openProjectPopup('${projectId}'); return false;">${project.name || projectId}</a></h3>`;
+
+                        // Create participants HTML
+                        let participantsHtml = '';
+                        if (project.participants && project.participants.length > 0) {
+                            participantsHtml = `
+                                <div class="project-participants">
+                                    ${project.participants.map(p => `<span class="project-participant">${p}</span>`).join('')}
+                                </div>
+                            `;
+                        }
+                        
+                        // Display project name and participants
+                        projectElement.innerHTML = `
+                            <h3><a href="#" onclick="openProjectPopup('${projectId}'); return false;">${project.name || projectId}</a></h3>
+                            ${participantsHtml}
+                        `;
                         projectsList.appendChild(projectElement);
                     }
                 })
@@ -933,7 +984,15 @@
             messageInput.value = '';
             messageInput.focus(); // Keep focus on input
 
-            const loadingIndicatorId = showLoadingIndicator(); // Show loading indicator
+            // Show initial loading message
+            const loadingIndicatorId = showLoadingIndicator();
+            const loadingElement = document.getElementById(loadingIndicatorId);
+            
+            // Start cycling through loading messages
+            currentLoadingMessageIndex = 0;
+            loadingMessageInterval = setInterval(() => {
+                updateLoadingMessage(loadingElement);
+            }, 3000);
 
             // Send message to server
             fetch('/send_message', {
@@ -947,11 +1006,45 @@
                 if (data.error) {
                     addSystemMessage(`Error: ${data.error}`);
                 } else {
-                    addAgentMessage(data.response || "(Agent processed the message)");
-                    // Optionally display terminal output if needed, e.g., in a separate debug area
+                    const agentResponse = data.response || "(Agent processed the message)";
+                    addAgentMessage(agentResponse);
+
+                    // Check if this message indicates project planning completion
+                    if (agentResponse.includes("successfully planned and tasks generated for participants")) {
+                        // Attempt to parse projectId from the message
+                        // Example: "Project 'Alpha' successfully planned..."
+                        const match = agentResponse.match(/Project '([^']+)' successfully planned/);
+                        if (match && match[1]) {
+                            const projectId = match[1];
+                            
+                            // Fetch project details to get participants
+                            const agentSelect = document.getElementById('agentSelect');
+                            const selectedAgentId = agentSelect.value; // Assumes agentSelect is available
+                            const projectDetailsFetchUrl = selectedAgentId ? `/projects?agent_id=${selectedAgentId}` : '/projects';
+
+                            fetch(projectDetailsFetchUrl)
+                                .then(res => res.json())
+                                .then(projectsData => {
+                                    const project = projectsData[projectId];
+                                    if (project && project.participants && project.participants.length > 0) {
+                                        project.participants.forEach(participant => {
+                                            addSystemMessage(`Notified "${participant}" about project ${projectId}.`);
+                                        });
+                                    } else {
+                                        console.warn(`Could not retrieve participants for project ${projectId} after planning, or no participants found.`);
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error(`Error fetching project details for notification after planning project ${projectId}:`, error);
+                                });
+                        } else {
+                            console.warn("Project planning message received, but could not parse projectId:", agentResponse);
+                        }
+                    }
+
+                    // Optionally display terminal output if needed
                     if (data.terminal_output) {
                         console.log("Terminal Output:", data.terminal_output);
-                        // addSystemMessage(`Terminal Output available (check console)`);
                     }
                 }
             })
@@ -1172,14 +1265,14 @@
             if (messagesContainer) messagesContainer.innerHTML = '';
         }
 
-        function showLoadingIndicator() {
+        function showLoadingIndicator(initialMessage = "Thinking") {
             const messagesContainer = document.getElementById('chatMessages');
             if (!messagesContainer) return null;
 
             const loadingElement = document.createElement('div');
             const indicatorId = 'loading-' + Date.now();
             loadingElement.id = indicatorId;
-            loadingElement.classList.add('chat-message', 'agent-message', 'loading-message'); // Style like an agent message
+            loadingElement.classList.add('chat-message', 'agent-message', 'loading-message');
 
             loadingElement.innerHTML = `
                 <div class="message-header">
@@ -1187,9 +1280,9 @@
                     <strong>Agent:</strong>
                 </div>
                 <div class="message-content">
-                    Thinking<span class="loading-dots"></span>
-                                </div>
-                            `;
+                    ${initialMessage}<span class="loading-dots"></span>
+                </div>
+            `;
             messagesContainer.appendChild(loadingElement);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
             return indicatorId;
@@ -1288,8 +1381,7 @@
             fetch(fetchUrl)
                 .then(response => response.json())
                 .then(projectsData => {
-                    // Note: projectsData is an object where keys are projectIds
-                    const project = projectsData[projectId]; 
+                    const project = projectsData[projectId];
                     if (project) {
                         let participantsHtml = '<span>No participants</span>';
                         if (project.participants && project.participants.length > 0) {
@@ -1310,6 +1402,10 @@
                                     <div class="project-participants">
                                         ${participantsHtml}
                                     </div>
+                                    ${project.objective ? `<p><strong>Objective:</strong> ${project.objective}</p>` : ''}
+                                    ${project.description ? `<p><strong>Description:</strong> ${project.description}</p>` : ''}
+                                    ${project.status ? `<p><strong>Status:</strong> ${project.status}</p>` : ''}
+                                    ${project.created_at ? `<p><strong>Created:</strong> ${new Date(project.created_at).toLocaleString()}</p>` : ''}
                                 </div>
                                 <button class="modal-close-button" onclick="closeProjectPopup()">Close</button>
                             </div>
@@ -1326,6 +1422,84 @@
 
         function closeProjectPopup() {
             const modal = document.getElementById('projectModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        function openMeetingPopup(meetingId) {
+            const modal = document.getElementById('meetingModal');
+            const modalContentContainer = document.getElementById('meetingModalContentContainer');
+            if (!modal || !modalContentContainer) {
+                console.error('Meeting Modal elements not found!');
+                return;
+            }
+
+            modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Loading meeting...</p></div></div>';
+            modal.style.display = 'block';
+
+            const agentSelect = document.getElementById('agentSelect');
+            const selectedAgentId = agentSelect ? agentSelect.value : null;
+            const fetchUrl = selectedAgentId ? `/meetings?agent_id=${selectedAgentId}` : '/meetings';
+
+            fetch(fetchUrl)
+                .then(response => response.json())
+                .then(meetings => {
+                    const meeting = meetings.find(m => String(m.id) === String(meetingId));
+
+                    if (meeting) {
+                        const startDate = meeting.start ? new Date(meeting.start.dateTime || meeting.start.date) : null;
+                        const endDate = meeting.end ? new Date(meeting.end.dateTime || meeting.end.date) : null;
+
+                        const formattedStart = startDate ? startDate.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'N/A';
+                        const formattedEnd = endDate ? endDate.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'N/A';
+
+                        let attendeesHtml = '<span>No attendees specified</span>';
+                        if (meeting.attendees && meeting.attendees.length > 0) {
+                            attendeesHtml = meeting.attendees.map(att => {
+                                const email = att.email || 'Unknown';
+                                const name = email.split('@')[0]; // Simple name from email prefix
+                                return `<span class="project-participant">${name}</span>`;
+                            }).join('');
+                        }
+                        
+                        const organizerEmail = meeting.organizer && meeting.organizer.email ? meeting.organizer.email.split('@')[0] : 'N/A';
+
+                        modalContentContainer.innerHTML = `
+                            <div class="card">
+                                <div class="card-header">
+                                    <h2>Meeting Details</h2>
+                                </div>
+                                <div class="card-body">
+                                    <h3>${meeting.title || meeting.summary || 'Untitled Meeting'}</h3>
+                                    <p><strong>Start:</strong> ${formattedStart}</p>
+                                    <p><strong>End:</strong> ${formattedEnd}</p>
+                                    <p><strong>Organizer:</strong> ${organizerEmail}</p>
+                                    <p><strong>Attendees:</strong></p>
+                                    <div class="project-participants" style="margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 5px;">
+                                        ${attendeesHtml}
+                                    </div>
+                                    ${meeting.description ? `<p><strong>Description:</strong> ${meeting.description}</p>` : ''}
+                                    ${meeting.location ? `<p><strong>Location:</strong> ${meeting.location}</p>` : ''}
+                                    ${meeting.id ? `<p style="font-size:0.8em; color: #777;"><strong>ID:</strong> ${meeting.id}</p>` : ''}
+                                    ${meeting.source ? `<p style="font-size:0.8em; color: #777;"><strong>Source:</strong> ${meeting.source}</p>` : ''}
+                                </div>
+                                <button class="modal-close-button" onclick="closeMeetingPopup()">Close</button>
+                            </div>
+                        `;
+                    } else {
+                        modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Meeting not found (ID: ' + meetingId + '). Please refresh and try again.</p></div><button class="modal-close-button" onclick="closeMeetingPopup()">Close</button></div>';
+                        console.warn("Meeting not found with ID:", meetingId, "in fetched list:", meetings);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching meeting details for modal:', error);
+                    modalContentContainer.innerHTML = '<div class="card"><div class="card-body"><p>Error loading meeting details. Check console.</p></div><button class="modal-close-button" onclick="closeMeetingPopup()">Close</button></div>';
+                });
+        }
+
+        function closeMeetingPopup() {
+            const modal = document.getElementById('meetingModal');
             if (modal) {
                 modal.style.display = 'none';
             }
@@ -1388,14 +1562,16 @@
             closeNewProjectModal();
 
             // Show initial loading message
-            const loadingIndicatorId = showLoadingIndicator();
+            const loadingIndicatorId = showLoadingIndicator("Looking for possible participants");
             const loadingElement = document.getElementById(loadingIndicatorId);
             
-            // Start cycling through loading messages
-            currentLoadingMessageIndex = 0;
-            loadingMessageInterval = setInterval(() => {
-                updateLoadingMessage(loadingElement);
-            }, 3000); // Change message every 3 seconds //TODO delete hardcode
+            // Start cycling through loading messages if a specific flow for project creation is active
+            // For a generic send, the initial message is enough.
+            // We can refine this if `submitNewProject` should always have cycling messages.
+            // currentLoadingMessageIndex = 0;
+            // loadingMessageInterval = setInterval(() => {
+            // updateLoadingMessage(loadingElement);
+            // }, 3000);
 
             // Send the project creation request
             fetch('/send_message', {
@@ -1403,29 +1579,185 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     node_id: selectedNodeId,
-                    message: `project Alpha = ${description}`, //TODO delete hardcode
+                    message: `project Alpha = ${description}`,
                     sender_id: selectedNodeId
                 })
             })
             .then(response => response.json())
             .then(data => {
-                clearInterval(loadingMessageInterval);
-                removeLoadingIndicator(loadingIndicatorId);
+                // Clear the loading message interval
+                if (loadingMessageInterval) {
+                    clearInterval(loadingMessageInterval);
+                }
                 
                 if (data.error) {
                     addSystemMessage(`Error: ${data.error}`);
                 } else {
-                    addAgentMessage(data.response || "Project created successfully");
-                    fetchProjects(); // Refresh the projects list
+                    try {
+                        // Try to parse the response as JSON
+                        const responseData = JSON.parse(data.response.split('\n')[1]);
+                        const projectId = data.response.split("'")[1]; // Extract project ID from the message
+                        const widgetsHtml = createCandidateWidgets(responseData, projectId, description);
+                        addAgentMessage(widgetsHtml);
+                    } catch (e) {
+                        // If parsing fails, just show the raw response
+                        addAgentMessage(data.response);
+                    }
                 }
             })
             .catch(error => {
-                clearInterval(loadingMessageInterval);
-                removeLoadingIndicator(loadingIndicatorId);
                 console.error('Error creating project:', error);
                 addSystemMessage('Error creating project. Check console.');
+            })
+            .finally(() => {
+                removeLoadingIndicator(loadingIndicatorId);
             });
         }
+
+        // Function to create candidate widgets
+        function createCandidateWidgets(candidates, projectId, objective) {
+            const containerUniqueId = `cw-container-${Date.now()}`;
+            let widgetsHtml = `<div id="${containerUniqueId}" class="candidate-widgets" style="display: flex; gap: 20px; margin: 20px 0;" data-project-id="${projectId}" data-project-objective="${objective}">`;
+            
+            candidates.forEach(candidate => {
+                const skillsHtml = candidate.skills.map(skill => `<span class="skill-tag">${skill}</span>`).join('');
+                const cardId = `candidate-card-${candidate.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
+                
+                widgetsHtml += `
+                    <div id="${cardId}" class="candidate-card" style="
+                        background: white;
+                        border: 1px solid #ddd;
+                        border-radius: 8px;
+                        padding: 15px;
+                        flex: 1;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        display: flex;
+                        flex-direction: column;
+                    ">
+                        <div style="flex: 1;">
+                            <h3 style="margin: 0 0 10px 0; color: #333;">${candidate.name}</h3>
+                            <p style="margin: 0 0 5px 0; color: #666;">${candidate.title}</p>
+                            <p style="margin: 0 0 10px 0; color: #666;">${candidate.department}</p>
+                            <p style="margin: 0 0 10px 0; color: #666; font-size: 0.9em;">${candidate.description}</p>
+                            <div class="skills" style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                ${skillsHtml}
+                            </div>
+                        </div>
+                        <div class="candidate-actions" style="
+                            display: flex;
+                            gap: 10px;
+                            margin-top: 15px;
+                            justify-content: flex-end;
+                        ">
+                            <button onclick="handleCandidateResponse('${cardId}', '${candidate.name.replace(/'/g, "\\'")}', '${projectId}', 'accept')" 
+                                    class="accept-button" 
+                                    style="
+                                        background-color: #4CAF50;
+                                        color: white;
+                                        border: none;
+                                        padding: 8px 16px;
+                                        border-radius: 4px;
+                                        cursor: pointer;
+                                        transition: background-color 0.3s;
+                                    ">
+                                Accept
+                            </button>
+                            <button onclick="handleCandidateResponse('${cardId}', '${candidate.name.replace(/'/g, "\\'")}', '${projectId}', 'reject')" 
+                                    class="reject-button"
+                                    style="
+                                        background-color: #f44336;
+                                        color: white;
+                                        border: none;
+                                        padding: 8px 16px;
+                                        border-radius: 4px;
+                                        cursor: pointer;
+                                        transition: background-color 0.3s;
+                                    ">
+                                Reject
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            widgetsHtml += '</div>';
+            return widgetsHtml;
+        }
+
+        // Handle candidate response (accept/reject)
+        window.handleCandidateResponse = function(cardId, candidateName, projectId, action) {
+            const card = document.getElementById(cardId);
+            if (!card) return;
+
+            // Add slide-out animation
+            card.style.animation = 'slideOut 0.3s ease-in-out forwards';
+
+            // After animation completes, remove the card and adjust layout
+            setTimeout(() => {
+                card.remove();
+                
+                if (action === 'accept') {
+                    // Send message to add candidate to project
+                    const agentSelect = document.getElementById('agentSelect');
+                    const selectedNodeId = agentSelect.value;
+                    
+                    fetch('/send_message', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            node_id: selectedNodeId,
+                            message: `add ${candidateName} to project ${projectId}`,
+                            sender_id: selectedNodeId
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            addSystemMessage(`Error: ${data.error}`);
+                        } else {
+                            addSystemMessage(`Added ${candidateName} to project ${projectId}`);
+                            // Refresh projects list to show updated participants
+                            fetchProjects();
+                            
+                            // Emit socket.io event to update projects for all connected clients
+                            if (socket) {
+                                socket.emit('update_projects');
+                                socket.emit('update_tasks');
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error adding candidate to project:', error);
+                        addSystemMessage('Error adding candidate to project. Check console.');
+                    });
+                }
+
+                checkRemainingCandidates(projectId);
+            
+            }, 300);
+        };
+
+        // Check if there are any remaining candidates
+        window.checkRemainingCandidates = function(projectId) {
+            const container = document.querySelector(`.candidate-widgets[data-project-id="${projectId}"]`);
+            if (!container) return;
+
+            const remainingCards = container.querySelectorAll('.candidate-card');
+            if (remainingCards.length === 0) {
+                // If no cards left, remove the container and guide user to next steps
+                container.remove();
+                // const systemMessage = `All initial candidates for project '${projectId}' have been processed. <br><br>
+                //                      You can now add more stakeholders by typing: <br>
+                //                      <code>add [Participant Name] to project ${projectId}</code> <br><br>
+                //                      When you are finished adding participants, type: <br>
+                //                      <code>done with project ${projectId}</code> or <code>finalize project ${projectId}</code> <br>
+                //                      to generate the project plan and tasks.`;
+                // addSystemMessage(systemMessage);
+                setTimeout(() => {
+                    addAgentMessage("Do you want to continue with these participants? (yes/no) <br><br> If you want to add more participants, type: <code>add [Participant Name] to project Alpha</code>")
+                }, 500);
+            }
+        };
 
     </script>
 </body>

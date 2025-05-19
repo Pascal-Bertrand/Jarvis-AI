@@ -73,7 +73,7 @@ class Communication:
         if message.startswith("[(INFO)]"):
             log_system_message(f"[Communication] [{self.node_id}] Information message: {message.replace("[(INFO)]", "")}")
             return message.replace("[(INFO)]", "")        
-        
+
         # quick CLI command handling
         quick_cmd_response = self._handle_quick_command(message, sender_id)
         if quick_cmd_response is not None:
@@ -134,11 +134,15 @@ class Communication:
         
         if self.brain.confirmation_context['context'] == 'schedule meeting':
             meeting_id = f"meeting_{int(datetime.now().timestamp())}"
-            meeting_title = self.brain.meeting_context.get('title')
-            participants = self.brain.meeting_context.get('participants', [])
+            meeting_title = self.brain.meeting_context['collected_info'].get('title', 'Meeting')
+            participants = self.brain.meeting_context['collected_info'].get('participants', [])
+            print(participants, meeting_title)
             proposed_start = self.brain.confirmation_context['start_datetime']
             proposed_end = self.brain.confirmation_context['end_datetime']
             return self.scheduler._create_calendar_meeting(meeting_id, meeting_title, participants, proposed_start, proposed_end)
+        
+        if self.brain.confirmation_context['context'] == 'plan project':
+            return self.brain.finalize_and_plan_project(self.brain.confirmation_context['project_id'])
             
 
     def _handle_quick_command(self, message: str, sender_id: str) -> Optional[str]:
@@ -176,7 +180,7 @@ class Communication:
         if plan_match:
             log_system_message(f"[Communication] Quick command: Creating project with plan_match")
             project_id, objective = plan_match.groups()
-            plan_summary = self.brain.plan_project(project_id.strip(), objective.strip())
+            plan_summary = self.brain.initiate_project_planning_v2(project_id.strip(), objective.strip())
             return plan_summary
         
         # Command: Create project with 'create/new/start project <project_id> <objective>' syntax
@@ -184,7 +188,7 @@ class Communication:
         if create_project_match:
             log_system_message(f"[Communication] Quick command: Creating project with create_project_match")
             _, project_id, objective = create_project_match.groups()
-            plan_summary = self.brain.plan_project(project_id.strip(), objective.strip())
+            plan_summary = self.brain.initiate_project_planning_v2(project_id.strip(), objective.strip())
             return plan_summary
         
         # Command: Generate tasks for an existing project
@@ -198,7 +202,7 @@ class Communication:
                 return f"Project '{project_id}' does not exist. Please create it first with 'plan {project_id}=<objective>'."
             
             # Get project steps and participants from Brain
-            steps = self.brain.projects[project_id].get("plan", [])
+            steps = self.brain.projects[project_id].get("plan_steps", [])
             participants = list(self.brain.projects[project_id].get("participants", set()))
             
             if not steps:
@@ -209,6 +213,24 @@ class Communication:
             self.brain.generate_tasks_from_plan(project_id, steps, participants)
             return f"Tasks generated for project '{project_id}'."
         
+        # Command: Add participant to project
+        add_participant_match = re.match(r"^add\s+([\w\s-]+)\s+to\s+project\s+([\w-]+)$", message.strip(), re.IGNORECASE)
+        if add_participant_match:
+            log_system_message(f"[Communication] Quick command: Adding participant to project")
+            participant_name, project_id = add_participant_match.groups()
+            participant_name = participant_name.strip()
+            project_id = project_id.strip()
+            
+            # Call the Brain method to add participant
+            return self.brain.add_participant_to_project(project_id, participant_name)
+        
+        # Command: Finalize project planning and generate tasks
+        finalize_project_match = re.match(r"^(done with|finalize)\s+project\s+([\w-]+)$", message.strip(), re.IGNORECASE)
+        if finalize_project_match:
+            log_system_message(f"[Communication] Quick command: Finalizing project")
+            project_id = finalize_project_match.group(2).strip()
+            return self.brain.finalize_and_plan_project(project_id)
+
         return None
 
     def _chat_with_llm(self, message: str) -> str:
