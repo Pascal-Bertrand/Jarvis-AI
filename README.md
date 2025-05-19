@@ -25,4 +25,5 @@ An allround AI Secretary and network communication program to kill admin work in
 - If there are no clashes, the meeting is scheduled immediately
 
 ## Demo video
-https://github.com/user-attachments/assets/89cb1b18-0fab-45d9-8e7d-e5e4a2427ba3
+https://github.com/user-attachments/assets/b71a187c-b6ee-48bb-b0d9-0b09cfa9cb26
+
