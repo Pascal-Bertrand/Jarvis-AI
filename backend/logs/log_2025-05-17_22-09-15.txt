@@ -1,0 +1,18 @@
+2025-05-17 22:09:15,866 - INFO - ======= AgentAI Logging Started at 2025-05-17_22-09-15 =======
+2025-05-17 22:09:15,947 - INFO - SYSTEM: OpenAI client initialized successfully
+2025-05-17 22:09:15,967 - INFO - SYSTEM: [Brain:ceo] initialized.
+2025-05-17 22:09:15,967 - INFO - SYSTEM: [Scheduler:ceo] Calendar attached to node.
+2025-05-17 22:09:15,968 - INFO - SYSTEM: Created and registered node: ceo
+2025-05-17 22:09:15,968 - INFO - SYSTEM: [Brain:marketing] initialized.
+2025-05-17 22:09:15,968 - INFO - SYSTEM: [Scheduler:marketing] Calendar attached to node.
+2025-05-17 22:09:15,968 - INFO - SYSTEM: Created and registered node: marketing
+2025-05-17 22:09:15,968 - INFO - SYSTEM: [Brain:engineering] initialized.
+2025-05-17 22:09:15,968 - INFO - SYSTEM: [Scheduler:engineering] Calendar attached to node.
+2025-05-17 22:09:15,968 - INFO - SYSTEM: Created and registered node: engineering
+2025-05-17 22:09:15,968 - INFO - SYSTEM: [Brain:design] initialized.
+2025-05-17 22:09:15,968 - INFO - SYSTEM: [Scheduler:design] Calendar attached to node.
+2025-05-17 22:09:15,968 - INFO - SYSTEM: Created and registered node: design
+2025-05-17 22:09:15,968 - INFO - SYSTEM: [Brain:hr] initialized.
+2025-05-17 22:09:15,968 - INFO - SYSTEM: [Scheduler:hr] Calendar attached to node.
+2025-05-17 22:09:15,968 - INFO - SYSTEM: Created and registered node: hr
+2025-05-17 22:09:15,968 - INFO - SYSTEM: Nodes registered: ['ceo', 'marketing', 'engineering', 'design', 'hr']

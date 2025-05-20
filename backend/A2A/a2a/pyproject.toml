@@ -1,0 +1,24 @@
+[project]
+name = "a2a"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Pascal Bertrand", email = "pbertrand@ethz.ch" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "a2a-samples",
+    "google-a2a",
+]
+
+[project.scripts]
+a2a = "a2a:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+a2a-samples = { git = "https://github.com/google/A2A", subdirectory = "samples/python" }
+google-a2a = { git = "https://github.com/djsamseng/A2A.git", subdirectory = "samples/python", rev = "prefixPythonPackage" }

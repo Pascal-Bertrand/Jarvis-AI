@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload CV</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Upload Your CV</h1>
+        <form action="{{ url_for('upload_cv') }}" method="post" enctype="multipart/form-data">
+            <label for="cv">Select CV file:</label>
+            <input type="file" id="cv" name="cv" accept=".pdf,.doc,.docx" required>
+            <button type="submit">Upload</button>
+        </form>
+        {% if summary %}
+            <h2>CV Summary</h2>
+            <p><strong>Age:</strong> {{ summary.age }}</p>
+            <p><strong>Gender:</strong> {{ summary.gender }}</p>
+            <p><strong>Work Experience:</strong> {{ summary.work_experience }}</p>
+            <p><strong>Current Projects:</strong> {{ summary.current_projects }}</p>
+            <p><strong>Company Resort:</strong> {{ summary.company_resort }}</p>
+        {% endif %}
+    </div>
+</body>
+</html>

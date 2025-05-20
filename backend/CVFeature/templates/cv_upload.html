@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CV Upload</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-container {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .upload-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            display: none;
+        }
+        .cv-summary {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            display: none;
+        }
+        .summary-section {
+            margin-bottom: 15px;
+        }
+        .summary-section h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .summary-section ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .summary-section li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>CV Upload</h1>
+    <div class="upload-container">
+        <form action="/upload_cv" method="post" enctype="multipart/form-data" id="uploadForm">
+            <input type="file" name="cv_file" accept=".pdf,.doc,.docx">
+            <br>
+            <input type="submit" value="Upload CV" class="upload-btn">
+        </form>
+    </div>
+    <div id="result"></div>
+    <div id="cvSummary" class="cv-summary"></div>
+
+    <script>
+        document.getElementById('uploadForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            
+            try {
+                const response = await fetch('/upload_cv', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                const resultDiv = document.getElementById('result');
+                const summaryDiv = document.getElementById('cvSummary');
+                
+                resultDiv.style.display = 'block';
+                
+                if (response.ok) {
+                    resultDiv.style.backgroundColor = '#dff0d8';
+                    resultDiv.innerHTML = 'CV uploaded and processed successfully!';
+                    
+                    // Display CV summary
+                    summaryDiv.style.display = 'block';
+                    summaryDiv.innerHTML = `
+                        <h2>CV Summary</h2>
+                        <div class="summary-section">
+                            <h3>Personal Information</h3>
+                            <p>Name: ${data.summary.name}</p>
+                            <p>Email: ${data.summary.email}</p>
+                            <p>Phone: ${data.summary.phone}</p>
+                        </div>
+                        <div class="summary-section">
+                            <h3>Education</h3>
+                            <ul>
+                                ${data.summary.education.map(edu => `<li>${edu}</li>`).join('')}
+                            </ul>
+                        </div>
+                        <div class="summary-section">
+                            <h3>Experience</h3>
+                            <ul>
+                                ${data.summary.experience.map(exp => `<li>${exp}</li>`).join('')}
+                            </ul>
+                        </div>
+                        <div class="summary-section">
+                            <h3>Skills</h3>
+                            <ul>
+                                ${data.summary.skills.map(skill => `<li>${skill}</li>`).join('')}
+                            </ul>
+                        </div>
+                        <p>Summary saved to: ${data.saved_to}</p>
+                    `;
+                } else {
+                    resultDiv.style.backgroundColor = '#f2dede';
+                    resultDiv.innerHTML = `Error: ${data.error}`;
+                    summaryDiv.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = 'An error occurred while processing the CV';
+            }
+        };
+    </script>
+</body>
+</html>

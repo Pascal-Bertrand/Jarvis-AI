@@ -1,0 +1,18 @@
+[project]
+name = "python-template"
+version = "0.1.0"
+description = ""
+authors = [{name = "Pascal Bertrand", email = "pbertrand@ethz.ch"}]
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.1.8",
+    "langchain>=0.3.25",
+    "langchain-ollama>=0.3.2",
+    "langgraph>=0.4.1",
+    "openai>=1.61.1",
+]
+
+[tool.uv.workspace]
+members = [
+    "A2A/a2a",
+]

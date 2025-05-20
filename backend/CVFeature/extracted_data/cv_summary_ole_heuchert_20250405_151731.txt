@@ -1,0 +1,26 @@
+=== CV Summary ===
+
+Name: Ole Heuchert
+Email: 
+Phone: +4915759299748
+
+Education:
+- {'date': '08/2010 – 07/2014', 'degree': '', 'school': 'Grundschule Mühlenschule, Holm-Seppensen'}
+- {'date': '09/2014 – 07/2023', 'degree': '', 'school': 'Albert-Einstein-Gymnasium, Buchholz i.d.N.'}
+- {'date': '10/2024 – 09/2027', 'degree': 'B.Sc. Sustainable Management and Technology', 'school': 'TU München'}
+
+Experience:
+- {'date': '04/2019 – 04/2019', 'company': 'Lufthansatechnik AG', 'position': 'Freiwilliges Praktikum'}
+- {'date': '04/2020 – 11/2021', 'company': 'Heydt-Verlags GmbH', 'position': 'Aushilfskraft'}
+- {'date': '05/2022 – 10/2024', 'company': 'BECREATIVE GbR', 'position': 'Projektmanager im Marketing'}
+- {'date': '09/2023 – 09/2024', 'company': 'Alltagsbegleitung Gemeinsam Jung', 'position': 'Organisation und Assistenz'}
+
+Skills:
+- fortgeschrittene EDV-Kenntnisse in MS-Office
+- gute Kenntnisse in Englisch und Französisch
+- fortgeschrittene Kenntnisse in Projektmanagement
+- fortgeschrittene Kenntnisse in Social Media Marketing
+- Kommunikationsfähigkeit und Sprachvermögen
+- Zuverlässigkeit
+- Empathie
+- Teamfähigkeit
