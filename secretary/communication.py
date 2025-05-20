@@ -176,19 +176,19 @@ class Communication:
             return tasks_list
         
         # Command: Create project with 'plan <project_id>=<objective>' syntax
-        plan_match = re.match(r"^plan\s+([\w-]+)\s*=\s*(.+)$", message.strip(), re.IGNORECASE)
+        plan_match = re.match(r"^plan\s+([\w-]+)\s*=\s*(.+)$", message.strip(), re.IGNORECASE | re.DOTALL)
         if plan_match:
             log_system_message(f"[Communication] Quick command: Creating project with plan_match")
             project_id, objective = plan_match.groups()
-            plan_summary = self.brain.initiate_project_planning_v2(project_id.strip(), objective.strip())
+            plan_summary = self.brain.initiate_project_planning(project_id.strip(), objective.strip())
             return plan_summary
         
         # Command: Create project with 'create/new/start project <project_id> <objective>' syntax
-        create_project_match = re.match(r"^(create|new|start)?\s*project\s+([\w-]+)\s+(.+)$", message.strip(), re.IGNORECASE)
+        create_project_match = re.match(r"^(create|new|start)?\s*project\s+([\w-]+)\s+(.+)$", message.strip(), re.IGNORECASE | re.DOTALL)
         if create_project_match:
             log_system_message(f"[Communication] Quick command: Creating project with create_project_match")
             _, project_id, objective = create_project_match.groups()
-            plan_summary = self.brain.initiate_project_planning_v2(project_id.strip(), objective.strip())
+            plan_summary = self.brain.initiate_project_planning(project_id.strip(), objective.strip())
             return plan_summary
         
         # Command: Generate tasks for an existing project

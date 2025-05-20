@@ -1,7 +1,6 @@
 import re, json
 from datetime import datetime, timedelta
 import openai
-import threading
 
 from network.internal_communication import Intercom
 from network.tasks import Task
@@ -14,7 +13,6 @@ from secretary.utilities.logging import (
 )
 from secretary.socketio_ext import socketio
 from config.agents import AGENT_CONFIG
-
 
 class LLMClient:
     """
@@ -305,7 +303,7 @@ class Brain:
             log_error(error_msg)
             return "LLM query failed."
         
-    def initiate_project_planning_v2(self, project_id: str, objective: str):
+    def initiate_project_planning(self, project_id: str, objective: str):
         """
         V2: Initiates project planning by first getting candidate suggestions.
         The actual planning and task generation will happen after participants are confirmed.
@@ -317,25 +315,220 @@ class Brain:
                 "name": "Project " + project_id,
                 "objective": objective,
                 "description": objective,
-                "plan_steps": [], # Plan steps will be populated later
-                "participants": set(), # Participants will be added by user
-                "status": "pending_final_participants", # New status
+                "plan_steps": [], 
+                "participants": set(), 
+                "status": "pending_final_participants", 
                 "created_at": datetime.now().isoformat()
             }
             self.confirmation_context['active'] = True
             self.confirmation_context['context'] = "plan project"
             self.confirmation_context['initial_message'] = f"Initiating project planning for '{project_id}' with objective: {objective}"
             self.confirmation_context['project_id'] = project_id
-        else: # If project exists, update objective and reset status if needed
+        else: 
             self.projects[project_id]["objective"] = objective
             self.projects[project_id]["description"] = objective
             self.projects[project_id]["status"] = "pending_final_participants"
-            self.projects[project_id]["participants"] = set() # Reset participants for new planning phase
+            self.projects[project_id]["participants"] = set() 
 
-        # Import and use the demo functionality for initial candidate proposal
-        from demo import handle_project_submission
-        # This will return HTML for candidate widgets
-        return handle_project_submission(project_id, objective)
+        # Get candidate suggestions using the new internal method
+        suggested_candidates_data = self._get_best_candidates_data(project_id, objective)
+
+        # Format the response string to be compatible with the UI's current parsing logic
+        response_intro = f"Here are the best-suited candidates for your project '{project_id}':"
+        response_json_payload = json.dumps(suggested_candidates_data)
+        
+        return f"{response_intro}\n{response_json_payload}"
+
+    
+    def _get_default_candidates_data(self) -> list[dict]:
+        """Return default candidates data as a fallback."""
+        # Adapted from demo.py:get_default_candidates
+        # Directly returns list of dicts instead of Candidate objects
+        return [
+            {"name": "Ueli Maurer", "department": "Engineering", "skills": ["Swiss German", "AI", "System Design"], "title": "CEO", "description": "Oversees the entire organization and strategy."},
+            {"name": "John Doe", "department": "Marketing", "skills": ["English", "Marketing", "Market Analysis"], "title": "Marketing Lead", "description": "Handles marketing campaigns and market analysis."},
+            {"name": "Michael Chen", "department": "Engineering", "skills": ["Chinese", "Agile", "Market Analysis"], "title": "Engineering Lead", "description": "Manages the technical team and codebase."}
+        ]
+
+    def _create_candidates_data_from_ids(self, agent_ids: list[str]) -> list[dict]:
+        """Create candidate data (dictionaries) from agent IDs using AGENT_CONFIG."""
+        # Adapted from demo.py:create_candidates_from_ids
+        candidates_data = []
+        for agent_id_lookup in agent_ids:
+            agent_config_entry = next((a for a in AGENT_CONFIG if a["id"].lower() == agent_id_lookup.lower()), None)
+            if agent_config_entry:
+                candidates_data.append({
+                    "name": agent_config_entry["name"],
+                    "department": agent_config_entry["department"],
+                    "skills": agent_config_entry["skills"],
+                    "title": agent_config_entry["title"],
+                    "description": agent_config_entry["description"]
+                })
+        
+        if not candidates_data:
+            return self._get_default_candidates_data()
+        return candidates_data
+    
+    def _process_agent_ids(self, agent_ids: list[str]) -> list[str]:
+        """
+        Process agent IDs to handle different formats from the AI response.
+        Maps numeric indices or agent_N format to actual agent IDs from AGENT_CONFIG.
+        """
+        # Directly from demo.py:process_agent_ids
+        processed_ids = []
+        for agent_id in agent_ids:
+            if any(a["id"] == agent_id for a in AGENT_CONFIG):
+                processed_ids.append(agent_id)
+                continue
+            if agent_id.lower().startswith("agent"):
+                num_part = agent_id.lower().replace("agent", "").replace("_", "").strip()
+                try:
+                    idx = int(num_part) - 1
+                    if 0 <= idx < len(AGENT_CONFIG):
+                        processed_ids.append(AGENT_CONFIG[idx]["id"])
+                        continue
+                except ValueError:
+                    pass
+            try:
+                idx = int(agent_id) - 1
+                if 0 <= idx < len(AGENT_CONFIG):
+                    processed_ids.append(AGENT_CONFIG[idx]["id"])
+                    continue
+            except ValueError:
+                pass
+            agent_id_lower = agent_id.lower()
+            for agent in AGENT_CONFIG:
+                if agent["name"].lower() == agent_id_lower or agent["id"].lower() == agent_id_lower:
+                    processed_ids.append(agent["id"])
+                    break
+        return list(set(processed_ids)) # Ensure uniqueness
+
+    def _extract_agent_ids_from_text(self, text: str) -> list[str]:
+        """Extract agent IDs from text when JSON parsing fails."""
+        # Directly from demo.py:extract_agent_ids_from_text
+        found_ids = []
+        import re # Ensure re is imported if not already at the top of brain.py
+        agent_patterns = [
+            r'agent[_\s]*(\d+)',
+            r'\b(\d+)\b'
+        ]
+        for pattern in agent_patterns:
+            matches = re.findall(pattern, text.lower())
+            for match in matches:
+                # Try to map number to agent_index directly if possible
+                try:
+                    idx = int(match) -1
+                    if 0 <= idx < len(AGENT_CONFIG):
+                        found_ids.append(AGENT_CONFIG[idx]["id"])
+                        continue
+                except ValueError:
+                    pass
+                found_ids.append(f"agent_{match}") # Fallback to agent_N format
+
+        if not found_ids:
+            for agent in AGENT_CONFIG:
+                if agent["id"].lower() in text.lower() or agent["name"].lower() in text.lower():
+                    found_ids.append(agent["id"])
+        
+        if not found_ids and AGENT_CONFIG:
+            found_ids = [agent["id"] for agent in AGENT_CONFIG[:3]]
+        
+        return list(set(found_ids))[:3]
+
+    def _get_best_candidates_data(self, project_id: str, objective: str) -> list[dict]:
+        """
+        Use OpenAI to suggest the best candidates for a project based on the objective.
+        Returns a list of up to 3 candidate data dictionaries.
+        Adapted from demo.py:get_best_candidates
+        """
+        agent_info_list = []
+        for i, agent in enumerate(AGENT_CONFIG):
+            agent_info = (
+                f"Agent ID: {agent['id']}\n"
+                f"Name: {agent['name']}\n"
+                f"Department: {agent['department']}\n"
+                f"Title: {agent['title']}\n"
+                f"Skills: {', '.join(agent['skills'])}\n"
+                f"Description: {agent['description']}\n"
+                f"Knowledge: {agent['knowledge']}\n"
+            )
+            agent_info_list.append(agent_info)
+        agents_info = "\n\n".join(agent_info_list)
+
+        prompt_content = f"""Given the following project objective (which may include itemized lists and other structures) and available agents, select up to 3 best-suited candidates for the project.
+            Thoroughly analyze all details provided in the multi-line 'Project Objective' to understand the full scope and requirements.
+            Consider their skills, experience, and knowledge when making the selection.
+
+            Project ID: {project_id}
+            Project Objective:{objective}
+
+            Available Agents:
+            {agents_info}
+
+            Please analyze the project requirements and select the most suitable candidates. Consider:
+            1. Required skills and expertise
+            2. Department relevance
+            3. Role and responsibilities
+            4. Knowledge areas
+
+            IMPORTANT: You must ONLY respond with a valid JSON object containing an array of the EXACT agent IDs as listed above.
+            The response MUST follow this exact format: {{"selected_agents": ["exact_id_1", "exact_id_2", "exact_id_3"]}}
+            For example, if you select Ueli Maurer, use the exact ID "Ueli Maurer".
+            Use the exact agent ID strings from the Agent ID field for each agent.
+            Do not include any explanation or other text outside the JSON object.
+        """
+        
+        messages = [
+            {"role": "system", "content": "You are a project management expert who helps select the best team members for projects. You always respond with valid JSON using exact agent IDs from the provided list."},
+            {"role": "user", "content": prompt_content}
+        ]
+
+        try:
+            log_api_request("openai_chat_candidates", {"model": self.llm_params["model"], "messages": messages})
+            resp = self.client.chat.completions.create(
+                model=self.llm_params.get("model", "gpt-4o-mini"), # Use model from llm_params
+                messages=messages,
+                temperature=self.llm_params.get("temperature", 0.3),
+                max_tokens=self.llm_params.get("max_tokens", 150)
+            )
+            result_content = resp.choices[0].message.content.strip()
+            log_api_response("openai_chat_candidates", {"response": result_content})
+
+            if not result_content or result_content.isspace():
+                log_warning(f"[{self.node_id}] Empty response from OpenAI for candidate suggestion.")
+                return self._get_default_candidates_data()
+
+            clean_content = result_content.strip()
+            if clean_content.startswith("```") and clean_content.endswith("```"):
+                clean_content = clean_content.strip("```")
+                if clean_content.startswith("json"):
+                    clean_content = clean_content[4:].strip()
+            
+            selected_agent_ids = []
+            try:
+                if not clean_content.startswith('{'): # Try to find JSON if embedded
+                    json_start = clean_content.find('{')
+                    json_end = clean_content.rfind('}') + 1
+                    if json_start >= 0 and json_end > json_start:
+                        clean_content = clean_content[json_start:json_end]
+                
+                result = json.loads(clean_content)
+                selected_agent_ids = result.get("selected_agents", [])[:3]
+            except json.JSONDecodeError:
+                log_warning(f"[{self.node_id}] JSON parsing error for candidates: {clean_content}. Trying manual extraction.")
+                selected_agent_ids = self._extract_agent_ids_from_text(clean_content)
+            
+            processed_agent_ids = self._process_agent_ids(selected_agent_ids)
+            candidates_data = self._create_candidates_data_from_ids(processed_agent_ids)
+            
+            if candidates_data:
+                return candidates_data
+            return self._get_default_candidates_data()
+
+        except Exception as e:
+            log_error(f"[{self.node_id}] Error getting best candidates: {str(e)}")
+            return self._get_default_candidates_data()
+
 
     def add_participant_to_project(self, project_id: str, participant_name: str) -> str:
         """
@@ -431,7 +624,8 @@ class Brain:
         
         plan_prompt = f"""
         You are creating a detailed project plan for project '{project_id}'.
-        Objective: {objective}
+        Project Objective (This may be a multi-line description with itemized lists. Consider all details carefully):
+        {objective}
         Project Participants: {', '.join(final_participants)}. These are the only individuals/roles involved.
 
         Break down the objective into a sequence of 3-5 high-level steps.
