@@ -1,0 +1,36 @@
+2025-05-21 17:08:26,763 - INFO - ======= AgentAI Logging Started at 2025-05-21_17-08-26 =======
+2025-05-21 17:08:26,871 - INFO - SYSTEM: OpenAI client initialized successfully
+2025-05-21 17:08:26,892 - INFO - SYSTEM: [Brain:Ueli Maurer] initialized.
+2025-05-21 17:08:26,892 - INFO - SYSTEM: [Scheduler:Ueli Maurer] Calendar attached to node.
+2025-05-21 17:08:26,892 - INFO - SYSTEM: Created and registered node: Ueli Maurer
+2025-05-21 17:08:26,892 - INFO - SYSTEM: [Brain:John Doe] initialized.
+2025-05-21 17:08:26,892 - INFO - SYSTEM: [Scheduler:John Doe] Calendar attached to node.
+2025-05-21 17:08:26,892 - INFO - SYSTEM: Created and registered node: John Doe
+2025-05-21 17:08:26,892 - INFO - SYSTEM: [Brain:Michael Chen] initialized.
+2025-05-21 17:08:26,892 - INFO - SYSTEM: [Scheduler:Michael Chen] Calendar attached to node.
+2025-05-21 17:08:26,892 - INFO - SYSTEM: Created and registered node: Michael Chen
+2025-05-21 17:08:26,892 - INFO - SYSTEM: [Brain:Magnus Müller] initialized.
+2025-05-21 17:08:26,892 - INFO - SYSTEM: [Scheduler:Magnus Müller] Calendar attached to node.
+2025-05-21 17:08:26,892 - INFO - SYSTEM: Created and registered node: Magnus Müller
+2025-05-21 17:08:26,892 - INFO - SYSTEM: [Brain:Dustin Klebe] initialized.
+2025-05-21 17:08:26,892 - INFO - SYSTEM: [Scheduler:Dustin Klebe] Calendar attached to node.
+2025-05-21 17:08:26,892 - INFO - SYSTEM: Created and registered node: Dustin Klebe
+2025-05-21 17:08:26,892 - INFO - SYSTEM: Nodes registered: ['Ueli Maurer', 'John Doe', 'Michael Chen', 'Magnus Müller', 'Dustin Klebe']
+2025-05-21 17:08:55,319 - WARNING - WARNING: [Ueli Maurer] Google Calendar service not available, cannot fetch GCal meetings.
+2025-05-21 17:08:55,320 - INFO - SYSTEM: [Ueli Maurer] Total upcoming meetings (merged): 0
+2025-05-21 17:08:55,329 - INFO - SYSTEM: Client -2fwMQlb2Yan6jG8AAAD joined room Ueli Maurer
+2025-05-21 17:08:59,928 - INFO - SYSTEM: Routing message to node 'Ueli Maurer' from sender 'Ueli Maurer'
+2025-05-21 17:08:59,931 - INFO - SYSTEM: [Communication] ('Ueli Maurer', 'Ueli Maurer', 'hey')
+2025-05-21 17:09:00,052 - DEBUG - API REQUEST (openai_chat): {'model': 'gpt-4.1', 'messages': [{'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes. End after conveying necessary information.'}, {'role': 'user', 'content': '\n        Analyze this message and determine if it\'s a calendar-related command: \'hey\'\n        Return JSON with:\n        - is_calendar_command: boolean\n        - action: string ("schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or null)\n        - missing_info: array of strings (what information is missing: "time", "duration", "participants", "date", "title")\n        '}]}
+2025-05-21 17:09:00,052 - DEBUG - API REQUEST (openai_chat): {'model': 'gpt-4.1', 'messages': [{'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers.'}, {'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes. End after conveying necessary information.'}, {'role': 'user', 'content': '\n        Analyze this message and determine if it\'s a calendar-related command: \'hey\'\n        Return JSON with:\n        - is_calendar_command: boolean\n        - action: string ("schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or null)\n        - missing_info: array of strings (what information is missing: "time", "duration", "participants", "date", "title")\n        '}]}
+2025-05-21 17:09:01,855 - DEBUG - API RESPONSE (openai_chat): {'response': '{\n  "is_calendar_command": false,\n  "action": null,\n  "missing_info": []\n}'}
+2025-05-21 17:09:01,855 - INFO - AGENT (Ueli Maurer): {
+  "is_calendar_command": false,
+  "action": null,
+  "missing_info": []
+}
+2025-05-21 17:09:01,855 - INFO - SYSTEM: [Communication] Calendar intent detected: {'is_calendar_command': False, 'action': None, 'missing_info': []}
+2025-05-21 17:09:01,855 - DEBUG - API REQUEST (openai_chat): {'model': 'gpt-4.1', 'messages': [{'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes. End after conveying necessary information.'}, {'role': 'user', 'content': 'hey'}]}
+2025-05-21 17:09:01,856 - DEBUG - API REQUEST (openai_chat): {'model': 'gpt-4.1', 'messages': [{'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers.'}, {'role': 'system', 'content': 'You are a direct and concise AI agent for an organization. Provide short, to-the-point answers and do not continue repeating Goodbyes. End after conveying necessary information.'}, {'role': 'user', 'content': 'hey'}]}
+2025-05-21 17:09:02,624 - DEBUG - API RESPONSE (openai_chat): {'response': 'Hello. How can I help you?'}
+2025-05-21 17:09:02,624 - INFO - AGENT (Ueli Maurer): Hello. How can I help you?

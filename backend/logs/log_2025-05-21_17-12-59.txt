@@ -1,0 +1,18 @@
+2025-05-21 17:12:59,668 - INFO - ======= AgentAI Logging Started at 2025-05-21_17-12-59 =======
+2025-05-21 17:12:59,734 - INFO - SYSTEM: OpenAI client initialized successfully
+2025-05-21 17:12:59,752 - INFO - SYSTEM: [Brain:Ueli Maurer] initialized.
+2025-05-21 17:12:59,753 - INFO - SYSTEM: [Scheduler:Ueli Maurer] Calendar attached to node.
+2025-05-21 17:12:59,753 - INFO - SYSTEM: Created and registered node: Ueli Maurer
+2025-05-21 17:12:59,753 - INFO - SYSTEM: [Brain:John Doe] initialized.
+2025-05-21 17:12:59,753 - INFO - SYSTEM: [Scheduler:John Doe] Calendar attached to node.
+2025-05-21 17:12:59,753 - INFO - SYSTEM: Created and registered node: John Doe
+2025-05-21 17:12:59,753 - INFO - SYSTEM: [Brain:Michael Chen] initialized.
+2025-05-21 17:12:59,753 - INFO - SYSTEM: [Scheduler:Michael Chen] Calendar attached to node.
+2025-05-21 17:12:59,753 - INFO - SYSTEM: Created and registered node: Michael Chen
+2025-05-21 17:12:59,753 - INFO - SYSTEM: [Brain:Magnus Müller] initialized.
+2025-05-21 17:12:59,753 - INFO - SYSTEM: [Scheduler:Magnus Müller] Calendar attached to node.
+2025-05-21 17:12:59,753 - INFO - SYSTEM: Created and registered node: Magnus Müller
+2025-05-21 17:12:59,753 - INFO - SYSTEM: [Brain:Dustin Klebe] initialized.
+2025-05-21 17:12:59,753 - INFO - SYSTEM: [Scheduler:Dustin Klebe] Calendar attached to node.
+2025-05-21 17:12:59,753 - INFO - SYSTEM: Created and registered node: Dustin Klebe
+2025-05-21 17:12:59,753 - INFO - SYSTEM: Nodes registered: ['Ueli Maurer', 'John Doe', 'Michael Chen', 'Magnus Müller', 'Dustin Klebe']

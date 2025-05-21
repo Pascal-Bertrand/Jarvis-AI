@@ -5,6 +5,10 @@ import { io, Socket } from 'socket.io-client';
 import { Mic, Info, ChevronDown, PlusCircle } from 'lucide-react';
 import AgentCandidateSelector from './components/AgentCandidateSelector';
 import type { CandidateAgent } from './components/AgentCandidateCard';
+import NewProjectModal from './components/NewProjectModal';
+import ProjectDetailModal from './components/ProjectDetailModal';
+import TaskDetailModal from './components/TaskDetailModal';
+import MeetingDetailModal from './components/MeetingDetailModal';
 
 // Define types for our data
 interface Agent {
@@ -13,7 +17,13 @@ interface Agent {
   // Add other agent properties if available from the /nodes endpoint
 }
 
-interface ChatMessage {
+interface PlanStep {
+  name: string;
+  description: string;
+  responsible_participants: string[];
+}
+
+export interface ChatMessage {
   id: string;
   type: 'user' | 'agent' | 'system';
   text: string;
@@ -21,19 +31,79 @@ interface ChatMessage {
   messageSubType?: 'candidate_selection';
   candidates?: CandidateAgent[];
   projectId?: string;
+  isLoadingPlaceholder?: boolean;
+  promptIssued?: boolean; // Added to track if next step prompt was issued
 }
 
-interface Meeting {
+export interface Meeting {
   id: string;
-  title: string; // In original index.html, it used meeting.summary or meeting.title
-  dateTime: string; // Formatted date string
-  // Example from index.html: const formattedDate = startDate ? startDate.toLocaleString(...) : 'No date set';
+  title: string;
+  dateTime: string; // Formatted start date/time for list display
+  startTimeISO?: string; // Raw start dateTime or date
+  endTimeISO?: string;   // Raw end dateTime or date
+  attendees?: { email: string; displayName?: string }[];
+  organizerEmail?: string;
+  description?: string; // From GCal event description, if available
+  // location?: string; // If GCal events have it
+  // source?: string; // Backend provides this, can be added if needed
 }
 
 interface Project {
   id: string;
   name: string;
-  participants?: string[]; // From index.html example
+  owner?: string;
+  participants?: string[];
+  objective?: string;
+  description?: string;
+  plan_steps?: PlanStep[];
+  status?: string;
+  created_at?: string;
+}
+
+interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  assigned_to?: string;
+  due_date?: string;
+  priority?: 'high' | 'medium' | 'low' | string;
+  project_id?: string;
+}
+
+interface ApiProjectData {
+  name: string;
+  owner?: string;
+  participants?: string[];
+  objective?: string;
+  description?: string;
+  plan_steps?: PlanStep[];
+  status?: string;
+  created_at?: string;
+}
+
+interface ApiProject {
+  id?: string; // id might be at the top level or within the object
+  name: string;
+  owner?: string;
+  participants?: string[];
+  objective?: string;
+  description?: string;
+  plan_steps?: PlanStep[];
+  status?: string;
+  created_at?: string;
+}
+
+// Interface for the raw meeting data structure from the backend
+interface RawBackendMeetingEvent {
+  id: string;
+  summary?: string;
+  title?: string; 
+  description?: string;
+  start: { dateTime?: string; date?: string; timeZone?: string };
+  end: { dateTime?: string; date?: string; timeZone?: string };
+  attendees?: { email: string; displayName?: string }[]; 
+  organizer?: { email: string; displayName?: string }; 
+  source?: string; 
 }
 
 // Define a placeholder for the Socket.IO server URL
@@ -50,9 +120,29 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement | null>(null); // For auto-scrolling
 
+  // State for loading indicators
+  const loadingMessageIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [recentlyPromptedProjectIds, setRecentlyPromptedProjectIds] = useState<Set<string>>(new Set()); // For duplicate prompt issue
+  const promptedCandidateMessageIdsRef = useRef<Set<string>>(new Set()); // Ref to track issued prompts for specific candidate messages
+
+  const projectPlanningMessages = [
+    "Looking through past projects...",
+    "Searching for suitable approaches...",
+    "Analyzing project requirements...",
+    "Generating project plan...",
+    "Finalizing project structure..."
+  ];
+
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  // Add tasks state later: const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
+  const [isProjectDetailModalOpen, setIsProjectDetailModalOpen] = useState(false);
+  const [selectedProjectForDetail, setSelectedProjectForDetail] = useState<Project | null>(null);
+  const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
+  const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<Task | null>(null);
+  const [isMeetingDetailModalOpen, setIsMeetingDetailModalOpen] = useState(false);
+  const [selectedMeetingForDetail, setSelectedMeetingForDetail] = useState<Meeting | null>(null);
 
   // Scroll to bottom of messages when new messages are added
   useEffect(() => {
@@ -80,13 +170,115 @@ export default function Home() {
       }]);
     });
 
-    // TODO: Add listeners for 'update_tasks', 'update_projects', 'new_message' from agent (if backend pushes them)
-    // Example: newSocket.on('agent_says_something_new', (data) => { add message of type 'agent' });
+    newSocket.on('update_meetings', () => {
+      console.log('Received update_meetings event from backend.');
+      // Assuming selectedAgent is available in this scope.
+      // Need to access selectedAgent state here. Best to use it from the outer scope.
+      // This will be handled by fetching based on the current selectedAgent.id if it exists.
+      // For now, this relies on fetchMeetings being called with the correct agent ID
+      // if an agent is currently selected. The fetchMeetings function itself doesn't
+      // inherently know the current agent unless passed, or this event triggers a re-fetch
+      // using the existing selectedAgent state.
+      // The current implementation of handleAgentSelect already calls fetchMeetings,
+      // so if an agent is selected, their meetings are fetched.
+      // This socket event should trigger a re-fetch for the *currently selected* agent.
+      // We can access `selectedAgent` directly here IF `selectedAgent` is stable or use `socket.data.selectedAgent` trick
+      // Or, more simply, rely on `selectedAgent` state being up-to-date.
+      // Let's make fetchMeetings optionally take agentId or use state.
+      // For now, we'll fetch based on the current selectedAgent from the state.
+      // This will require `selectedAgent` to be a dependency of the main useEffect.
+      // Let's add it for robustness.
+      // This part is tricky because selectedAgent is state. The event handler for socket
+      // won't automatically get the latest `selectedAgent` unless it's in the dependency array
+      // which would re-setup the socket listeners on every agent change.
+      // A common pattern is to use a ref to the fetch function or selected agent, or
+      // to have the server emit the agent_id along with 'update_meetings' if it's specific.
+      // Given current structure, let's assume fetchMeetings will be called by a top-level state check
+      // or we pass the current agent's ID if available.
+      // Let's modify this to call fetchMeetings if an agent is selected
+      // This will be improved when `selectedAgent` is added to the dependency array of the main `useEffect`.
+      // For now, let's ensure `fetchMeetings` is callable and will use `selectedAgent.id`.
+      // This will be called, but `selectedAgent` in this closure might be stale.
+      // The best way is to have the fetchMeetings function reference the state.
+      // As `selectedAgent` is in the outer scope, `fetchMeetings(selectedAgent.id)` inside here
+      // will use the `selectedAgent` from the time this effect was set up.
+      // This is a common React hook pitfall.
+      // A better way:
+      // 1. Server sends agent_id with 'update_meetings' if specific.
+      // 2. Or, the component that holds `selectedAgent` re-calls `fetchMeetings`.
+      // Given that `fetchMeetings` is defined in the same scope and uses `BACKEND_URL`,
+      // and `selectedAgent` is also state, we need to ensure the `fetchMeetings` call
+      // within this event handler can access the *current* selectedAgent.
+      // The `handleAgentSelect` function correctly fetches. This event is for *other* clients
+      // or background updates.
+
+      // The most straightforward way without restructuring too much is to ensure
+      // this effect hook has `selectedAgent` in its dependencies, or `fetchMeetings`
+      // is defined with `useCallback` and includes `selectedAgent` in its deps.
+
+      // For now, let's just log, and ensure fetchMeetings is robust.
+      // The actual fetch should be triggered by an effect that *does* depend on selectedAgent if needed.
+      // The `handleAgentSelect` function will correctly call `fetchMeetings`.
+      // This event is more for background updates.
+      // We will call fetchMeetings with the current agent ID if one is selected.
+      // This requires selectedAgent to be a dependency of the main useEffect.
+      // Let's add it for robustness.
+      setSocket(prevSocket => {
+        if (prevSocket && prevSocket.active) { // Check if socket is still active
+            const currentSelectedAgentId = selectedAgentRef.current?.id; // Use a ref
+            if (currentSelectedAgentId) {
+                console.log(`Socket event 'update_meetings': Fetching for agent ${currentSelectedAgentId}`);
+                fetchMeetings(currentSelectedAgentId);
+            } else {
+                console.log("Socket event 'update_meetings': No agent selected, not fetching.");
+            }
+        }
+        return prevSocket;
+      });
+    });
+    
+    newSocket.on('update_projects', () => {
+        console.log('Received update_projects event from backend.');
+        setSocket(prevSocket => {
+            if (prevSocket && prevSocket.active) {
+                const currentSelectedAgentId = selectedAgentRef.current?.id;
+                if (currentSelectedAgentId) {
+                    console.log(`Socket event 'update_projects': Fetching for agent ${currentSelectedAgentId}`);
+                    fetchProjects(currentSelectedAgentId);
+                } else {
+                    console.log("Socket event 'update_projects': No agent selected, not fetching.");
+                }
+            }
+            return prevSocket;
+        });
+    });
+
+    newSocket.on('update_tasks', () => { // Added tasks update
+        console.log('Received update_tasks event from backend.');
+        setSocket(prevSocket => {
+            if (prevSocket && prevSocket.active) {
+                const currentSelectedAgentId = selectedAgentRef.current?.id;
+                if (currentSelectedAgentId) {
+                    console.log(`Socket event 'update_tasks': Fetching for agent ${currentSelectedAgentId}`);
+                    fetchTasks(currentSelectedAgentId);
+                } else {
+                    console.log("Socket event 'update_tasks': No agent selected, not fetching.");
+                }
+            }
+            return prevSocket;
+        });
+    });
 
     return () => {
       newSocket.disconnect();
     };
-  }, []);
+  }, []); // initialAgentId (if used for first load) or selectedAgent if it should re-run on agent change
+
+  // Ref for selectedAgent to be used in socket event handlers
+  const selectedAgentRef = useRef<Agent | null>(null);
+  useEffect(() => {
+    selectedAgentRef.current = selectedAgent;
+  }, [selectedAgent]);
 
   // Effect for fetching agents
   useEffect(() => {
@@ -115,12 +307,24 @@ export default function Home() {
     try {
       const response = await fetch(`${BACKEND_URL}/meetings?agent_id=${agentId}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data: { id: string, summary?: string, title?: string, start: { dateTime?: string, date?: string } }[] = await response.json();
-      const formattedMeetings: Meeting[] = data.map((meeting) => ({
-        id: meeting.id,
-        title: meeting.summary || meeting.title || 'Untitled Meeting',
-        dateTime: meeting.start?.dateTime ? new Date(meeting.start.dateTime).toLocaleString() : (meeting.start?.date ? new Date(meeting.start.date).toLocaleDateString() : 'Date TBD')
-      }));
+      const data: RawBackendMeetingEvent[] = await response.json(); 
+      
+      const formattedMeetings: Meeting[] = data.map((meeting_evt) => {
+        const startDate = meeting_evt.start?.dateTime ? new Date(meeting_evt.start.dateTime) : (meeting_evt.start?.date ? new Date(meeting_evt.start.date) : null);
+        // const endDate = meeting_evt.end?.dateTime ? new Date(meeting_evt.end.dateTime) : (meeting_evt.end?.date ? new Date(meeting_evt.end.date) : null);
+
+        return {
+          id: meeting_evt.id,
+          title: meeting_evt.title || meeting_evt.summary || 'Untitled Meeting',
+          dateTime: startDate ? (meeting_evt.start?.dateTime ? startDate.toLocaleString() : startDate.toLocaleDateString()) : 'Date TBD',
+          startTimeISO: meeting_evt.start?.dateTime || meeting_evt.start?.date,
+          endTimeISO: meeting_evt.end?.dateTime || meeting_evt.end?.date,
+          attendees: meeting_evt.attendees?.map((a: { email: string }) => ({ email: a.email, displayName: a.email?.split('@')[0] })) || [],
+          organizerEmail: meeting_evt.organizer?.email,
+          description: meeting_evt.description, // GCal events might have a description in the root
+                                              // or scheduler.py could add it to the transformed object
+        };
+      });
       setMeetings(formattedMeetings);
     } catch (error) {
       console.error('Error fetching meetings:', error);
@@ -136,13 +340,32 @@ export default function Home() {
       const data: Project[] | { [projectId: string]: Omit<Project, 'id'> } = await response.json();
       let projectArray: Project[] = [];
       if (Array.isArray(data)) {
-        projectArray = data.map((p: { id?: string, name: string, participants?: string[] }) => ({ id: p.id || p.name, name: p.name, participants: p.participants || [] }));
-      } else if (typeof data === 'object' && data !== null) {
-        projectArray = Object.keys(data).map(projectId => ({
-          id: projectId,
-          name: data[projectId].name || projectId,
-          participants: data[projectId].participants || []
+        projectArray = data.map((p: ApiProject) => ({ 
+            id: p.id || p.name, // Use p.name as fallback for id if not present
+            name: p.name,
+            owner: p.owner,
+            participants: p.participants || [],
+            objective: p.objective,
+            description: p.description || p.objective, // Use objective as fallback for description
+            plan_steps: p.plan_steps || [],
+            status: p.status,
+            created_at: p.created_at
         }));
+      } else if (typeof data === 'object' && data !== null) {
+        projectArray = Object.keys(data).map(projectId => {
+          const projectData = (data as { [key: string]: ApiProjectData })[projectId];
+          return {
+            id: projectId,
+            name: projectData.name || projectId, // Use projectId as fallback for name
+            owner: projectData.owner,
+            participants: projectData.participants || [],
+            objective: projectData.objective,
+            description: projectData.description || projectData.objective, // Use objective as fallback
+            plan_steps: projectData.plan_steps || [],
+            status: projectData.status,
+            created_at: projectData.created_at,
+          };
+        });
       }
       setProjects(projectArray);
     } catch (error) {
@@ -151,13 +374,32 @@ export default function Home() {
     }
   };
 
+  const fetchTasks = async (agentId: string) => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/tasks?agent_id=${agentId}`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data: Task[] = await response.json(); // Assuming backend returns Task[] directly
+      setTasks(data.map(task => ({
+        ...task,
+        // Format due_date if necessary, e.g., new Date(task.due_date).toLocaleDateString()
+        // For now, assume backend sends it in a displayable format or TaskDetailModal handles it
+      })));
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+      setTasks([]); // Clear tasks on error
+    }
+  };
+
   const handleAgentSelect = (agent: Agent | null, isInitialSelect: boolean = false) => {
     if (!agent) {
         setSelectedAgent(null);
-        setMessages([]);
+        // Clear messages only if it's not an initial empty select or error state
+        if (!isInitialSelect || messages.length > 0 && !messages.some(m => m.type === 'system' && m.text.includes('Error'))) {
+            setMessages([]);
+        }
         setMeetings([]);
         setProjects([]);
-        // setTasks([]);
+        setTasks([]);
         if (socket && currentAgentRoom) {
             socket.emit('leave_room', { room: currentAgentRoom });
             console.log(`Emitted leave_room for ${currentAgentRoom}`);
@@ -179,7 +421,7 @@ export default function Home() {
 
     fetchMeetings(agent.id);
     fetchProjects(agent.id);
-    // fetchTasks(agent.id); // TODO
+    fetchTasks(agent.id);
 
     if (socket) {
       if (currentAgentRoom && currentAgentRoom !== agent.id) {
@@ -205,6 +447,57 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agents]); // Only re-run if agents array itself changes
 
+  const displayLoadingIndicator = (isProjectPlanning: boolean, initialMessageOverride?: string) => {
+    const newLoadingId = `loading-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const text = isProjectPlanning
+        ? (initialMessageOverride || projectPlanningMessages[0]) 
+        : "Thinking...";
+
+    const placeholderMessage: ChatMessage = {
+      id: newLoadingId,
+      type: 'agent',
+      text: text,
+      isLoadingPlaceholder: true,
+      timestamp: new Date().toLocaleTimeString()
+    };
+
+    setMessages(prev => [...prev, placeholderMessage]);
+
+    if (isProjectPlanning) {
+      if (loadingMessageIntervalRef.current) {
+        clearInterval(loadingMessageIntervalRef.current);
+      }
+      let index = 0;
+      if (initialMessageOverride) { 
+          const initialIdx = projectPlanningMessages.indexOf(initialMessageOverride);
+          if (initialIdx !== -1) index = (initialIdx +1) % projectPlanningMessages.length;
+      } else {
+          index = 1; 
+      }
+      
+      loadingMessageIntervalRef.current = setInterval(() => {
+        const nextMessageText = projectPlanningMessages[index];
+        setMessages(prevMsgs => 
+          prevMsgs.map(m => 
+            m.id === newLoadingId ? { ...m, text: nextMessageText } : m
+          )
+        );
+        index = (index + 1) % projectPlanningMessages.length;
+      }, 3000); // Cycle every 3 seconds
+    }
+    return newLoadingId;
+  };
+
+  const removeLoadingIndicator = (idToRemove: string | null) => {
+    if (idToRemove) {
+      setMessages(prevMsgs => prevMsgs.filter(m => m.id !== idToRemove));
+    }
+    if (loadingMessageIntervalRef.current) {
+      clearInterval(loadingMessageIntervalRef.current);
+      loadingMessageIntervalRef.current = null;
+    }
+  };
+
   // Reusable function to post any message/command to the agent and handle response
   const _postMessageToAgent = async (messageText: string) => {
     if (!selectedAgent) {
@@ -226,24 +519,33 @@ export default function Home() {
         setMessages(prev => [...prev, { id: Date.now().toString() + '-error', type: 'system', text: `Agent error: ${data.error}`, timestamp: new Date().toLocaleTimeString() }]);
       } else {
         const agentResponseText = data.response || "(Agent processed the command)";
-        // Check for candidate selection response from this command too, though less likely
+        // Check for candidate selection response
         const candidatePrefix = "Here are the best-suited candidates for your project '";
         if (agentResponseText.startsWith(candidatePrefix)) {
-          const endOfPrefix = agentResponseText.indexOf("':") + 2;
+          const endOfPrefix = agentResponseText.indexOf("':") + 2; // End of "project 'PROJECT_NAME':"
           const jsonString = agentResponseText.substring(endOfPrefix).trim();
           const projectIdMatch = agentResponseText.match(/project '([^']*)'/);
-          const projectId = projectIdMatch ? projectIdMatch[1] : undefined;
+          const currentProjectId = projectIdMatch ? projectIdMatch[1] : undefined;
+          
+          // Extract the introductory text before the JSON
+          const introText = agentResponseText.substring(0, endOfPrefix);
+
           try {
             const candidatesData: CandidateAgent[] = JSON.parse(jsonString);
             setMessages(prev => [...prev, {
               id: Date.now().toString() + '-agent-candidates',
-              type: 'agent', text: agentResponseText.substring(0, endOfPrefix),
-              messageSubType: 'candidate_selection', candidates: candidatesData, projectId: projectId,
-              timestamp: new Date().toLocaleTimeString()
+              type: 'agent', 
+              text: introText, // Show the introductory part of the message
+              messageSubType: 'candidate_selection', 
+              candidates: candidatesData, 
+              projectId: currentProjectId,
+              timestamp: new Date().toLocaleTimeString(),
+              promptIssued: false // Initialize promptIssued
             }]);
           } catch (parseError) {
-            console.error("Failed to parse candidate JSON from command response:", parseError);
-            setMessages(prev => [...prev, { id: Date.now().toString() + '-agent', type: 'agent', text: agentResponseText, timestamp: new Date().toLocaleTimeString() }]);
+            console.error("Failed to parse candidate JSON from command response:", parseError, "JSON string:", jsonString);
+            // Fallback to showing the full original message if parsing fails
+            setMessages(prev => [...prev, { id: Date.now().toString() + '-agent-parse-error', type: 'agent', text: agentResponseText, timestamp: new Date().toLocaleTimeString() }]);
           }
         } else {
           setMessages(prev => [...prev, { id: Date.now().toString() + '-agent', type: 'agent', text: agentResponseText, timestamp: new Date().toLocaleTimeString() }]);
@@ -264,50 +566,230 @@ export default function Home() {
     setMessages(prev => [...prev, userMessage]);
     const currentMessageText = inputText.trim();
     setInputText('');
-    await _postMessageToAgent(currentMessageText);
+
+    let tempLoadingId: string | null = null;
+    try {
+      // Check if it's a finalize project command to show specific loading messages
+      const isFinalizingProject = currentMessageText.toLowerCase().startsWith("finalize project ");
+      tempLoadingId = displayLoadingIndicator(isFinalizingProject, 
+        isFinalizingProject ? projectPlanningMessages[0] : undefined
+      );
+      await _postMessageToAgent(currentMessageText);
+    } catch (error) {
+      // Error handling is already inside _postMessageToAgent or should be added there
+      // for specific message posting errors.
+      console.error("Error in handleSendMessage flow:", error);
+    } finally {
+      if (tempLoadingId) {
+        removeLoadingIndicator(tempLoadingId);
+      }
+    }
   };
   
-  const handleCandidateAccept = async (candidateName: string, projectId?: string) => {
-    if (!selectedAgent) {
-      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'system', text: 'Error: No agent selected for this action.' }]);
+  const promptForNextStep = (projectId: string) => {
+    const project = projects.find(p => p.id === projectId);
+    const projectName = project ? project.name : projectId;
+    const randomSuffix = Math.random().toString(36).substring(2, 7);
+    const rawText = `All initial candidates for project '${projectName}' have been processed.\nWhat would you like to do next?\n\n1. Add another participant by typing: \`add [Participant Name] to project ${projectId}\`\n2. Finalize project planning by typing: \`finalize project ${projectId}\``;
+    
+    const formattedText = rawText
+      .replace(/\n/g, '<br />')
+      .replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+
+    const nextStepMessage: ChatMessage = {
+      id: Date.now().toString() + '-' + projectId + '-next-step-' + randomSuffix, 
+      type: 'agent',
+      text: formattedText,
+      timestamp: new Date().toLocaleTimeString()
+    };
+    setMessages(prev => [...prev, nextStepMessage]);
+  };
+
+  const handleCandidateAccept = async (candidateName: string, projectId: string | undefined, messageId: string) => {
+    if (!selectedAgent || !projectId) {
+      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'system', text: 'Error: Agent or Project ID missing for this action.' }]);
       return;
     }
 
-    const acceptanceMessage = `User action: Accepted candidate ${candidateName}${projectId ? ` for project '${projectId}'` : ''}.`;
-    const continuationMessage = `System command: Continue project planning for project '${projectId}' with participant ${candidateName}.`;
-
-    // Add a system message immediately for responsiveness about the initial action
-    setMessages(prev => [...prev, {
-      id: Date.now().toString() + '-accept-process',
-      type: 'system',
-      text: `Processing acceptance for ${candidateName}...`,
+    // Add a user-facing message indicating the action
+    const userActionMessage: ChatMessage = {
+      id: Date.now().toString() + '-user-accept',
+      type: 'user',
+      text: `Action: Adding ${candidateName} to project ${projectId}.`,
       timestamp: new Date().toLocaleTimeString()
-    }]);
+    };
+    setMessages(prev => [...prev, userActionMessage]);
 
-    // Send the acceptance message
-    await _postMessageToAgent(acceptanceMessage);
+    // Send command to backend to add participant
+    await _postMessageToAgent(`add ${candidateName} to project ${projectId}`);
 
-    // If there's a project ID, immediately send the command to continue project planning
-    if (projectId) {
-      // Optionally, add another system message indicating the continuation command is being sent
-      setMessages(prev => [...prev, {
-        id: Date.now().toString() + '-continue-process',
-        type: 'system',
-        text: `Instructing agent to continue planning for project '${projectId}' with ${candidateName}.`,
+    // Update the specific message in the chat to remove the accepted candidate
+    setMessages(prevMessages => {
+      const newMessages = prevMessages.map(msg => {
+        if (msg.id === messageId && msg.messageSubType === 'candidate_selection' && msg.candidates) {
+          const updatedCandidates = msg.candidates.filter(c => c.name !== candidateName);
+          if (updatedCandidates.length === 0) {
+            if (!promptedCandidateMessageIdsRef.current.has(messageId)) {
+              promptedCandidateMessageIdsRef.current.add(messageId);
+
+              if (projectId && !recentlyPromptedProjectIds.has(projectId)) {
+                setRecentlyPromptedProjectIds(prev => new Set(prev).add(projectId));
+                promptForNextStep(projectId); 
+                setTimeout(() => {
+                  setRecentlyPromptedProjectIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(projectId);
+                    return newSet;
+                  });
+                }, 2000); // 2-second cooldown
+              }
+              return { ...msg, candidates: [], promptIssued: true }; 
+            } else {
+              // Prompt already handled for this messageId by ref, just clear candidates
+              return { ...msg, candidates: [] };
+            }
+          }
+          return { ...msg, candidates: updatedCandidates };
+        }
+        return msg;
+      });
+      return newMessages;
+    });
+  };
+
+  const handleCandidateReject = async (candidateName: string, projectId: string | undefined, messageId: string) => {
+    if (!selectedAgent || !projectId) {
+      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'system', text: 'Error: Agent or Project ID missing for this action.' }]);
+      return;
+    }
+    // Add a user-facing message indicating the action
+    const userActionMessage: ChatMessage = {
+      id: Date.now().toString() + '-user-reject',
+      type: 'user',
+      text: `Action: Rejecting ${candidateName} for project ${projectId}.`,
+      timestamp: new Date().toLocaleTimeString()
+    };
+    setMessages(prev => [...prev, userActionMessage]);
+    
+    // Send a message to the backend for logging the rejection, if necessary
+    await _postMessageToAgent(`User action: Rejected candidate ${candidateName} for project '${projectId}'.`);
+
+    // Update the specific message in the chat to remove the rejected candidate
+     setMessages(prevMessages => {
+      const newMessages = prevMessages.map(msg => {
+        if (msg.id === messageId && msg.messageSubType === 'candidate_selection' && msg.candidates) {
+          const updatedCandidates = msg.candidates.filter(c => c.name !== candidateName);
+          if (updatedCandidates.length === 0) { 
+            if (!promptedCandidateMessageIdsRef.current.has(messageId)) {
+              promptedCandidateMessageIdsRef.current.add(messageId);
+
+              if (projectId && !recentlyPromptedProjectIds.has(projectId)) {
+                setRecentlyPromptedProjectIds(prev => new Set(prev).add(projectId));
+                promptForNextStep(projectId); 
+                setTimeout(() => {
+                  setRecentlyPromptedProjectIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(projectId);
+                    return newSet;
+                  });
+                }, 2000); // 2-second cooldown
+              }
+              return { ...msg, candidates: [], promptIssued: true }; 
+            } else {
+              // Prompt already handled for this messageId by ref, just clear candidates
+              return { ...msg, candidates: [] };
+            }
+          }
+          return { ...msg, candidates: updatedCandidates };
+        }
+        return msg;
+      });
+      return newMessages;
+    });
+  };
+
+  const openNewProjectModal = () => setIsNewProjectModalOpen(true);
+  const closeNewProjectModal = () => setIsNewProjectModalOpen(false);
+
+  const handleSubmitNewProject = async (title: string, description: string) => {
+    if (!selectedAgent) {
+      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'system', text: 'Error: No agent selected to create a project.' }]);
+      return;
+    }
+    // Sanitize the title to be used as a project_id (alphanumeric and underscores)
+    const sanitizedProjectId = title.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+    if (!sanitizedProjectId) {
+      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'system', text: 'Project title is invalid after sanitization. Please use alphanumeric characters and spaces.' }]);
+      return;
+    }
+
+    closeNewProjectModal();
+
+    const projectCommand = `project ${sanitizedProjectId} = ${description}`;
+    
+    // Add a user message to the chat to show the command being sent
+    const userMessage: ChatMessage = {
+      id: Date.now().toString() + '-user-create-project',
+      type: 'user',
+      text: `Creating project: "${title}"...`, // User-friendly message
+      timestamp: new Date().toLocaleTimeString()
+    };
+    setMessages(prev => [...prev, userMessage]);
+
+    let tempLoadingId: string | null = null;
+    try {
+      // For new project submission, always show "Looking for possible participants..." initially.
+      // The isProjectPlanning can be true if candidate selection is considered part of planning.
+      tempLoadingId = displayLoadingIndicator(true, "Looking for possible participants...");
+      await _postMessageToAgent(projectCommand);
+    } catch (error) {
+      console.error("Error in handleSubmitNewProject flow:", error);
+      // Add a system message for this specific error if desired
+      setMessages(prev => [...prev, { 
+        id: Date.now().toString() + '-project-submit-error', 
+        type: 'system', 
+        text: 'An error occurred while submitting the new project. Please try again.',
         timestamp: new Date().toLocaleTimeString()
       }]);
-      await _postMessageToAgent(continuationMessage);
+    } finally {
+      if (tempLoadingId) {
+        removeLoadingIndicator(tempLoadingId);
+      }
+    }
+    // Optionally, fetch projects again or wait for a socket update
+    if (selectedAgent) {
+      fetchProjects(selectedAgent.id);
     }
   };
 
-  const handleCandidateReject = async (candidateName: string, projectId?: string) => {
-    const commandText = `User action: Rejected candidate ${candidateName}${projectId ? ` for project '${projectId}'` : ''}.`;
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      type: 'system',
-      text: `Processing rejection for ${candidateName}...`
-    }]);
-    await _postMessageToAgent(commandText);
+  const openProjectDetailModal = (project: Project) => {
+    setSelectedProjectForDetail(project);
+    setIsProjectDetailModalOpen(true);
+  };
+
+  const closeProjectDetailModal = () => {
+    setIsProjectDetailModalOpen(false);
+    setSelectedProjectForDetail(null);
+  };
+
+  const openTaskDetailModal = (task: Task) => {
+    setSelectedTaskForDetail(task);
+    setIsTaskDetailModalOpen(true);
+  };
+
+  const closeTaskDetailModal = () => {
+    setIsTaskDetailModalOpen(false);
+    setSelectedTaskForDetail(null);
+  };
+
+  const openMeetingDetailModal = (meeting: Meeting) => {
+    setSelectedMeetingForDetail(meeting);
+    setIsMeetingDetailModalOpen(true);
+  };
+
+  const closeMeetingDetailModal = () => {
+    setIsMeetingDetailModalOpen(false);
+    setSelectedMeetingForDetail(null);
   };
 
   return (
@@ -359,16 +841,30 @@ export default function Home() {
                       {msg.text}
                     </span>
                   </div>
-                ) : msg.messageSubType === 'candidate_selection' && msg.candidates ? (
+                ) : msg.messageSubType === 'candidate_selection' && msg.candidates && msg.candidates.length > 0 ? (
+                  // AgentCandidateSelector now also needs messageId
                   <AgentCandidateSelector
+                    messageId={msg.id} 
                     candidates={msg.candidates}
                     projectId={msg.projectId}
                     onCandidateAccept={handleCandidateAccept}
                     onCandidateReject={handleCandidateReject}
+                    // Display the introductory text if it exists from the agent's message
+                    introText={msg.text.startsWith("Here are the best-suited candidates for your project") ? msg.text : undefined}
                   />
+                ) : msg.isLoadingPlaceholder ? (
+                  <div className={`max-w-[70%] px-3.5 py-2 rounded-xl shadow-sm break-words whitespace-pre-wrap bg-gray-200 text-gray-800 rounded-bl-none`}>
+                    <p className="text-sm loading-dots">{msg.text}</p>
+                    {msg.timestamp && <p className={`text-xs mt-1 text-gray-500 text-right`}>{msg.timestamp}</p>}
+                  </div>
                 ) : (
-                  <div className={`max-w-[70%] px-3.5 py-2 rounded-xl shadow-sm break-words whitespace-pre-wrap ${msg.type === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-200 text-gray-800 rounded-bl-none'}`}>
-                    <p className="text-sm">{msg.text}</p>
+                  <div className={`max-w-[70%] px-3.5 py-2 rounded-xl shadow-sm break-words ${msg.type === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-200 text-gray-800 rounded-bl-none'}`}>
+                    {/* Apply dangerouslySetInnerHTML for agent messages to render HTML */}
+                    {msg.type === 'agent' ? (
+                      <p className="text-sm" dangerouslySetInnerHTML={{ __html: msg.text }} />
+                    ) : (
+                      <p className="text-sm">{msg.text}</p>
+                    )}
                     {msg.timestamp && <p className={`text-xs mt-1 ${msg.type === 'user' ? 'text-blue-200' : 'text-gray-500'} text-right`}>{msg.timestamp}</p>}
                   </div>
                 )}
@@ -408,7 +904,11 @@ export default function Home() {
             {meetings.length > 0 ? (
               <ul className="space-y-2 text-sm max-h-48 overflow-y-auto">
                 {meetings.map(meeting => (
-                  <li key={meeting.id} className="p-2 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer">
+                  <li 
+                    key={meeting.id} 
+                    className="p-2 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer"
+                    onClick={() => openMeetingDetailModal(meeting)}
+                  >
                     <p className="font-medium text-gray-700">{meeting.title}</p>
                     <p className="text-xs text-gray-500">{meeting.dateTime}</p>
                   </li>
@@ -424,7 +924,7 @@ export default function Home() {
             <div className="flex justify-between items-center mb-3 border-b pb-2">
               <h2 className="text-lg font-semibold">Projects</h2>
               <button 
-                onClick={() => alert('New Project modal to be implemented')} 
+                onClick={openNewProjectModal} 
                 className="flex items-center px-2.5 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50"
                 disabled={!selectedAgent}
               >
@@ -435,7 +935,11 @@ export default function Home() {
             {projects.length > 0 ? (
               <ul className="space-y-2 text-sm max-h-48 overflow-y-auto">
                 {projects.map(project => (
-                  <li key={project.id} className="p-2 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer">
+                  <li 
+                    key={project.id} 
+                    className="p-2 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer transition-colors duration-150 ease-in-out"
+                    onClick={() => openProjectDetailModal(project)}
+                  >
                     <p className="font-medium text-gray-700">{project.name}</p>
                     {project.participants && project.participants.length > 0 && (
                         <p className="text-xs text-gray-500">Participants: {project.participants.join(', ')}</p>
@@ -451,11 +955,46 @@ export default function Home() {
           {/* Tasks Section */}
           <div className="bg-white p-4 rounded-lg shadow-md flex-shrink-0">
             <h2 className="text-lg font-semibold mb-3 border-b pb-2">Tasks</h2>
-            {/* TODO: Fetch and display tasks */}
-            <p className="text-sm text-gray-500">{selectedAgent ? "No tasks found." : "Select an agent to see tasks."}</p>
+            {tasks.length > 0 ? (
+              <ul className="space-y-2 text-sm max-h-48 overflow-y-auto">
+                {tasks.map(task => (
+                  <li 
+                    key={task.id} 
+                    className="p-2 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer transition-colors duration-150 ease-in-out"
+                    onClick={() => openTaskDetailModal(task)}
+                  >
+                    <p className="font-medium text-gray-700">{task.title}</p>
+                    {task.due_date && <p className="text-xs text-gray-500">Due: {new Date(task.due_date).toLocaleDateString()}</p>}
+                    {task.priority && <p className="text-xs text-gray-500 capitalize">Priority: <span className={task.priority === 'high' ? 'text-red-500' : task.priority === 'medium' ? 'text-yellow-500' : 'text-green-500'}>{task.priority}</span></p>}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-500">{selectedAgent ? "No tasks found." : "Select an agent to see tasks."}</p>
+            )}
           </div>
         </aside>
       </div>
+      <NewProjectModal
+        isOpen={isNewProjectModalOpen}
+        onClose={closeNewProjectModal}
+        onSubmit={handleSubmitNewProject}
+      />
+      <ProjectDetailModal
+        isOpen={isProjectDetailModalOpen}
+        onClose={closeProjectDetailModal}
+        project={selectedProjectForDetail}
+      />
+      <TaskDetailModal
+        isOpen={isTaskDetailModalOpen}
+        onClose={closeTaskDetailModal}
+        task={selectedTaskForDetail}
+      />
+      <MeetingDetailModal
+        isOpen={isMeetingDetailModalOpen}
+        onClose={closeMeetingDetailModal}
+        meeting={selectedMeetingForDetail}
+      />
     </div>
   );
 }

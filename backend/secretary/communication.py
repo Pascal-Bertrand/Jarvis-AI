@@ -7,7 +7,6 @@ from secretary.utilities.logging import log_user_message, log_network_message, l
 from secretary.utilities.google import initialize_google_services
 from secretary.scheduler import Scheduler
 from secretary.brain import Confirmation
-#from secretary.brain import Brain
 
 class Communication:
     """
@@ -71,7 +70,7 @@ class Communication:
 
         # Check if it is a information message from another node
         if message.startswith("[(INFO)]"):
-            log_system_message(f"[Communication] [{self.node_id}] Information message: {message.replace("[(INFO)]", "")}")
+            log_system_message(f"[Communication] [{self.node_id}] Information message: {message.replace('[(INFO)]', '')}")
             return message.replace("[(INFO)]", "")        
 
         # quick CLI command handling
@@ -166,7 +165,6 @@ class Communication:
         if not self.brain:
             return None
 
-        # Convert message to lowercase for case-insensitive matching
         cmd = message.strip().lower()
         
         # Command: List all tasks
@@ -176,19 +174,19 @@ class Communication:
             return tasks_list
         
         # Command: Create project with 'plan <project_id>=<objective>' syntax
-        plan_match = re.match(r"^plan\s+([\w-]+)\s*=\s*(.+)$", message.strip(), re.IGNORECASE)
+        plan_match = re.match(r"^plan\s+([\w-]+)\s*=\s*(.+)$", message.strip(), re.IGNORECASE | re.DOTALL)
         if plan_match:
             log_system_message(f"[Communication] Quick command: Creating project with plan_match")
             project_id, objective = plan_match.groups()
-            plan_summary = self.brain.initiate_project_planning_v2(project_id.strip(), objective.strip())
+            plan_summary = self.brain.initiate_project_planning(project_id.strip(), objective.strip())
             return plan_summary
         
         # Command: Create project with 'create/new/start project <project_id> <objective>' syntax
-        create_project_match = re.match(r"^(create|new|start)?\s*project\s+([\w-]+)\s+(.+)$", message.strip(), re.IGNORECASE)
+        create_project_match = re.match(r"^(create|new|start)?\s*project\s+([\w-]+)\s+(.+)$", message.strip(), re.IGNORECASE | re.DOTALL)
         if create_project_match:
             log_system_message(f"[Communication] Quick command: Creating project with create_project_match")
             _, project_id, objective = create_project_match.groups()
-            plan_summary = self.brain.initiate_project_planning_v2(project_id.strip(), objective.strip())
+            plan_summary = self.brain.initiate_project_planning(project_id.strip(), objective.strip())
             return plan_summary
         
         # Command: Generate tasks for an existing project
@@ -225,7 +223,7 @@ class Communication:
             return self.brain.add_participant_to_project(project_id, participant_name)
         
         # Command: Finalize project planning and generate tasks
-        finalize_project_match = re.match(r"^(done with|finalize)\s+project\s+([\w-]+)$", message.strip(), re.IGNORECASE)
+        finalize_project_match = re.match(r"^(confirm participants for|finalize)\s+project\s+([\w-]+)$", message.strip(), re.IGNORECASE)
         if finalize_project_match:
             log_system_message(f"[Communication] Quick command: Finalizing project")
             project_id = finalize_project_match.group(2).strip()
