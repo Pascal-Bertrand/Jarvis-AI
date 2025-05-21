@@ -594,10 +594,7 @@ class Brain:
         return plan_result
 
     def plan_project_v2(self, project_id: str, objective: str, final_participants: list):
-        """
-        V2: Create a detailed project plan using the LLM with a finalized list of participants.
-        Then generates tasks for those participants.
-        """
+
         log_system_message(f"[Brain] [{self.node_id}] Generating detailed plan for '{project_id}' with objective: {objective} and participants: {final_participants}")
 
         if project_id not in self.projects:

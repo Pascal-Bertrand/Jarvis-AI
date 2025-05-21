@@ -1,6 +1,6 @@
 import openai
-from typing import Dict, Optional, List
 import os
+from typing import Dict, Optional, List
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -49,7 +49,6 @@ client = openai.OpenAI(api_key=openai_api_key)
 
 log_system_message("OpenAI client initialized successfully")
 
-# Add these constants at the top level
 SCOPES = [
     'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/gmail.modify'  # Allows reading, message modification, but not account management
@@ -87,12 +86,12 @@ class LLMNode:
 
         # Set LLM parameters with default values if none are provided
         self.llm_params = llm_params if llm_params else {
-            "model": "gpt-4.1", # Consider making default model dynamic or configurable
+            "model": "gpt-4.1", 
             "temperature": 0.1,
             "max_tokens": 1000
         }
 
-        # Network reference (passed in)
+        # Network reference
         self.network: Optional[Intercom] = network
 
         # Initialize Google services (Calendar, Gmail)
@@ -118,30 +117,11 @@ class LLMNode:
         self.communication.calendar_service = self.calendar_service
         self.communication.gmail_service = self.gmail_service      
 
-
-    def receive_message(self, message: str, sender_id: str) -> Optional[str]:
+    def receive_message(self, message: str, sender_id: str) -> Optional[str]: #TODO delete?
         """Processes message via Communication and returns the textual response."""
-        # Delegate to communication module, which now returns the response
         return self.communication.receive_message(message, sender_id)
 
-    # Remove methods that are now handled by Brain/Communication via receive_message
-    # def plan_project(self, project_id: str, objective: str):
-    #     self.brain.plan_project(project_id, objective)
-    #
-    # def generate_tasks_from_plan(self, project_id: str, steps: list, participants: list):
-    #     self.brain.generate_tasks_from_plan(project_id, steps, participants)
-    #
-    # def list_tasks(self):
-    #     return self.brain.list_tasks()
 
-
-# Remove the local Network class definition
-# class Network(Intercom):
-#     def __init__(self, log_file: Optional[str] = None):
-#         super().__init__(log_file)
-
-
-# Modify the Flask app initialization
 app = Flask(__name__, template_folder='UI')
 CORS(app)  # Enable CORS for all routes
 # Initialize SocketIO with the Flask app instance
@@ -170,12 +150,12 @@ def handle_leave_room_event(data):
     else:
         log_warning(f"Client {flask_request.sid} attempted to leave a room without specifying room name.")
 
-
+#Set up the UI
 @app.route('/')
 def index():
     return render_template('index.html')
 
-
+#Show tasks
 @app.route('/tasks')
 def show_tasks():
     global network
@@ -208,7 +188,7 @@ def show_tasks():
 
     return jsonify(all_tasks)
 
-
+#Show nodes
 @app.route('/nodes')
 def show_nodes():
     global network
@@ -222,23 +202,9 @@ def show_nodes():
             "id": node_obj.node_id,  # or just node_id
             "name": node_obj.node_name 
         })
-    
-    # If network.get_all_nodes() returns a list of LLMNode objects:
-    # nodes_with_names = []
-    # for node_obj in network.get_all_nodes(): # If it returns a list of node objects
-    #     nodes_with_names.append({
-    #         "id": node_obj.node_id,
-    #         "name": node_obj.node_name
-    #     })
-
     return jsonify(nodes_with_names)
 
-    # # Use the method from People/Intercom if preferred, otherwise this is fine
-    # nodes = network.get_all_nodes() # Use Intercom's method
-    # # nodes = list(network.nodes.keys())
-    # return jsonify(nodes)
-
-
+#Show projects
 @app.route('/projects')
 def show_projects():
     global network
@@ -284,7 +250,7 @@ def show_projects():
 
     return jsonify(all_projects)
 
-
+#Show meetings
 @app.route('/meetings')
 def show_meetings():
     global network
@@ -332,13 +298,10 @@ def show_meetings():
                 log_error(f"Error fetching meetings for node {node_id_loop}: {str(e)}")
         else:
             log_warning(f"Node {node_id_loop} does not have a scheduler with get_upcoming_meetings method.")
-    
-    # Optional: sort all_node_meetings if combining from multiple sources and not pre-sorted
-    # For now, get_upcoming_meetings sorts, and if agent_id_filter is used, we only get from one agent.
 
     return jsonify(all_node_meetings)
 
-
+#Transcribe audio
 @app.route('/transcribe_audio', methods=['POST'])
 def transcribe_audio():
     global network
@@ -393,24 +356,10 @@ def transcribe_audio():
 
         command_text = transcript
 
-        # Remove print override logic
-        # response_collector = {"response": None, "terminal_output": []}
-        # original_print = print
-        # def custom_print(text): ...
-        # builtins.print = custom_print
-
         try:
-            # Send the message to the node and get the response directly
-            # Use the sender_id obtained from the request
+
             response_text = network.nodes[node_id].receive_message(command_text, sender_id)
 
-            # Restore original print function (no longer needed)
-            # builtins.print = original_print
-
-            # Format terminal output for display (removed - use logs)
-            # terminal_text = "\n".join(response_collector["terminal_output"])
-
-            # Generate speech from the direct response
             audio_response = None
             if response_text: # Check if response_text is not None or empty
                 try:
@@ -437,8 +386,6 @@ def transcribe_audio():
             })
 
         except Exception as e:
-            # Restore original print function (no longer needed)
-            # builtins.print = original_print
             log_error(f"Error in transcribe_audio processing message: {str(e)}") # Log the error
             return jsonify({"error": str(e)}), 500
 
@@ -448,9 +395,8 @@ def transcribe_audio():
         return jsonify({"error": f"Error processing audio: {str(e)}"}), 500
 
 @app.route('/set_confirmation_pending', methods=['POST']) # Name changed for clarity
-    #TODO: Implement this
+    #TODO: Implement this??
 
-# Update the existing send_message route to use the common function
 @app.route('/send_message', methods=['POST'])
 def send_message():
     global network
@@ -462,7 +408,7 @@ def send_message():
     message = data.get('message')
     sender_id = data.get('sender_id') # Get sender ID from request
 
-    # Use node_id as sender if sender_id is not provided (fallback, though UI should always send it now)
+    # Use node_id as sender if sender_id is not provided
     if not sender_id:
         sender_id = node_id
         log_warning(f"Sender ID not provided in /send_message request, falling back to target node_id: {node_id}")
@@ -485,32 +431,19 @@ def send_message_internal(node_id, message, sender_id):
         log_error(f"send_message_internal called for invalid node '{node_id}' or uninitialized network.")
         return jsonify({"error": f"Node {node_id} not found or network unavailable"}), 404
 
-    # Remove print override logic
-    # response_collector = {"response": None, "terminal_output": []}
-    # original_print = print
-    # def custom_print(text): ...
-    # builtins.print = custom_print
-
     try:
         # Send the message to the node and get the response
         # Use the sender_id passed into this function
         log_system_message(f"Routing message to node '{node_id}' from sender '{sender_id}'")
         response_text = network.nodes[node_id].receive_message(message, sender_id)
 
-        # Restore original print function (no longer needed)
-        # builtins.print = original_print
-
-        # Format terminal output for display (removed)
-        # terminal_text = "\n".join(response_collector["terminal_output"])
-
         return jsonify({
             "response": response_text, # Use the direct response
-            "terminal_output": "" # Removed unreliable capture
+            "terminal_output": "" 
         })
 
     except Exception as e:
-        # Restore original print function (no longer needed)
-        # builtins.print = original_print
+
         log_error(f"Error processing message for node {node_id}: {str(e)}") # Log error
         return jsonify({"error": str(e)}), 500
 
@@ -537,7 +470,6 @@ def start_flask():
 
 
 def open_browser():
-
     # Try different ports
     for port in range(5001, 5010):
         try:
@@ -551,99 +483,6 @@ def open_browser():
                 break
         except:
             continue
-#obsolete
-def run_cli(network):
-    print("Commands:\n"
-          "  node_id: message => send 'message' to 'node_id' from CLI\n"
-          "  node_id: plan project_name = objective => create a new project plan\n"
-          "  node_id: tasks => list tasks for a node\n"
-          "  quit => exit\n")
-
-    while True:
-        user_input = input("> ")
-        if user_input.lower().strip() == "quit":
-            print("Exiting CLI...")
-            break
-            
-        # Handle node-specific commands
-        if ":" in user_input:
-            node_id, message = user_input.split(":", 1)
-            node_id = node_id.strip()
-            message = message.strip()
-
-            if node_id in network.nodes:
-                # All commands now go through receive_message
-                response = network.nodes[node_id].receive_message(message, "cli_user")
-                if response:
-                    print(response)
-            else:
-                print(f"No node with ID '{node_id}' found.")
-        else:
-            print("Invalid format. Use:\n  node_id: message\n  OR\n  quit\n")
-
-def demo_flexible_meeting(network) -> None:
-    """
-    Demonstration of flexible meeting scheduling using each assistant's self.brain.calendar.
-    Situation:
-      - We pre-fill each stakeholder's calendar at different times on May 13, 2025.
-      - The CEO then proposes a 30-minute meeting at 10:30, conflicting with Design,
-        and the scheduler should suggest an alternative.
-
-    #TODO: Implement this with communication of the personal assistants. 
-    #      They should all have the preferences of their users in mind and act accordingly.
-    """
-    from datetime import datetime, timedelta
-
-    # Ensure every node has a calendar list
-    for node in network.nodes:
-        network.nodes[node].brain.calendar = []
-
-    date = datetime(2025, 5, 13)
-
-    def block_time(node_id: str, start_hour: int, summary: str):
-        node = network.nodes['ceo']
-        start_dt = date.replace(hour=start_hour, minute=0, second=0)
-        end_dt = start_dt + timedelta(hours=1)
-        node.brain.calendar.append({
-            'project_id': f'{node_id}_busy',
-            'start_time': start_dt.isoformat(),
-            'end_time':   end_dt.isoformat(),
-            'meeting_info': summary,
-            'participants': [node_id],
-        })
-        print(f"[demo] {node_id} busy: {summary} from {start_dt.time()} to {end_dt.time()}")
-
-    # Block each team at different times
-    block_time('engineering', 9,  'Engineering Deep Work')   # 09:00–10:00
-    block_time('design',      10, 'Design Review')           # 10:00–11:00
-    block_time('marketing',   11, 'Marketing Sync')          # 11:00–12:00
-
-    # # Introduction message
-    # intro = (
-    #     "You are the CEO.\n"
-    #     "• Engineering is busy on 2025-05-13 from 09:00 to 10:00.\n"
-    #     "• Design is busy on 2025-05-13 from 10:00 to 11:00.\n"
-    #     "• Marketing is busy on 2025-05-13 from 11:00 to 12:00.\n"
-    #     "\n"
-    #     "Now, to schedule your smart meeting, try something like:\n"
-    #     "Please schedule a 30-minute meeting with engineering, design, and marketing "
-    #     "on 2025-05-13 at 10:30."
-    #     "Title: 'Project X Kickoff'"
-    #     "Description: 'Discuss project X requirements and timelines.'\n"
-    # )
-
-    # print(f"[demo] ceo: {intro}")   
-
-    # CEO proposes a meeting at 10:30 for 30 minutes (conflicts with Design)
-    proposal = (
-        "Please schedule a 30-minute meeting with engineering, design, and marketing "
-        "on 2025-05-13 at 10:30."
-        "Title: 'Project X Kickoff'"
-        "Description: 'Discuss project X requirements and timelines.'"
-    )
-    print(f"[demo] ceo proposes: {proposal}")
-    response = network.nodes['ceo'].receive_message(proposal, 'cli_user')
-    return (f"[demo] Scheduler response: {response}")
 
 if __name__ == "__main__":
     # Make sure network is initialized before flask starts using it
@@ -659,20 +498,6 @@ if __name__ == "__main__":
         )
         network.register_node(node.node_id, node)
         log_system_message(f"Created and registered node: {agent_config['id']}")
-    # --- End dynamic node creation ---
-
-    # --- Remove static node creation ---
-    # ceo = LLMNode("ceo", knowledge="Knows entire org structure.", network=network, llm_api_key_override=openai_api_key)
-    # marketing = LLMNode("marketing", knowledge="Knows about markets.", network=network, llm_api_key_override=openai_api_key)
-    # engineering = LLMNode("engineering", knowledge="Knows codebase.", network=network, llm_api_key_override=openai_api_key)
-    # design = LLMNode("design", knowledge="Knows UI/UX best practices.", network=network, llm_api_key_override=openai_api_key)
-    #
-    # # Register them using (node_id, node_obj) signature for Intercom
-    # network.register_node(ceo.node_id, ceo)
-    # network.register_node(marketing.node_id, marketing)
-    # network.register_node(engineering.node_id, engineering)
-    # network.register_node(design.node_id, design)
-    # --- End removal ---
 
     log_system_message(f"Nodes registered: {network.get_all_nodes()}")
 
@@ -686,63 +511,56 @@ if __name__ == "__main__":
     browser_thread.daemon = True
     browser_thread.start()
 
-    run_cli(network)
-    #demo_flexible_meeting(network) # Uncomment to run the demo
-    
-    # Keep the main thread alive (Flask runs in daemon threads)
-    # Or join the flask thread if you want the script to exit when Flask exits
     flask_thread.join() # This would block here
     # Instead, just let the main thread finish, daemon threads will keep running
     log_system_message("Main thread finished, Flask server running in background.")
-    # Remove CLI start if not needed
-    # run_cli(network)
 
 
 # --- Add CV Upload Route ---
-@app.route('/upload_cv', methods=['POST'])
-def upload_cv_route():
-    if 'cv_file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+# @app.route('/upload_cv', methods=['POST'])
+# def upload_cv_route():
+#     if 'cv_file' not in request.files:
+#         return jsonify({"error": "No file part"}), 400
 
-    file = request.files['cv_file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+#     file = request.files['cv_file']
+#     if file.filename == '':
+#         return jsonify({"error": "No selected file"}), 400
 
-    # Ensure the filename ends with .pdf (case-insensitive)
-    if file and '.' in file.filename and file.filename.rsplit('.', 1)[1].lower() == 'pdf':
-        temp_file_path = None  # Initialize path variable
-        try:
-            # Create a temporary file to store the PDF
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
-                file.save(temp_pdf.name)
-                temp_file_path = temp_pdf.name
+#     # Ensure the filename ends with .pdf (case-insensitive)
+#     if file and '.' in file.filename and file.filename.rsplit('.', 1)[1].lower() == 'pdf':
+#         temp_file_path = None  # Initialize path variable
+#         try:
+#             # Create a temporary file to store the PDF
+#             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
+#                 file.save(temp_pdf.name)
+#                 temp_file_path = temp_pdf.name
 
-            print(f"[CV Parser] Temporary file saved at: {temp_file_path}")
+#             print(f"[CV Parser] Temporary file saved at: {temp_file_path}")
 
-            # Return the extracted data successfully
-            print("[CV Parser] Parsing successful.")
-            return jsonify({
-                'success': True,
-                #    'summary': cv_data # Contains name, email, phone, education, work_experience, skills
-            }), 200
+#             # Return the extracted data successfully
+#             print("[CV Parser] Parsing successful.")
+#             return jsonify({
+#                 'success': True,
+#                 #    'summary': cv_data # Contains name, email, phone, education, work_experience, skills
+#             }), 200
 
-        except Exception as e:
-            # Log the error for debugging
-            print(f"[CV Parser] Error processing CV: {str(e)}")
-            # Return a generic error message to the client
-            return jsonify({'error': f"An unexpected error occurred while processing the CV."}), 500
-        finally:
-            # --- Ensure temporary file cleanup ---
-            if temp_file_path and os.path.exists(temp_file_path):
-                try:
-                    os.remove(temp_file_path)
-                    print(f"[CV Parser] Temporary file deleted: {temp_file_path}")
-                except Exception as cleanup_e:
-                    # Log cleanup error but don't necessarily fail the request
-                    print(f"[CV Parser] Error deleting temp file during cleanup: {cleanup_e}")
-            # --- End cleanup ---
+#         except Exception as e:
+#             # Log the error for debugging
+#             print(f"[CV Parser] Error processing CV: {str(e)}")
+#             # Return a generic error message to the client
+#             return jsonify({'error': f"An unexpected error occurred while processing the CV."}), 500
+#         finally:
+#             # --- Ensure temporary file cleanup ---
+#             if temp_file_path and os.path.exists(temp_file_path):
+#                 try:
+#                     os.remove(temp_file_path)
+#                     print(f"[CV Parser] Temporary file deleted: {temp_file_path}")
+#                 except Exception as cleanup_e:
+#                     # Log cleanup error but don't necessarily fail the request
+#                     print(f"[CV Parser] Error deleting temp file during cleanup: {cleanup_e}")
+#             # --- End cleanup ---
 
-    else:
-        # File is not a PDF or has no extension
-        return jsonify({"error": "Invalid file type. Please upload a PDF file."}), 400
+#     else:
+#         # File is not a PDF or has no extension
+#         return jsonify({"error": "Invalid file type. Please upload a PDF file."}), 400
 # --- End CV Upload Route ---
