@@ -258,12 +258,24 @@ def show_projects():
 
                 if not agent_id_filter or is_owner or is_participant:
                     if project_id not in all_projects: # Avoid duplicates if multiple agents share a project view
+                        project_plan_steps = project_data.get("plan_steps", [])
+                        detailed_description = project_data.get("description", "") # Start with existing description
+
+                        if project_plan_steps:
+                            detailed_description += "<br><br><b>Project Plan Overview:</b><br>"
+                            for i, step in enumerate(project_plan_steps):
+                                step_name = step.get("name", f"Step {i+1}")
+                                step_desc = step.get("description", "No description")
+                                responsible = ", ".join(step.get("responsible_participants", ["N/A"]))
+                                detailed_description += f"- <b>Step:</b> {step_name}<br>"
+                                detailed_description += f"- <b>Description:</b> {step_desc}<br>"
+                                detailed_description += f"- <b>Responsible:</b> {responsible}<br><br>" # Add extra <br> for space between steps
+                        
                         all_projects[project_id] = {
                             "name": project_data.get("name", project_id),
                             "participants": list(project_data.get("participants", set())),
                             "owner": node_id_loop, # The node that owns/manages this project entry
-                            "objective": project_data.get("objective", ""),
-                            "description": project_data.get("description", ""),
+                            "description": detailed_description, # Use the new detailed description
                             "status": project_data.get("status", "active"),
                             "created_at": project_data.get("created_at", datetime.now().isoformat())
                         }
@@ -706,16 +718,6 @@ def upload_cv_route():
                 temp_file_path = temp_pdf.name
 
             print(f"[CV Parser] Temporary file saved at: {temp_file_path}")
-
-            # Instantiate the parser and parse the CV
-            # Ensure OPENAI_API_KEY is available in the environment where CVParser runs
-            # parser = CVParser()
-            # cv_data = parser.parse_cv(temp_file_path)
-
-            # Check if parsing was successful
-            # if cv_data is None:
-            #    print("[CV Parser] Parsing failed, cv_data is None.")
-            #    return jsonify({"error": "Could not parse CV file. Check server logs for details."}), 500
 
             # Return the extracted data successfully
             print("[CV Parser] Parsing successful.")
