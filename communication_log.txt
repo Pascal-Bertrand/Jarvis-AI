@@ -28,3 +28,12 @@ From system to John Doe: New task assigned: Gather Required Materials. Due: 2025
 From system to Michael Chen: New task assigned: Gather User Data and Feedback. Due: 2025-05-28. Priority: high.
 From system to John Doe: New task assigned: Conduct initial mock interviews. Due: 2025-05-28. Priority: high.
 From system to Ueli Maurer: New task assigned: Prepare Final Application. Due: 2025-05-23. Priority: high.
+From system to John Doe: New task assigned: Review YC application guidelines. Due: 2025-05-28. Priority: high.
+From system to John Doe: New task assigned: Refine Business Model. Due: 2025-05-28. Priority: high.
+From system to John Doe: New task assigned: Draft Written Responses for YC Application. Due: 2025-05-28. Priority: high.
+From system to John Doe: New task assigned: Complete the application form. Due: 2025-05-26. Priority: high.
+From system to John Doe: New task assigned: Craft Response to Common Interview Questions. Due: 2025-05-28. Priority: high.
+From system to John Doe: New task assigned: Draft YC Application. Due: 2025-05-28. Priority: high.
+From system to John Doe: New task assigned: Develop Minimum Viable Product (MVP). Due: 2025-05-26. Priority: high.
+From system to John Doe: New task assigned: Prepare Application Documents. Due: 2025-05-28. Priority: high.
+From system to John Doe: New task assigned: Practice Interview Responses. Due: 2025-05-28. Priority: high.
