@@ -225,7 +225,7 @@ class Communication:
             return self.brain.add_participant_to_project(project_id, participant_name)
         
         # Command: Finalize project planning and generate tasks
-        finalize_project_match = re.match(r"^(done with|finalize)\s+project\s+([\w-]+)$", message.strip(), re.IGNORECASE)
+        finalize_project_match = re.match(r"^(confirm participants for|finalize)\s+project\s+([\w-]+)$", message.strip(), re.IGNORECASE)
         if finalize_project_match:
             log_system_message(f"[Communication] Quick command: Finalizing project")
             project_id = finalize_project_match.group(2).strip()

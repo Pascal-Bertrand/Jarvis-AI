@@ -659,6 +659,9 @@
                 </div>
                 <div class="card-body">
                     <div style="margin-bottom: 15px;">
+                        <label for="projectTitleInput" style="display: block; margin-bottom: 5px;">Project Title:</label>
+                        <input type="text" id="projectTitleInput" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; margin-bottom: 10px;" placeholder="Enter project title...">
+
                         <label for="projectDescription" style="display: block; margin-bottom: 5px;">Project Description:</label>
                         <textarea id="projectDescription" style="width: 100%; min-height: 100px; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;"></textarea>
                     </div>
@@ -1030,7 +1033,8 @@
                                         project.participants.forEach(participant => {
                                             addSystemMessage(`Notified "${participant}" about project ${projectId}.`);
                                         });
-                                    } else {
+                                    }
+                                    else {
                                         console.warn(`Could not retrieve participants for project ${projectId} after planning, or no participants found.`);
                                     }
                                 })
@@ -1039,6 +1043,15 @@
                                 });
                         } else {
                             console.warn("Project planning message received, but could not parse projectId:", agentResponse);
+                        }
+                    } else if (agentResponse.toLowerCase().startsWith("added ") && agentResponse.toLowerCase().includes(" to project ")) {
+                        // If a participant was just added, guide to next steps
+                        const projectIdMatch = agentResponse.match(/to project '([^']+)'/i);
+                        if (projectIdMatch && projectIdMatch[1]) {
+                            const projectId = projectIdMatch[1];
+                            setTimeout(() => {
+                                addAgentMessage(`Participant added to '${projectId}'.<br><br>To finalize the project, type: <code>confirm participants for project ${projectId}</code><br><br>To add another participant, type: <code>add [Participant Name] to project ${projectId}</code>`);
+                            }, 500); 
                         }
                     }
 
@@ -1521,7 +1534,7 @@
             const modal = document.getElementById('newProjectModal');
             if (modal) {
                 modal.style.display = 'block';
-                document.getElementById('projectDescription').focus();
+                document.getElementById('projectTitleInput').focus();
             }
         }
 
@@ -1529,6 +1542,7 @@
             const modal = document.getElementById('newProjectModal');
             if (modal) {
                 modal.style.display = 'none';
+                document.getElementById('projectTitleInput').value = '';
                 document.getElementById('projectDescription').value = '';
             }
         }
@@ -1544,9 +1558,22 @@
         }
 
         function submitNewProject() {
-            const description = document.getElementById('projectDescription').value.trim();
-            if (!description) {
-                addSystemMessage("Please enter a project description.");
+            const projectTitleInput = document.getElementById('projectTitleInput');
+            const descriptionInput = document.getElementById('projectDescription');
+            
+            const title = projectTitleInput.value.trim();
+            const description = descriptionInput.value.trim();
+
+            if (!title || !description) {
+                addSystemMessage("Please enter both project title and description.");
+                return;
+            }
+
+            // Sanitize the title to be used as a project_id (alphanumeric and underscores)
+            // This is a simplified version; more robust sanitization might be needed depending on backend constraints.
+            const sanitizedProjectId = title.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+            if (!sanitizedProjectId) {
+                addSystemMessage("Project title is invalid after sanitization. Please use alphanumeric characters and spaces.");
                 return;
             }
 
@@ -1565,21 +1592,13 @@
             const loadingIndicatorId = showLoadingIndicator("Looking for possible participants");
             const loadingElement = document.getElementById(loadingIndicatorId);
             
-            // Start cycling through loading messages if a specific flow for project creation is active
-            // For a generic send, the initial message is enough.
-            // We can refine this if `submitNewProject` should always have cycling messages.
-            // currentLoadingMessageIndex = 0;
-            // loadingMessageInterval = setInterval(() => {
-            // updateLoadingMessage(loadingElement);
-            // }, 3000);
-
             // Send the project creation request
             fetch('/send_message', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     node_id: selectedNodeId,
-                    message: `project Alpha = ${description}`,
+                    message: `project ${sanitizedProjectId} = ${description}`,
                     sender_id: selectedNodeId
                 })
             })
@@ -1596,8 +1615,7 @@
                     try {
                         // Try to parse the response as JSON
                         const responseData = JSON.parse(data.response.split('\n')[1]);
-                        const projectId = data.response.split("'")[1]; // Extract project ID from the message
-                        const widgetsHtml = createCandidateWidgets(responseData, projectId, description);
+                        const widgetsHtml = createCandidateWidgets(responseData, title, description);
                         addAgentMessage(widgetsHtml);
                     } catch (e) {
                         // If parsing fails, just show the raw response
@@ -1615,9 +1633,13 @@
         }
 
         // Function to create candidate widgets
-        function createCandidateWidgets(candidates, projectId, objective) {
+        function createCandidateWidgets(candidates, projectId, objective, displayTitle) {
             const containerUniqueId = `cw-container-${Date.now()}`;
-            let widgetsHtml = `<div id="${containerUniqueId}" class="candidate-widgets" style="display: flex; gap: 20px; margin: 20px 0;" data-project-id="${projectId}" data-project-objective="${objective}">`;
+            // Use displayTitle for the header if available, otherwise projectId
+            const projectDisplayName = displayTitle || projectId;
+
+            let widgetsHtml = `<p>Suggested candidates for project: <strong>${projectDisplayName}</strong></p>`
+            widgetsHtml += `<div id="${containerUniqueId}" class="candidate-widgets" style="display: flex; gap: 20px; margin: 20px 0;" data-project-id="${projectId}" data-project-objective="${objective}" data-display-title="${projectDisplayName}">`;
             
             candidates.forEach(candidate => {
                 const skillsHtml = candidate.skills.map(skill => `<span class="skill-tag">${skill}</span>`).join('');
@@ -1689,6 +1711,10 @@
             const card = document.getElementById(cardId);
             if (!card) return;
 
+            // Get the parent container of the candidates to retrieve the display title
+            const candidatesContainer = card.closest('.candidate-widgets');
+            const displayTitle = candidatesContainer ? candidatesContainer.getAttribute('data-display-title') : projectId;
+
             // Add slide-out animation
             card.style.animation = 'slideOut 0.3s ease-in-out forwards';
 
@@ -1732,13 +1758,13 @@
                     });
                 }
 
-                checkRemainingCandidates(projectId);
+                checkRemainingCandidates(projectId, displayTitle);
             
             }, 300);
         };
 
         // Check if there are any remaining candidates
-        window.checkRemainingCandidates = function(projectId) {
+        window.checkRemainingCandidates = function(projectId, projectDisplayTitle) {
             const container = document.querySelector(`.candidate-widgets[data-project-id="${projectId}"]`);
             if (!container) return;
 
@@ -1750,11 +1776,11 @@
                 //                      You can now add more stakeholders by typing: <br>
                 //                      <code>add [Participant Name] to project ${projectId}</code> <br><br>
                 //                      When you are finished adding participants, type: <br>
-                //                      <code>done with project ${projectId}</code> or <code>finalize project ${projectId}</code> <br>
+                //                      <code>confirm participants for project ${projectId}</code> or <code>finalize project ${projectId}</code> <br>
                 //                      to generate the project plan and tasks.`;
                 // addSystemMessage(systemMessage);
                 setTimeout(() => {
-                    addAgentMessage("Do you want to continue with these participants? (yes/no) <br><br> If you want to add more participants, type: <code>add [Participant Name] to project Alpha</code>")
+                    addAgentMessage(`All initial candidates for project '${projectId}' have been processed.<br><br>To finalize the project with the current team, type: <code>confirm participants for project ${projectId}</code><br><br>To add another participant, type: <code>add [Participant Name] to project ${projectId}</code>`);
                 }, 500);
             }
         };

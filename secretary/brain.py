@@ -1426,3 +1426,39 @@ class Brain:
             print(f"[{self.node_id}] Error detecting send email intent: {str(e)}")
             return {"is_send_email": False, "recipient": "", "subject": "", "body": "", "missing_info": []}
 
+    def generate_short_project_title(self, objective: str) -> str:
+        """
+        Generates a short project title (max 3 words) from a project objective using an LLM.
+        """
+        prompt = f"""
+        Given the following project objective, please generate a very short and catchy project title.
+        The title MUST be a maximum of 3 words.
+        The title should be suitable for use as a project identifier (e.g., no special characters beyond spaces).
+        Only return the title itself, nothing else.
+
+        Project Objective:
+        "{objective}"
+
+        Short Project Title (max 3 words):
+        """
+        try:
+            title = self.llm.chat([{"role": "user", "content": prompt}])
+            # Further sanitize: remove potential quotes, ensure it's on one line, and trim.
+            title = title.replace('"', '').replace("'", "").strip()
+            # Ensure it's max 3 words by splitting and taking the first few
+            words = title.split()
+            if len(words) > 3:
+                title = " ".join(words[:3])
+            
+            # Basic sanitization for use as an ID (though backend regex handles a lot)
+            title = re.sub(r'[^a-zA-Z0-9_ -]', '', title) # Allow alphanumeric, underscore, space, hyphen
+            title = title.replace(" ", "_") # Replace spaces with underscores for a more ID-like format
+
+            if not title: # Fallback if LLM returns empty or only special characters
+                return "Project_Task" 
+            return title
+        except Exception as e:
+            log_error(f"[{self.node_id}] Error generating short project title: {e}")
+            # Fallback title in case of error
+            return "Project_Brief"
+
