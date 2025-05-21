@@ -7,7 +7,6 @@ from secretary.utilities.logging import log_user_message, log_network_message, l
 from secretary.utilities.google import initialize_google_services
 from secretary.scheduler import Scheduler
 from secretary.brain import Confirmation
-#from secretary.brain import Brain
 
 class Communication:
     """
@@ -166,7 +165,6 @@ class Communication:
         if not self.brain:
             return None
 
-        # Convert message to lowercase for case-insensitive matching
         cmd = message.strip().lower()
         
         # Command: List all tasks

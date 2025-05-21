@@ -1416,7 +1416,7 @@
                                         ${participantsHtml}
                                     </div>
                                     ${project.objective ? `<p><strong>Objective:</strong> ${project.objective}</p>` : ''}
-                                    ${project.description ? `<p><strong>Description:</strong> ${project.description}</p>` : ''}
+                                    ${project.description ? `${project.description}` : ''}
                                     ${project.status ? `<p><strong>Status:</strong> ${project.status}</p>` : ''}
                                     ${project.created_at ? `<p><strong>Created:</strong> ${new Date(project.created_at).toLocaleString()}</p>` : ''}
                                 </div>

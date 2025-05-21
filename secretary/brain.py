@@ -15,9 +15,6 @@ from secretary.socketio_ext import socketio
 from config.agents import AGENT_CONFIG
 
 class LLMClient:
-    """
-    A thin wrapper around OpenAI for consistent logging and system-prompt injection.
-    """
 
     def __init__(self, api_key: str, params: dict):
         """
@@ -39,7 +36,7 @@ class LLMClient:
             "role": "system",
             "content": (
                 "You are a direct and concise AI agent for an organization. "
-                "Provide short, to-the-point answers and do not continue repeating Goodbyes."
+                "Provide short, to-the-point answers." #TODO: Improve
             )
         }]
         prompt = system + messages
@@ -98,7 +95,6 @@ class Brain:
       - Delegates node registration and messaging to the Intercom network.
       - Manages projects, tasks, and calendar interactions, awaiting user confirmation before taking major actions.
     """
-
     def __init__(
         self,
         node_id: str,
@@ -130,7 +126,6 @@ class Brain:
         self.tasks = []            # local cache if needed
         self.projects = {}         # project plans by project_id
 
-        # This will be used to track the state of the meeting scheduling process (temporarily until memory.py is implemented)
         self.meeting_context = {
             'active': False,
             'initial_message': None,
@@ -139,17 +134,9 @@ class Brain:
             'is_rescheduling': False
         }
 
-        self.people = People()     # local cache of people (if needed)
+        self.people = People()
         self.calendar = []
-        # self.calendar = [{
-        #         'project_id': None,
-        #         'start_time': None,
-        #         'end_time': None,
-        #         'participants': None,
-        #         'meeting_info': None,
-        #         'event_id': None
-        #     }]
-        self.context = []       # conversation history for LLM (if needed)
+        self.context = []
         self.scheduler = None
         self.confirmation_context = {
             'active': False,
@@ -159,8 +146,6 @@ class Brain:
             'end_datetime': None,
             'project_id': None
         }
-
-        # --- Calendar & Email stubs (to be injected or initialized elsewhere) ---
         self.calendar_service = None
         self.gmail_service    = None
 
@@ -172,7 +157,6 @@ class Brain:
     def _detect_calendar_intent(self, message):
         """
         Detect if the incoming message is related to calendar commands.
-        
         The method constructs a prompt asking the LLM to analyze if the message is calendar related,
         and what action is intended (e.g., scheduling, cancellation).
         
@@ -193,19 +177,12 @@ class Brain:
         - action: string ("schedule_meeting", "cancel_meeting", "list_meetings", "reschedule_meeting", or null)
         - missing_info: array of strings (what information is missing: "time", "duration", "participants", "date", "title")
         """
-        
         try:
-            # 1) Ask the LLM via your wrapper so you get back plain text
             raw = self.query_llm([{"role": "user", "content": prompt}])
-
-            # 2) Strip out ```json fences if present
             m = re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL | re.IGNORECASE)
             json_text = m.group(1) if m else raw.strip()
-
-            # 3) Parse it
             data = json.loads(json_text)
 
-            # Validate & fill defaults
             return {
                 "is_calendar_command": bool(data.get("is_calendar_command")),
                 "action": data.get("action"),
@@ -314,7 +291,7 @@ class Brain:
             self.projects[project_id] = {
                 "name": "Project " + project_id,
                 "objective": objective,
-                "description": objective,
+                #"description": objective,
                 "plan_steps": [], 
                 "participants": set(), 
                 "status": "pending_final_participants", 
@@ -342,8 +319,6 @@ class Brain:
     
     def _get_default_candidates_data(self) -> list[dict]:
         """Return default candidates data as a fallback."""
-        # Adapted from demo.py:get_default_candidates
-        # Directly returns list of dicts instead of Candidate objects
         return [
             {"name": "Ueli Maurer", "department": "Engineering", "skills": ["Swiss German", "AI", "System Design"], "title": "CEO", "description": "Oversees the entire organization and strategy."},
             {"name": "John Doe", "department": "Marketing", "skills": ["English", "Marketing", "Market Analysis"], "title": "Marketing Lead", "description": "Handles marketing campaigns and market analysis."},
@@ -352,7 +327,6 @@ class Brain:
 
     def _create_candidates_data_from_ids(self, agent_ids: list[str]) -> list[dict]:
         """Create candidate data (dictionaries) from agent IDs using AGENT_CONFIG."""
-        # Adapted from demo.py:create_candidates_from_ids
         candidates_data = []
         for agent_id_lookup in agent_ids:
             agent_config_entry = next((a for a in AGENT_CONFIG if a["id"].lower() == agent_id_lookup.lower()), None)
@@ -374,7 +348,6 @@ class Brain:
         Process agent IDs to handle different formats from the AI response.
         Maps numeric indices or agent_N format to actual agent IDs from AGENT_CONFIG.
         """
-        # Directly from demo.py:process_agent_ids
         processed_ids = []
         for agent_id in agent_ids:
             if any(a["id"] == agent_id for a in AGENT_CONFIG):
@@ -405,9 +378,7 @@ class Brain:
 
     def _extract_agent_ids_from_text(self, text: str) -> list[str]:
         """Extract agent IDs from text when JSON parsing fails."""
-        # Directly from demo.py:extract_agent_ids_from_text
         found_ids = []
-        import re # Ensure re is imported if not already at the top of brain.py
         agent_patterns = [
             r'agent[_\s]*(\d+)',
             r'\b(\d+)\b'
@@ -439,7 +410,6 @@ class Brain:
         """
         Use OpenAI to suggest the best candidates for a project based on the objective.
         Returns a list of up to 3 candidate data dictionaries.
-        Adapted from demo.py:get_best_candidates
         """
         agent_info_list = []
         for i, agent in enumerate(AGENT_CONFIG):
@@ -576,25 +546,65 @@ class Brain:
         log_system_message(f"[Brain] [{self.node_id}] Proceeding to detailed plan generation for '{project_id}' with participants: {final_participants}")
         
         # Call the refactored plan_project method
-        plan_result = self.plan_project_v2(project_id, objective, final_participants)
+        plan_result = self.plan_project(project_id, objective, final_participants)
         
         # Update project status based on planning outcome
-        # plan_project_v2 will internally call generate_tasks_from_plan
+        # plan_project will internally call generate_tasks_from_plan
         # The status update will reflect that planning and task generation has been attempted.
-        if "successfully planned" in plan_result.lower(): # Check for success message from plan_project_v2
+        if "successfully planned" in plan_result.lower(): # Check for success message from plan_project
             project_data["status"] = "planned_and_tasks_generated"
         else:
-            project_data["status"] = "planning_failed" # Or a more specific error status
+            project_data["status"] = "planning_failed" 
 
         # Emit an update to the UI
         if self.socketio:
             self.socketio.emit('update_projects', room=self.node_id)
-            self.socketio.emit('update_tasks', room=self.node_id) # Since tasks are generated
+            self.socketio.emit('update_tasks', room=self.node_id)
 
         return plan_result
 
-    def plan_project_v2(self, project_id: str, objective: str, final_participants: list):
+    # def generate_short_project_title(self, objective: str) -> str:
+    #     """
+    #     Generates a short project title (max 3 words) from a project objective using an LLM.
+    #     """
+    #     prompt = f"""
+    #     Given the following project objective, please generate a very short and catchy project title.
+    #     The title MUST be a maximum of 3 words.
+    #     The title should be suitable for use as a project identifier (e.g., no special characters beyond spaces).
+    #     Only return the title itself, nothing else.
 
+    #     Project Objective:
+    #     "{objective}"
+
+    #     Short Project Title (max 3 words):
+    #     """
+    #     try:
+    #         title = self.llm.chat([{"role": "user", "content": prompt}])
+    #         # Further sanitize: remove potential quotes, ensure it's on one line, and trim.
+    #         title = title.replace('"', '').replace("'", "").strip()
+    #         # Ensure it's max 3 words by splitting and taking the first few
+    #         words = title.split()
+    #         if len(words) > 3:
+    #             title = " ".join(words[:3])
+            
+    #         # Basic sanitization for use as an ID (though backend regex handles a lot)
+    #         title = re.sub(r'[^a-zA-Z0-9_ -]', '', title) # Allow alphanumeric, underscore, space, hyphen
+    #         title = title.replace(" ", "_") # Replace spaces with underscores for a more ID-like format
+
+    #         if not title: # Fallback if LLM returns empty or only special characters
+    #             return "Project_Task" 
+    #         return title
+    #     except Exception as e:
+    #         log_error(f"[{self.node_id}] Error generating short project title: {e}")
+    #         # Fallback title in case of error
+    #         return "Project_Brief"
+
+
+    def plan_project(self, project_id: str, objective: str, final_participants: list):
+        """
+        V2: Create a detailed project plan using the LLM with a finalized list of participants.
+        Then generates tasks for those participants.
+        """
         log_system_message(f"[Brain] [{self.node_id}] Generating detailed plan for '{project_id}' with objective: {objective} and participants: {final_participants}")
 
         if project_id not in self.projects:
@@ -612,12 +622,6 @@ class Brain:
             self.projects[project_id]["objective"] = objective
             self.projects[project_id]["participants"] = set(final_participants) # Ensure it's a set and updated
             self.projects[project_id]["status"] = "planning"
-
-
-        # Define roles based on AGENT_CONFIG or a simpler list if AGENT_CONFIG is not directly usable here
-        # For simplicity, let's assume final_participants contains the exact roles/names to be used.
-        # If AGENT_CONFIG is needed for more complex role mapping, it should be accessible here.
-        # For now, we'll use the provided final_participants list directly.
         
         plan_prompt = f"""
         You are creating a detailed project plan for project '{project_id}'.
@@ -654,7 +658,6 @@ class Brain:
         try:
             raw_response = self.query_llm([{"role": "user", "content": plan_prompt}])
             
-            # Attempt to parse JSON, cleaning if necessary
             json_text = raw_response.strip()
             if json_text.startswith("```json"):
                 json_text = json_text[7:]
@@ -667,7 +670,7 @@ class Brain:
 
 
             self.projects[project_id]["plan_steps"] = plan_steps
-            self.projects[project_id]["status"] = "plan_generated" # Plan is generated, tasks next
+            self.projects[project_id]["status"] = "plan_generated"
             log_system_message(f"[Brain] [{self.node_id}] Project plan generated for '{project_id}': {plan_steps}")
 
             if not plan_steps:
@@ -675,17 +678,7 @@ class Brain:
                 self.projects[project_id]["status"] = "planning_failed_no_steps"
                 return f"Failed to generate a project plan for '{project_id}'. The LLM did not provide actionable steps."
 
-            
-            # Write plan to a file (optional, can be removed if not needed)
-            # try:
-            #     with open(f"project_{project_id}_plan.json", "w") as f:
-            #         json.dump({"objective": objective, "participants": final_participants, "plan_steps": plan_steps}, f, indent=4)
-            #     log_system_message(f"[Brain] [{self.node_id}] Project plan for '{project_id}' saved to file.")
-            # except Exception as e:
-            #     log_warning(f"[Brain] [{self.node_id}] Could not save project plan to file: {e}")
-
             # Generate tasks from the created plan
-            # The `final_participants` list is crucial here for task assignment.
             task_generation_result = self.generate_tasks_from_plan(project_id, plan_steps, final_participants)
             
             # Update project status based on task generation
@@ -728,7 +721,6 @@ class Brain:
         log_system_message(f"[Brain] [{self.node_id}] Generating tasks for project '{project_id}'")
         
         # Create a string representation of participants for the tool description
-        # participants is a list like ['ceo', 'engineering']
         participant_roles_str = ", ".join(participants) if participants else "any relevant project role"
 
         # Define the function for task creation
@@ -1046,8 +1038,6 @@ class Brain:
             # Default fallback
             return {"action": "none", "count": 5, "query": "", "summary_type": "concise"}
         
-            # --- Email Fetching & Processing Methods (Moved from Communication) ---
-
     def fetch_emails(self, max_results=10, query=None):
         """
         Fetch emails from the Gmail account using the Gmail service.
@@ -1153,9 +1143,7 @@ class Brain:
             if body_data:
                 try:
                     body_bytes = base64.urlsafe_b64decode(body_data)
-                    # Decode based on mimeType if possible, otherwise default to utf-8
                     charset = 'utf-8' # Default
-                    # Look for charset in headers if available (might be in part headers)
                     part_headers = payload.get('headers', [])
                     content_type_header = next((h['value'] for h in part_headers if h['name'].lower() == 'content-type'), None)
                     if content_type_header and 'charset=' in content_type_header:
@@ -1177,11 +1165,9 @@ class Brain:
                     log_warning(f"Error decoding email body part (mime: {mime_type}): {e}")
                     return "(Error decoding content)"
 
-        # If the payload has parts (multipart email), recursively extract from parts
         if 'parts' in payload:
             text_parts = []
             html_parts = []
-            # Prioritize text/plain
             for part in payload['parts']:
                 if part.get('mimeType') == 'text/plain':
                      text_parts.append(self._extract_email_body(part))
@@ -1324,7 +1310,6 @@ class Brain:
         
 
         """Analyze a complex email command to extract detailed intent and parameters"""
-        # If we're in email composition mode, skip this analysis
         if hasattr(self, 'email_context') and self.email_context.get('active'):
             return {"action": "none"}
             
@@ -1397,7 +1382,6 @@ class Brain:
         - For recipient, extract just the name or email (don't include words like "to" or "for")
         - If the message itself appears to be the content of the email, set body to the entire message excluding obvious command parts
         """
-        
         try:
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -1423,39 +1407,4 @@ class Brain:
             print(f"[{self.node_id}] Error detecting send email intent: {str(e)}")
             return {"is_send_email": False, "recipient": "", "subject": "", "body": "", "missing_info": []}
 
-    def generate_short_project_title(self, objective: str) -> str:
-        """
-        Generates a short project title (max 3 words) from a project objective using an LLM.
-        """
-        prompt = f"""
-        Given the following project objective, please generate a very short and catchy project title.
-        The title MUST be a maximum of 3 words.
-        The title should be suitable for use as a project identifier (e.g., no special characters beyond spaces).
-        Only return the title itself, nothing else.
-
-        Project Objective:
-        "{objective}"
-
-        Short Project Title (max 3 words):
-        """
-        try:
-            title = self.llm.chat([{"role": "user", "content": prompt}])
-            # Further sanitize: remove potential quotes, ensure it's on one line, and trim.
-            title = title.replace('"', '').replace("'", "").strip()
-            # Ensure it's max 3 words by splitting and taking the first few
-            words = title.split()
-            if len(words) > 3:
-                title = " ".join(words[:3])
-            
-            # Basic sanitization for use as an ID (though backend regex handles a lot)
-            title = re.sub(r'[^a-zA-Z0-9_ -]', '', title) # Allow alphanumeric, underscore, space, hyphen
-            title = title.replace(" ", "_") # Replace spaces with underscores for a more ID-like format
-
-            if not title: # Fallback if LLM returns empty or only special characters
-                return "Project_Task" 
-            return title
-        except Exception as e:
-            log_error(f"[{self.node_id}] Error generating short project title: {e}")
-            # Fallback title in case of error
-            return "Project_Brief"
 

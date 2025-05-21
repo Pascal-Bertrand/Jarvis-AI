@@ -225,10 +225,10 @@ def show_projects():
                 if not agent_id_filter or is_owner or is_participant:
                     if project_id not in all_projects: # Avoid duplicates if multiple agents share a project view
                         project_plan_steps = project_data.get("plan_steps", [])
-                        detailed_description = project_data.get("description", "") # Start with existing description
+                        #detailed_description = project_data.get("description", "") # Start with existing description
 
                         if project_plan_steps:
-                            detailed_description += "<br><br><b>Project Plan Overview:</b><br>"
+                            detailed_description = "<b>Project Plan Overview:</b>"
                             for i, step in enumerate(project_plan_steps):
                                 step_name = step.get("name", f"Step {i+1}")
                                 step_desc = step.get("description", "No description")
