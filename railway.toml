@@ -1,0 +1,5 @@
+[build]
+# Using Dockerfile instead
+
+[deploy]
+# Using Dockerfile CMD instead 

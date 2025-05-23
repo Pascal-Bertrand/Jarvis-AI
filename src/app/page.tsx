@@ -110,9 +110,10 @@ interface RawBackendMeetingEvent {
 // Define a placeholder for the Socket.IO server URL
 // If your backend is on a different port or domain, change this.
 // Example: const SOCKET_URL = 'http://localhost:8000';
-const BACKEND_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://your-backend.railway.app' 
-  : 'http://localhost:5001'
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 
+  (process.env.NODE_ENV === 'production' 
+    ? 'https://jarvis-ai-production.up.railway.app' 
+    : 'http://localhost:5001')
 
 export default function Home() {
   const { data: session, status } = useSession()
@@ -251,7 +252,7 @@ export default function Home() {
 
     const fetchAgents = async () => {
       try {
-        const response = await fetchWithAuth(`${BACKEND_URL}/api/nodes`);
+        const response = await fetchWithAuth(`${BACKEND_URL}/nodes`);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -305,13 +306,9 @@ export default function Home() {
 
   const initializeUserAgents = async () => {
     try {
-      await fetch(`${BACKEND_URL}/api/initialize`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session?.accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      // Note: Backend automatically initializes agents on startup
+      // This could be used for user-specific initialization if needed
+      console.log('User agents initialization - backend handles this automatically')
     } catch (error) {
       console.error('Failed to initialize user agents:', error)
     }
@@ -331,7 +328,7 @@ export default function Home() {
 
   const fetchMeetings = async (agentId: string) => {
     try {
-      const response = await fetchWithAuth(`${BACKEND_URL}/api/meetings?agent_id=${agentId}`);
+      const response = await fetchWithAuth(`${BACKEND_URL}/meetings?agent_id=${agentId}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data: RawBackendMeetingEvent[] = await response.json(); 
       
@@ -360,7 +357,7 @@ export default function Home() {
 
   const fetchProjects = async (agentId: string) => {
     try {
-      const response = await fetchWithAuth(`${BACKEND_URL}/api/projects?agent_id=${agentId}`);
+      const response = await fetchWithAuth(`${BACKEND_URL}/projects?agent_id=${agentId}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       // Type for data can be an array of projects or an object mapping IDs to projects
       const data: Project[] | { [projectId: string]: Omit<Project, 'id'> } = await response.json();
@@ -402,7 +399,7 @@ export default function Home() {
 
   const fetchTasks = async (agentId: string) => {
     try {
-      const response = await fetchWithAuth(`${BACKEND_URL}/api/tasks?agent_id=${agentId}`);
+      const response = await fetchWithAuth(`${BACKEND_URL}/tasks?agent_id=${agentId}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data: Task[] = await response.json(); // Assuming backend returns Task[] directly
       setTasks(data.map(task => ({
@@ -523,7 +520,7 @@ export default function Home() {
       return;
     }
     try {
-      const response = await fetchWithAuth(`${BACKEND_URL}/api/send_message`, {
+      const response = await fetchWithAuth(`${BACKEND_URL}/send_message`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ node_id: selectedAgent.id, message: messageText, sender_id: selectedAgent.id }),
       });

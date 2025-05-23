@@ -446,24 +446,31 @@ def send_message_internal(node_id, message, sender_id):
 
 
 def start_flask():
-    # Try different ports if 5000 is in use
-    for port in range(5001, 5010):
-        try:
-            # Use the imported socketio instance to run the app
-            print(f"Attempting to start SocketIO server on port {port}")
-            # Add allow_unsafe_werkzeug=True if needed for development auto-reloader with SocketIO
-            socketio.run(app, debug=False, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
-            print(f"SocketIO server started successfully on port {port}")
-            break  # Exit loop if successful
-        except OSError as e:
-            if 'Address already in use' in str(e):
-                print(f"Port {port} is in use, trying next port...")
-            else:
-                print(f"An unexpected OS error occurred: {e}")
-                break  # Stop trying if it's not an address-in-use error
-        except Exception as e:
-            print(f"An unexpected error occurred trying to start the server: {e}")
-            break  # Stop trying on other errors
+    # Use Railway's PORT environment variable or fallback to local development ports
+    railway_port = os.getenv('PORT')
+    if railway_port:
+        port = int(railway_port)
+        print(f"Using Railway PORT: {port}")
+        socketio.run(app, debug=False, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
+    else:
+        # Try different ports if 5000 is in use (local development)
+        for port in range(5001, 5010):
+            try:
+                # Use the imported socketio instance to run the app
+                print(f"Attempting to start SocketIO server on port {port}")
+                # Add allow_unsafe_werkzeug=True if needed for development auto-reloader with SocketIO
+                socketio.run(app, debug=False, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
+                print(f"SocketIO server started successfully on port {port}")
+                break  # Exit loop if successful
+            except OSError as e:
+                if 'Address already in use' in str(e):
+                    print(f"Port {port} is in use, trying next port...")
+                else:
+                    print(f"An unexpected OS error occurred: {e}")
+                    break  # Stop trying if it's not an address-in-use error
+            except Exception as e:
+                print(f"An unexpected error occurred trying to start the server: {e}")
+                break  # Stop trying on other errors
 
 
 def open_browser():
