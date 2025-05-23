@@ -9,9 +9,13 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@next-auth/supabase-adapter": "^0.2.1",
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "@supabase/supabase-js": "^2.49.8",
     "@vercel/analytics": "^1.5.0",
     "lucide-react": "^0.511.0",
     "next": "15.3.2",
+    "next-auth": "^4.24.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "socket.io-client": "^4.8.1"

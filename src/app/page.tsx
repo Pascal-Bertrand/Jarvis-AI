@@ -9,6 +9,7 @@ import NewProjectModal from './components/NewProjectModal';
 import ProjectDetailModal from './components/ProjectDetailModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import MeetingDetailModal from './components/MeetingDetailModal';
+import { useSession, signIn, signOut } from 'next-auth/react'
 
 // Define types for our data
 interface Agent {
@@ -109,9 +110,12 @@ interface RawBackendMeetingEvent {
 // Define a placeholder for the Socket.IO server URL
 // If your backend is on a different port or domain, change this.
 // Example: const SOCKET_URL = 'http://localhost:8000';
-const BACKEND_URL = 'http://localhost:5001'; // IMPORTANT: Adjust if your Python backend is elsewhere
+const BACKEND_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://your-backend.railway.app' 
+  : 'http://localhost:5001'
 
 export default function Home() {
+  const { data: session, status } = useSession()
   const [socket, setSocket] = useState<Socket | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
@@ -144,13 +148,30 @@ export default function Home() {
   const [isMeetingDetailModalOpen, setIsMeetingDetailModalOpen] = useState(false);
   const [selectedMeetingForDetail, setSelectedMeetingForDetail] = useState<Meeting | null>(null);
 
+  // Ref for selectedAgent to be used in socket event handlers
+  const selectedAgentRef = useRef<Agent | null>(null);
+
   // Scroll to bottom of messages when new messages are added
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    selectedAgentRef.current = selectedAgent;
+  }, [selectedAgent]);
+
+  // Initialize user agents on first login
+  useEffect(() => {
+    if (session?.accessToken) {
+      initializeUserAgents()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session])
+
   // Effect for initializing and cleaning up Socket.IO connection
   useEffect(() => {
+    if (!session) return; // Don't initialize socket if not authenticated
+
     const newSocket = io(BACKEND_URL); // Use BACKEND_URL for Socket.IO
     setSocket(newSocket);
 
@@ -172,60 +193,9 @@ export default function Home() {
 
     newSocket.on('update_meetings', () => {
       console.log('Received update_meetings event from backend.');
-      // Assuming selectedAgent is available in this scope.
-      // Need to access selectedAgent state here. Best to use it from the outer scope.
-      // This will be handled by fetching based on the current selectedAgent.id if it exists.
-      // For now, this relies on fetchMeetings being called with the correct agent ID
-      // if an agent is currently selected. The fetchMeetings function itself doesn't
-      // inherently know the current agent unless passed, or this event triggers a re-fetch
-      // using the existing selectedAgent state.
-      // The current implementation of handleAgentSelect already calls fetchMeetings,
-      // so if an agent is selected, their meetings are fetched.
-      // This socket event should trigger a re-fetch for the *currently selected* agent.
-      // We can access `selectedAgent` directly here IF `selectedAgent` is stable or use `socket.data.selectedAgent` trick
-      // Or, more simply, rely on `selectedAgent` state being up-to-date.
-      // Let's make fetchMeetings optionally take agentId or use state.
-      // For now, we'll fetch based on the current selectedAgent from the state.
-      // This will require `selectedAgent` to be a dependency of the main useEffect.
-      // Let's add it for robustness.
-      // This part is tricky because selectedAgent is state. The event handler for socket
-      // won't automatically get the latest `selectedAgent` unless it's in the dependency array
-      // which would re-setup the socket listeners on every agent change.
-      // A common pattern is to use a ref to the fetch function or selected agent, or
-      // to have the server emit the agent_id along with 'update_meetings' if it's specific.
-      // Given current structure, let's assume fetchMeetings will be called by a top-level state check
-      // or we pass the current agent's ID if available.
-      // Let's modify this to call fetchMeetings if an agent is selected
-      // This will be improved when `selectedAgent` is added to the dependency array of the main `useEffect`.
-      // For now, let's ensure `fetchMeetings` is callable and will use `selectedAgent.id`.
-      // This will be called, but `selectedAgent` in this closure might be stale.
-      // The best way is to have the fetchMeetings function reference the state.
-      // As `selectedAgent` is in the outer scope, `fetchMeetings(selectedAgent.id)` inside here
-      // will use the `selectedAgent` from the time this effect was set up.
-      // This is a common React hook pitfall.
-      // A better way:
-      // 1. Server sends agent_id with 'update_meetings' if specific.
-      // 2. Or, the component that holds `selectedAgent` re-calls `fetchMeetings`.
-      // Given that `fetchMeetings` is defined in the same scope and uses `BACKEND_URL`,
-      // and `selectedAgent` is also state, we need to ensure the `fetchMeetings` call
-      // within this event handler can access the *current* selectedAgent.
-      // The `handleAgentSelect` function correctly fetches. This event is for *other* clients
-      // or background updates.
-
-      // The most straightforward way without restructuring too much is to ensure
-      // this effect hook has `selectedAgent` in its dependencies, or `fetchMeetings`
-      // is defined with `useCallback` and includes `selectedAgent` in its deps.
-
-      // For now, let's just log, and ensure fetchMeetings is robust.
-      // The actual fetch should be triggered by an effect that *does* depend on selectedAgent if needed.
-      // The `handleAgentSelect` function will correctly call `fetchMeetings`.
-      // This event is more for background updates.
-      // We will call fetchMeetings with the current agent ID if one is selected.
-      // This requires selectedAgent to be a dependency of the main useEffect.
-      // Let's add it for robustness.
       setSocket(prevSocket => {
-        if (prevSocket && prevSocket.active) { // Check if socket is still active
-            const currentSelectedAgentId = selectedAgentRef.current?.id; // Use a ref
+        if (prevSocket && prevSocket.active) {
+            const currentSelectedAgentId = selectedAgentRef.current?.id;
             if (currentSelectedAgentId) {
                 console.log(`Socket event 'update_meetings': Fetching for agent ${currentSelectedAgentId}`);
                 fetchMeetings(currentSelectedAgentId);
@@ -253,7 +223,7 @@ export default function Home() {
         });
     });
 
-    newSocket.on('update_tasks', () => { // Added tasks update
+    newSocket.on('update_tasks', () => {
         console.log('Received update_tasks event from backend.');
         setSocket(prevSocket => {
             if (prevSocket && prevSocket.active) {
@@ -272,19 +242,16 @@ export default function Home() {
     return () => {
       newSocket.disconnect();
     };
-  }, []); // initialAgentId (if used for first load) or selectedAgent if it should re-run on agent change
-
-  // Ref for selectedAgent to be used in socket event handlers
-  const selectedAgentRef = useRef<Agent | null>(null);
-  useEffect(() => {
-    selectedAgentRef.current = selectedAgent;
-  }, [selectedAgent]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]); // Re-run when session changes
 
   // Effect for fetching agents
   useEffect(() => {
+    if (!session) return; // Don't fetch if not authenticated
+
     const fetchAgents = async () => {
       try {
-        const response = await fetch(`${BACKEND_URL}/nodes`);
+        const response = await fetchWithAuth(`${BACKEND_URL}/api/nodes`);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -301,11 +268,70 @@ export default function Home() {
     };
     fetchAgents();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount
+  }, [session]); // Re-run when session changes
+
+  // Auto-select first agent when agent list loads
+  useEffect(() => {
+    if (agents.length > 0 && !selectedAgent) {
+      handleAgentSelect(agents[0], true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agents]); // Only re-run if agents array itself changes
+
+  // Authentication guard - show loading state
+  if (status === 'loading') {
+    return <div className="flex items-center justify-center h-screen">
+      <div className="text-lg">Loading...</div>
+    </div>
+  }
+
+  // Authentication guard - show sign in
+  if (!session) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-gray-50">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">Jarvis-AI</h1>
+          <p className="text-gray-600 mb-8">Sign in to access your AI agents</p>
+          <button
+            onClick={() => signIn('google')}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const initializeUserAgents = async () => {
+    try {
+      await fetch(`${BACKEND_URL}/api/initialize`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      })
+    } catch (error) {
+      console.error('Failed to initialize user agents:', error)
+    }
+  }
+
+  // Update all API calls to include auth headers
+  const fetchWithAuth = (url: string, options: RequestInit = {}) => {
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${session?.accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    })
+  }
 
   const fetchMeetings = async (agentId: string) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/meetings?agent_id=${agentId}`);
+      const response = await fetchWithAuth(`${BACKEND_URL}/api/meetings?agent_id=${agentId}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data: RawBackendMeetingEvent[] = await response.json(); 
       
@@ -334,7 +360,7 @@ export default function Home() {
 
   const fetchProjects = async (agentId: string) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/projects?agent_id=${agentId}`);
+      const response = await fetchWithAuth(`${BACKEND_URL}/api/projects?agent_id=${agentId}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       // Type for data can be an array of projects or an object mapping IDs to projects
       const data: Project[] | { [projectId: string]: Omit<Project, 'id'> } = await response.json();
@@ -376,7 +402,7 @@ export default function Home() {
 
   const fetchTasks = async (agentId: string) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/tasks?agent_id=${agentId}`);
+      const response = await fetchWithAuth(`${BACKEND_URL}/api/tasks?agent_id=${agentId}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data: Task[] = await response.json(); // Assuming backend returns Task[] directly
       setTasks(data.map(task => ({
@@ -438,14 +464,6 @@ export default function Home() {
         setInputText('');
     }
   };
-  
-  // Auto-select first agent when agent list loads
-  useEffect(() => {
-    if (agents.length > 0 && !selectedAgent) {
-      handleAgentSelect(agents[0], true);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agents]); // Only re-run if agents array itself changes
 
   const displayLoadingIndicator = (isProjectPlanning: boolean, initialMessageOverride?: string) => {
     const newLoadingId = `loading-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -505,7 +523,7 @@ export default function Home() {
       return;
     }
     try {
-      const response = await fetch(`${BACKEND_URL}/send_message`, {
+      const response = await fetchWithAuth(`${BACKEND_URL}/api/send_message`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ node_id: selectedAgent.id, message: messageText, sender_id: selectedAgent.id }),
       });
@@ -798,9 +816,9 @@ export default function Home() {
       <header className="bg-white p-4 border-b border-gray-200 shadow-sm flex items-center justify-between sticky top-0 z-50">
         <div>
           <h1 className="text-2xl font-bold text-blue-600">Jarvis-AI</h1>
-          <p className="text-xs text-gray-500">[demo] Control and monitor your AI agents</p>
+          <p className="text-xs text-gray-500">Welcome, {session.user?.name}</p>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-4">
           <span className="text-sm text-gray-600">Act as:</span>
           <div className="relative">
             <select
@@ -820,6 +838,12 @@ export default function Home() {
             </select>
             <ChevronDown size={18} className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none" />
           </div>
+          <button
+            onClick={() => signOut()}
+            className="text-sm text-gray-600 hover:text-gray-800"
+          >
+            Sign Out
+          </button>
         </div>
       </header>
 

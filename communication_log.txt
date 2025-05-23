@@ -37,3 +37,11 @@ From system to John Doe: New task assigned: Draft YC Application. Due: 2025-05-2
 From system to John Doe: New task assigned: Develop Minimum Viable Product (MVP). Due: 2025-05-26. Priority: high.
 From system to John Doe: New task assigned: Prepare Application Documents. Due: 2025-05-28. Priority: high.
 From system to John Doe: New task assigned: Practice Interview Responses. Due: 2025-05-28. Priority: high.
+From system to John Doe: New task assigned: Draft Company Details. Due: 2025-05-29. Priority: high.
+From system to Michael Chen: New task assigned: Script Development for Product Demo. Due: 2025-05-29. Priority: high.
+From system to John Doe: New task assigned: Prepare Mock Interview Questions. Due: 2025-05-29. Priority: high.
+From system to John Doe: New task assigned: Finalize the application. Due: 2025-05-27. Priority: high.
+From system to Ueli Maurer: New task assigned: Research Y Combinator's application process. Due: 2025-05-27. Priority: high.
+From system to Ueli Maurer: New task assigned: Create Pitch Deck. Due: 2025-05-29. Priority: high.
+From system to Ueli Maurer: New task assigned: Gather Required Information for YC Application. Due: 2025-05-29. Priority: high.
+From system to Ueli Maurer: New task assigned: Develop Key Interview Responses. Due: 2025-05-29. Priority: high.
