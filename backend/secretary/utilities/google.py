@@ -12,15 +12,34 @@ SCOPES = [
 CLIENT_ID = '473172815719-uqsf1bv6rior1ctebkernlnamca3mv3e.apps.googleusercontent.com'
 TOKEN_FILE = 'token.pickle'
 
+def is_production_environment():
+    """Check if we're running in a production/headless environment"""
+    return (
+        os.getenv('RAILWAY_ENVIRONMENT') is not None or  # Railway
+        os.getenv('RENDER') is not None or               # Render
+        os.getenv('VERCEL') is not None or               # Vercel
+        os.getenv('HEROKU') is not None or               # Heroku
+        os.getenv('NODE_ENV') == 'production' or         # General production
+        not os.getenv('DISPLAY')                         # No display (headless)
+    )
+
 def initialize_google_services(node_id: str = None) -> dict:
     """
     Perform OAuth (or refresh) and return {'calendar': service, 'gmail': service}.
-    If node_id is given, prints/logs “[{node_id}] …” prefixes as before.
+    If node_id is given, prints/logs "[{node_id}] …" prefixes as before.
+    In production environments, returns empty services to avoid browser requirement.
     """
     prefix = f"[{node_id}]" if node_id else ""
     print(f"{prefix} Initializing Google services…")
 
     services = {'calendar': None, 'gmail': None}
+    
+    # Skip Google services in production environments
+    if is_production_environment():
+        print(f"{prefix} Production environment detected - skipping Google services OAuth (requires browser)")
+        print(f"{prefix} Google Calendar and Gmail features will be disabled")
+        return services
+
     client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
     if not client_secret:
         print(f"{prefix} ERROR: GOOGLE_CLIENT_SECRET not set")
@@ -44,25 +63,34 @@ def initialize_google_services(node_id: str = None) -> dict:
                 print(f"{prefix} Credentials refreshed")
             except Exception:
                 creds = None
-                os.remove(TOKEN_FILE)
+                if os.path.exists(TOKEN_FILE):
+                    os.remove(TOKEN_FILE)
         if not creds:
-            flow = InstalledAppFlow.from_client_config({
-                "installed": {
-                    "client_id": CLIENT_ID,
-                    "client_secret": client_secret,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                    "redirect_uris": ["http://localhost:8080/"]
-                }
-            }, SCOPES)
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            print(f"{prefix} Opening {auth_url}")
-            webbrowser.open(auth_url)
-            creds = flow.run_local_server(port=8080)
-        with open(TOKEN_FILE, 'wb') as f:
-            pickle.dump(creds, f)
-            print(f"{prefix} Saved credentials to {TOKEN_FILE}")
+            try:
+                flow = InstalledAppFlow.from_client_config({
+                    "installed": {
+                        "client_id": CLIENT_ID,
+                        "client_secret": client_secret,
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                        "redirect_uris": ["http://localhost:8080/"]
+                    }
+                }, SCOPES)
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                print(f"{prefix} Opening {auth_url}")
+                webbrowser.open(auth_url)
+                creds = flow.run_local_server(port=8080)
+            except Exception as e:
+                print(f"{prefix} Failed to initialize OAuth flow (likely headless environment): {e}")
+                return services
+                
+        try:
+            with open(TOKEN_FILE, 'wb') as f:
+                pickle.dump(creds, f)
+                print(f"{prefix} Saved credentials to {TOKEN_FILE}")
+        except Exception as e:
+            print(f"{prefix} Failed to save credentials: {e}")
 
     # build Calendar
     try:
