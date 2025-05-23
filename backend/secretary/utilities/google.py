@@ -14,14 +14,35 @@ TOKEN_FILE = 'token.pickle'
 
 def is_production_environment():
     """Check if we're running in a production/headless environment"""
-    return (
-        os.getenv('RAILWAY_ENVIRONMENT') is not None or  # Railway
-        os.getenv('RENDER') is not None or               # Render
-        os.getenv('VERCEL') is not None or               # Vercel
-        os.getenv('HEROKU') is not None or               # Heroku
-        os.getenv('NODE_ENV') == 'production' or         # General production
-        not os.getenv('DISPLAY')                         # No display (headless)
+    
+    # Debug: print environment info
+    print(f"DEBUG: Checking environment variables...")
+    print(f"DEBUG: RAILWAY_ENVIRONMENT = {os.getenv('RAILWAY_ENVIRONMENT')}")
+    print(f"DEBUG: RAILWAY_PUBLIC_DOMAIN = {os.getenv('RAILWAY_PUBLIC_DOMAIN')}")
+    print(f"DEBUG: RAILWAY_STATIC_URL = {os.getenv('RAILWAY_STATIC_URL')}")
+    print(f"DEBUG: RENDER = {os.getenv('RENDER')}")
+    print(f"DEBUG: NODE_ENV = {os.getenv('NODE_ENV')}")
+    print(f"DEBUG: DISPLAY = {os.getenv('DISPLAY')}")
+    print(f"DEBUG: PWD = {os.getenv('PWD')}")
+    
+    # More aggressive detection for Railway and other cloud platforms
+    is_production = (
+        os.getenv('RAILWAY_ENVIRONMENT') is not None or
+        os.getenv('RAILWAY_PUBLIC_DOMAIN') is not None or
+        os.getenv('RAILWAY_STATIC_URL') is not None or
+        'railway' in os.getenv('PWD', '').lower() or
+        '/app' in os.getenv('PWD', '') or  # Common in Docker containers
+        os.getenv('RENDER') is not None or
+        os.getenv('VERCEL') is not None or
+        os.getenv('HEROKU') is not None or
+        os.getenv('NODE_ENV') == 'production' or
+        os.getenv('PYTHONPATH', '').startswith('/app') or  # Docker/container indicator
+        not os.getenv('DISPLAY') or  # No display (headless)
+        os.getenv('DISPLAY') == ':0'  # Default display in containers
     )
+    
+    print(f"DEBUG: is_production = {is_production}")
+    return is_production
 
 def initialize_google_services(node_id: str = None) -> dict:
     """
@@ -33,6 +54,13 @@ def initialize_google_services(node_id: str = None) -> dict:
     print(f"{prefix} Initializing Google services…")
 
     services = {'calendar': None, 'gmail': None}
+    
+    # Force production mode if we're clearly in a container/server environment
+    current_path = os.getcwd()
+    if '/app' in current_path or '/opt' in current_path:
+        print(f"{prefix} Container environment detected (path: {current_path}) - forcing production mode")
+        print(f"{prefix} Google Calendar and Gmail features will be disabled")
+        return services
     
     # Skip Google services in production environments
     if is_production_environment():
