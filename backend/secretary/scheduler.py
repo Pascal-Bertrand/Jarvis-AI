@@ -12,7 +12,7 @@ from config.agents import AGENT_CONFIG
 
 class Scheduler:
 
-    def __init__(self, node_id: str = None, calendar_service=None, network: Intercom = None, brain = None, socketio_instance=None):
+    def __init__(self, node_id: str = None, calendar_service=None, network: Intercom = None, brain = None, socketio_instance=None, user_id: str = None):
         """
         Initialize the Scheduler.
 
@@ -22,19 +22,21 @@ class Scheduler:
             network (Intercom): The Intercom/network instance for notifications.
             brain: The Brain instance associated with this node.
             socketio_instance: The shared SocketIO instance.
+            user_id (str): The user ID this scheduler belongs to.
         """
         self.node_id = node_id
         self.calendar_service = calendar_service
         self.network = network
         self.brain = brain
         self.socketio = socketio_instance
+        self.user_id = user_id  # Store user ID for data isolation
         self.calendar = self.network.local_calendar if self.network and node_id in self.network.nodes else []
         self.node = self.network.nodes.get(node_id) if self.network and node_id in self.network.nodes else None
 
         # Attach this calendar list to the Brain node so meetings show up
         if self.network and self.node_id in self.network.nodes:
             setattr(self.network.nodes[self.node_id], 'calendar', self.calendar)
-            log_system_message(f"[Scheduler:{self.node_id}] Calendar attached to node.")  
+            log_system_message(f"[Scheduler:{self.node_id}] Calendar attached to node for user: {user_id}.")  
         
         # Register this Scheduler instance under its node_id
         if self.network and self.node_id is not None:
@@ -1348,6 +1350,7 @@ class Scheduler:
             msg = f"[{self.node_id}] Error cancelling meeting: {str(e)}"
             print(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
             return msg    
+        
     # TODO: Work on the logic! Right now it just cancels all meetings with minor criteria    
     def _fallback_cancel_meeting(self, cancel_data: dict) -> str:
         """
@@ -1563,117 +1566,162 @@ class Scheduler:
     #TODO: Add correct return statements to this function and handle separation of concerns nicely
     def _complete_meeting_rescheduling(self):
         """
-        Complete the meeting rescheduling process using collected meeting context details.
-        
-        This method retrieves the target event, parses the new date and time, adjusts if the time is in the past,
-        updates the event's start and end times, and notifies participants about the change.
+        Finalizes the meeting rescheduling process using details from `meeting_context`.
+
+        Retrieves the target Google Calendar event, applies the new date/time
+        (adjusting to the future if necessary), updates the event, and notifies
+        attendees. Emits a SocketIO event on success.
+
+        Returns:
+            Optional[str]: A notification message for the initiating user or None if
+                           the process couldn't be completed (e.g., context inactive).
+                           Returns an error message string to the user on failure.
         """
-        
+        # Ensure meeting_context is active and available
         if not hasattr(self, 'meeting_context') or not self.meeting_context.get('active'):
+            log_warning(f"[{self.node_id}] _complete_meeting_rescheduling called with inactive or missing context.")
             return None
         
-        # Get the new date and time
+        # Retrieve necessary details from the meeting context
         new_date = self.meeting_context['collected_info'].get('date')
         new_time = self.meeting_context['collected_info'].get('time')
         target_event_id = self.meeting_context.get('target_event_id')
+
+        if not all([new_date, new_time, target_event_id]):
+            log_error(f"[{self.node_id}] Missing critical info in meeting_context for rescheduling: date={new_date}, time={new_time}, event_id={target_event_id}")
+            return "Error: Missing critical information to reschedule the meeting."
         
         try:
-            # Get the full event
+            # Fetch the full event from Google Calendar
             event = self.calendar_service.events().get(
                 calendarId='primary',
                 eventId=target_event_id
             ).execute()
             
-            # Parse the new date and time
+            # Parse the new date and time provided by the user
             new_start_datetime = datetime.strptime(f"{new_date} {new_time}", "%Y-%m-%d %H:%M")
             
-            # Check if it's still in the past
+            # Adjust if the new time is in the past
             if new_start_datetime < datetime.now():
-                print(f"[{self.node_id}] The provided time is still in the past. Adjusting to tomorrow at the same time.")
+                log_system_message(f"[{self.node_id}] Reschedule time {new_start_datetime} is in the past. Adjusting to tomorrow.")
                 tomorrow = datetime.now() + timedelta(days=1)
                 new_start_datetime = datetime(
                     tomorrow.year, tomorrow.month, tomorrow.day,
                     new_start_datetime.hour, new_start_datetime.minute
                 )
             
-            # Calculate end time based on original duration
-            original_start = datetime.fromisoformat(event['start'].get('dateTime').replace('Z', '+00:00'))
-            original_end = datetime.fromisoformat(event['end'].get('dateTime').replace('Z', '+00:00'))
-            original_duration = (original_end - original_start).total_seconds() / 60
+            # Calculate the new end time based on the event's original duration
+            original_start_iso = event['start'].get('dateTime')
+            original_end_iso = event['end'].get('dateTime')
+            if not original_start_iso or not original_end_iso:
+                log_error(f"[{self.node_id}] Original event {target_event_id} is missing start/end dateTime.")
+                return "Error: Could not determine original meeting duration."
+
+            original_start = datetime.fromisoformat(original_start_iso.replace('Z', '+00:00'))
+            original_end = datetime.fromisoformat(original_end_iso.replace('Z', '+00:00'))
+            original_duration_minutes = (original_end - original_start).total_seconds() / 60
             
-            new_end_datetime = new_start_datetime + timedelta(minutes=original_duration)
+            new_end_datetime = new_start_datetime + timedelta(minutes=original_duration_minutes)
             
-            # Update the event times while preserving all other data
+            # Update the event's start and end times in the local event object
             event['start']['dateTime'] = new_start_datetime.isoformat()
             event['end']['dateTime'] = new_end_datetime.isoformat()
             
-            # Update event in Google Calendar
+            # Update the event in Google Calendar
             updated_event = self.calendar_service.events().update(
                 calendarId='primary',
                 eventId=target_event_id,
                 body=event
             ).execute()
             
-            # Format date and time for user-friendly display
+            # Prepare user-friendly formatted date and time for notifications
             meeting_title = updated_event.get('summary', 'Untitled meeting')
-            formatted_time = new_start_datetime.strftime("%I:%M %p")
-            formatted_date = new_start_datetime.strftime("%B %d, %Y")
+            formatted_time = new_start_datetime.strftime("%I:%M %p") # e.g., 03:00 PM
+            formatted_date = new_start_datetime.strftime("%B %d, %Y") # e.g., July 26, 2024
             
-            # Success message
-            print(f"[{self.node_id}] Response: Meeting '{meeting_title}' has been rescheduled to {formatted_date} at {formatted_time}.")
+            user_confirmation_message = f"Meeting '{meeting_title}' has been rescheduled to {formatted_date} at {formatted_time}."
+            log_system_message(f"[{self.node_id}] {user_confirmation_message}")
+            print(f"[{self.node_id}] Response: {user_confirmation_message}") # For CLI/debug
             
-            # Update local calendar records and notify participants
-            for meeting in self.calendar:
-                if meeting.get('event_id') == updated_event['id']:
-                    meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
+            # Update local calendar records for the current node
+            if hasattr(self, 'calendar') and isinstance(self.calendar, list):
+                for local_meeting_idx, local_meeting in enumerate(self.calendar):
+                    if local_meeting.get('event_id') == updated_event['id']:
+                        self.brain.calendar[local_meeting_idx]['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
+                        self.brain.calendar[local_meeting_idx]['start_time'] = new_start_datetime.isoformat()
+                        self.brain.calendar[local_meeting_idx]['end_time'] = new_end_datetime.isoformat()
+                        break
             
-            # Notify each attendee about the updated meeting details
+            # Notify each attendee about the rescheduled meeting
             attendees = updated_event.get('attendees', [])
+            notification_message_for_attendees = (
+                f"Your meeting '{meeting_title}' has been rescheduled by {self.node_id}.\n"
+                f"New date: {formatted_date}\n"
+                f"New time: {formatted_time}"
+            )
             for attendee in attendees:
                 attendee_id = attendee.get('email', '').split('@')[0]
-                if attendee_id in self.network.nodes:
-                    # Update their local calendar
-                    for meeting in self.network.nodes[attendee_id].calendar:
-                        if meeting.get('event_id') == updated_event['id']:
-                            meeting['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
+                if self.network and attendee_id in self.network.nodes and attendee_id != self.node_id:
+                    # Update attendee's local calendar (if they have one)
+                    attendee_node_brain = self.network.nodes[attendee_id].brain
+                    if hasattr(attendee_node_brain, 'calendar') and isinstance(attendee_node_brain.calendar, list):
+                        for local_meeting_idx, local_meeting in enumerate(attendee_node_brain.calendar):
+                            if local_meeting.get('event_id') == updated_event['id']:
+                                attendee_node_brain.calendar[local_meeting_idx]['meeting_info'] = f"{meeting_title} (Rescheduled to {formatted_date} at {formatted_time})"
+                                attendee_node_brain.calendar[local_meeting_idx]['start_time'] = new_start_datetime.isoformat()
+                                attendee_node_brain.calendar[local_meeting_idx]['end_time'] = new_end_datetime.isoformat()
+                                break
                     
-                    # Send notification
-                    notification = (
-                        f"Your meeting '{meeting_title}' has been rescheduled by {self.node_id}.\n"
-                        f"New date: {formatted_date}\n"
-                        f"New time: {formatted_time}"
-                    )
-                    self.network.send_message(self.node_id, attendee_id, notification)
+                    # Send network message notification
+                    self.network.send_message(self.node_id, attendee_id, notification_message_for_attendees)
                     
-            # Emit an update to the UI via SocketIO for rescheduling
+            # Emit an update to the UI via SocketIO for rescheduling success
             if self.socketio:
-                self.socketio.emit('update_meetings')
+                self.socketio.emit('update_meetings', room=self.node_id) # Or general room if applicable
             
-            return notification # Or a success message
+            self.meeting_context['active'] = False # Deactivate context after successful reschedule
+            return user_confirmation_message
         
         except Exception as e:
-            print(f"[{self.node_id}] Error completing meeting rescheduling: {str(e)}")
-            print(f"[{self.node_id}] Response: There was an error rescheduling the meeting. Please try again.")
+            log_error(f"[{self.node_id}] Error completing meeting rescheduling for event {target_event_id}: {str(e)}")
+            # Provide a user-friendly error message
+            error_response = "There was an error rescheduling the meeting. Please try again or check the logs."
+            print(f"[{self.node_id}] Response: {error_response}") # For CLI/debug
+            self.meeting_context['active'] = False # Deactivate context on error too
+            return error_response
     
     def handle_calendar(self, intent: dict, message: str):
         """
-        Handle calendar-related commands such as scheduling or cancelling meetings.
+        Routes calendar-related intents to appropriate handler methods.
+
+        Based on the 'action' in the `intent` dictionary (e.g., 'schedule_meeting',
+        'list_meetings'), this method calls the corresponding private helper
+        method (e.g., `_start_meeting_creation`, `_handle_list_meetings`).
+
+        Args:
+            intent (dict): Parsed calendar intent, containing 'action', 'missing_info',
+                           and other relevant details.
+            message (str): The original user message that triggered the calendar action.
+
+        Returns:
+            Optional[str]: The result from the called handler method, typically a
+                           message for the user or None.
         """
-        # Early exit if not a calendar command
-        if not intent.get('is_calendar_command', False):
+        # Early exit if not a calendar command or if intent is missing
+        if not intent or not intent.get('is_calendar_command', False):
             return None
 
         action = intent.get('action')
-        missing = intent.get('missing_info', [])
+        missing_info = intent.get('missing_info', []) # Default to empty list if not present
 
-        # CHANGED: pick handler based on action, but always call handler(intent, message)
+        # Route to the appropriate handler based on the detected action
         if action == 'schedule_meeting':
-            log_system_message(f"[Scheduler] [{self.node_id}] Routing to meeting creation")
-            if missing:
-                # If missing info, start the meeting creation process
-                return self._start_meeting_creation(message, missing)
+            log_system_message(f"[Scheduler] [{self.node_id}] Routing to meeting creation. Missing info: {missing_info}")
+            if missing_info:
+                # If information is missing, initiate the interactive meeting creation process
+                return self._start_meeting_creation(message, missing_info)
             else:
-                # If no missing info, handle the meeting creation
+                # If all information is present, proceed directly to handling meeting creation
                 return self._handle_meeting_creation(message)
         elif action == 'list_meetings':
             log_system_message(f"[Scheduler] [{self.node_id}] Routing to _handle_list_meetings")
@@ -1685,6 +1733,7 @@ class Scheduler:
             log_system_message(f"[Scheduler] [{self.node_id}] Routing to _handle_meeting_rescheduling")
             return self._handle_meeting_rescheduling(message)
         else:
-            log_warning(f"[{self.node_id}] Unknown calendar action '{action}'") 
+            # Log and respond if the action is unknown or not supported
+            log_warning(f"[{self.node_id}] Unknown calendar action '{action}' in intent: {intent}") 
             return f"Sorry, I don't know how to '{action}'."
     

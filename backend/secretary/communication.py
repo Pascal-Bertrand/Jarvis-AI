@@ -20,7 +20,7 @@ class Communication:
       4) Fallback → LLM conversation
     """
 
-    def __init__(self, node_id: str, llm_client, network, open_api_key: str):
+    def __init__(self, node_id: str, llm_client, network, open_api_key: str, user_id: str = None):
         """
         Initialize the Communication handler.
 
@@ -28,11 +28,13 @@ class Communication:
             node_id (str): Identifier for this node.
             llm_client: Wrapped LLM interface for chat.
             network: The Intercom/network instance for message routing.
+            user_id (str): The user ID this communication handler belongs to.
         """
         self.node_id = node_id
         self.llm = llm_client
         self.network = network
         self.open_api_key = open_api_key
+        self.user_id = user_id  # Store user ID for data isolation
 
         # Data stores for tasks, projects, meetings
         self.tasks: List = []
@@ -233,42 +235,92 @@ class Communication:
 
     def _chat_with_llm(self, message: str) -> str:
         """
-        Fallback: append to history, query LLM, print and return the response.
+        Fallback handler for general conversation with the LLM.
+
+        Appends the user message and LLM response to conversation history.
+
+        Args:
+            message (str): The user's message.
+
+        Returns:
+            str: The LLM's response.
         """
+        # Add user's message to the conversation history
         self.conversation_history.append({'role':'user','content':message})
+        
+        # Query the LLM with the updated conversation history
         response = self.brain.query_llm(self.conversation_history)
+        
+        # Add LLM's response to the conversation history
         self.conversation_history.append({'role':'assistant','content':response})
+        
         return response
 
     def _handle_email_composition(self, intent: dict, message: str) -> Optional[str]:
-        """Handles the process of composing and sending an email."""
+        """
+        Manages interactive email composition.
+
+        Prompts for missing information (recipient, subject, body) or confirms
+        the draft if all details are present. Requires Brain and Gmail services.
+        Note: Actual email sending is not implemented.
+
+        Args:
+            intent (dict): Parsed intent for sending an email, including potential
+                           'missing_info', 'recipient', 'subject', 'body'.
+            message (str): The original user message (for context).
+
+        Returns:
+            Optional[str]: A message to the user (prompt or confirmation), or an error.
+        """
+        # Check for availability of essential services (Brain and Gmail)
         if not self.brain or not self.gmail_service:
             return "Email services are not available."
             
+        # Check if any information is missing for the email
         missing = intent.get('missing_info', [])
         if missing:
+            # Prompt the user for the missing information
             return f"Okay, let's draft an email. I still need the following: {', '.join(missing)}."
         else:
-            recipient = intent.get('recipient', 'unknown')
-            subject = intent.get('subject', 'no subject')
-            body = intent.get('body', 'empty body')
+            # All information is present, prepare a draft confirmation
+            recipient = intent.get('recipient', 'unknown') # Default if somehow still missing
+            subject = intent.get('subject', 'no subject') # Default if somehow still missing
+            body = intent.get('body', 'empty body')       # Default if somehow still missing
+            # TODO: Implement actual email sending functionality
             return f"Drafting email to {recipient} with subject '{subject}'. Ready to send? (Send command not implemented yet)"
 
     def _handle_email(self, intent: dict, message: str) -> Optional[str]:
         """
-        Handle both simple send-email intents and advanced email commands.
-        DEPRECATED? receive_message now routes based on intent analysis.
+        Routes email-related intents. (DEPRECATED)
+
+        Delegates to `_handle_email_composition` for sending emails or to
+        `brain.process_advanced_email_command` for other email actions.
+        This method's logic may be superseded by `receive_message`.
+
+        Args:
+            intent (dict): Parsed email intent, with 'is_send_email' and 'action' keys.
+            message (str): The original user message (for context).
+
+        Returns:
+            Optional[str]: Response from email handling or a generic/error message.
         """
+        # Check if the Brain (core logic) is available
         if not self.brain:
             return "Email processing is not available."
             
+        # Check if the intent is to send/compose an email
         if intent.get('is_send_email', False):
             return self._handle_email_composition(intent, message)
         else:
+            # Handle other email actions (e.g., search, list labels)
             action = intent.get('action')
-            if action and action != 'none':
+            if action and action != 'none': # Ensure there is a valid action
+                # Delegate to the brain to process advanced email commands
+                # Note: The 'intent' dict itself is passed here, which might be specific
+                # to how process_advanced_email_command expects its input.
                 resp = self.brain.process_advanced_email_command(intent)
                 return resp
             else:
+                # Log if the email intent is unhandled or unclear
                 log_warning(f"Unhandled email intent in _handle_email: {intent}")
                 return "I understand you want to do something with email, but I'm not sure exactly what."

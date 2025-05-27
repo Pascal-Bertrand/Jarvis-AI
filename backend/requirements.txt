@@ -35,6 +35,7 @@ pyasn1==0.6.1
 pyasn1_modules==0.4.2
 pydantic==2.11.4
 pydantic_core==2.33.2
+PyJWT==2.8.0
 pyparsing==3.2.3
 python-dotenv==1.1.0
 python-engineio==4.12.1

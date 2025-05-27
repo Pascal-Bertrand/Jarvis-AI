@@ -12,7 +12,7 @@ class Task:
         id (str):
             A globally unique identifier for the task, generated via UUID4.
         title (str):
-            A brief, human-readable summary of the task’s goal.
+            A brief, human-readable summary of the task's goal.
         description (str):
             A detailed explanation of what needs to be done.
         due_date (datetime.datetime):
@@ -23,11 +23,13 @@ class Task:
             The importance level, e.g. 'high', 'medium', or 'low'.
         project_id (str):
             Identifier linking this task back to a broader project context.
+        user_id (str):
+            User ID for data isolation.
         completed (bool):
             Flag indicating whether the task has been finished.
     """
   
-    def __init__(self, title: str, description: str, due_date: datetime.datetime, assigned_to: str, priority: str, project_id: str):
+    def __init__(self, title: str, description: str, due_date: datetime.datetime, assigned_to: str, priority: str, project_id: str, user_id: str = None):
           
         # Generate a unique ID for this task
         self.id: str = uuid.uuid4().hex
@@ -43,6 +45,8 @@ class Task:
         self.priority: str = priority
         # Link back to the overall project
         self.project_id: str = project_id
+        # User ID for data isolation
+        self.user_id: str = user_id
         # Completion status flag
         self.completed: bool = False
 
@@ -62,6 +66,7 @@ class Task:
             "assigned_to": self.assigned_to,
             "priority": self.priority,
             "project_id": self.project_id,
+            "user_id": self.user_id,
             "completed": self.completed,
         }
 
