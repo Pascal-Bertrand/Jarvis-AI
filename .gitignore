@@ -22,6 +22,21 @@
 
 # backend
 /backend/logs
+# Google OAuth credentials
+backend/token.pickle
+token.pickle
+# Service account credentials
+backend/service-account.json
+service-account.json
+# Python cache
+backend/__pycache__/
+backend/*/__pycache__/
+backend/*/*/__pycache__/
+*.pyc
+*.pyo
+# Virtual environments
+backend/.venv/
+backend/venv/
 
 # misc
 .DS_Store
