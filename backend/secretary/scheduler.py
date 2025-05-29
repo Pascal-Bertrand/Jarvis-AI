@@ -12,7 +12,7 @@ from config.agents import AGENT_CONFIG
 
 class Scheduler:
 
-    def __init__(self, node_id: str = None, calendar_service=None, network: Intercom = None, brain = None, socketio_instance=None, user_id: str = None):
+    def __init__(self, node_id: str = None, calendar_service=None, network: Intercom = None, brain = None, socketio_instance=None):
         """
         Initialize the Scheduler.
 
@@ -29,14 +29,14 @@ class Scheduler:
         self.network = network
         self.brain = brain
         self.socketio = socketio_instance
-        self.user_id = user_id  # Store user ID for data isolation
+        #self.user_id = user_id  # Store user ID for data isolation
         self.calendar = self.network.local_calendar if self.network and node_id in self.network.nodes else []
         self.node = self.network.nodes.get(node_id) if self.network and node_id in self.network.nodes else None
 
         # Attach this calendar list to the Brain node so meetings show up
         if self.network and self.node_id in self.network.nodes:
             setattr(self.network.nodes[self.node_id], 'calendar', self.calendar)
-            log_system_message(f"[Scheduler:{self.node_id}] Calendar attached to node for user: {user_id}.")  
+            #log_system_message(f"[Scheduler:{self.node_id}] Calendar attached to node for user: {user_id}.")  
         
         # Register this Scheduler instance under its node_id
         if self.network and self.node_id is not None:

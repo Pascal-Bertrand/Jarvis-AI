@@ -1,2 +1,0 @@
-2025-05-22 12:40:56,228 - INFO - ======= AgentAI Logging Started at 2025-05-22_12-40-56 =======
-2025-05-22 12:40:58,131 - INFO - SYSTEM: OpenAI client initialized successfully

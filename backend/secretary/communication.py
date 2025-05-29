@@ -20,7 +20,7 @@ class Communication:
       4) Fallback → LLM conversation
     """
 
-    def __init__(self, node_id: str, llm_client, network, open_api_key: str, user_id: str = None):
+    def __init__(self, node_id: str, llm_client, network, open_api_key: str):
         """
         Initialize the Communication handler.
 
@@ -34,7 +34,7 @@ class Communication:
         self.llm = llm_client
         self.network = network
         self.open_api_key = open_api_key
-        self.user_id = user_id  # Store user ID for data isolation
+        #self.user_id = user_id  # Store user ID for data isolation
 
         # Data stores for tasks, projects, meetings
         self.tasks: List = []

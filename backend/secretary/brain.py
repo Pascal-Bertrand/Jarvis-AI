@@ -102,10 +102,10 @@ class Brain:
         network: Intercom,
         llm_params: dict = None,
         socketio_instance=None,
-        user_id: str = None
+        #user_id: str = None
     ):
         self.node_id = node_id
-        self.user_id = user_id  # Store user ID for data isolation
+        #self.user_id = user_id  # Store user ID for data isolation
 
         # --- LLM client setup ---
         openai.api_key = openai_api_key
@@ -154,7 +154,7 @@ class Brain:
         # --- SocketIO (if using realtime UI updates) ---
         self.socketio = socketio_instance
 
-        log_system_message(f"[Brain:{self.node_id}] initialized for user: {user_id}.")
+        #log_system_message(f"[Brain:{self.node_id}] initialized for user: {user_id}.")
         
     def _detect_calendar_intent(self, message):
         """
@@ -1011,7 +1011,7 @@ class Brain:
                                     assigned_to=task_data["assigned_to"],
                                     priority=task_data["priority"],
                                     project_id=project_id,
-                                    user_id=self.user_id
+                                    #user_id=self.user_id
                                 )
                                 
                                 # Add to network tasks

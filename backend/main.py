@@ -60,57 +60,56 @@ SCOPES = [
 GOOGLE_CLIENT_ID = '473172815719-uqsf1bv6rior1ctebkernlnamca3mv3e.apps.googleusercontent.com'
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')  # Fallback to empty string if not set
 
-def get_user_id_from_request():
-    """
-    Extract user ID from the Authorization header.
-    Returns the user ID if valid, None otherwise.
-    """
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        log_warning("No valid Authorization header found")
-        return None
+# def get_user_id_from_request():
+#     """
+#     Extract user ID from the Authorization header.
+#     Returns the user ID if valid, None otherwise.
+#     """
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         log_warning("No valid Authorization header found")
+#         return None
     
-    token = auth_header.split(' ')[1]
+#     token = auth_header.split(' ')[1]
     
-    try:
-        # Handle base64-encoded JSON token from frontend
-        try:
-            import base64
-            decoded_bytes = base64.b64decode(token + '==')  # Add padding if needed
-            decoded_str = decoded_bytes.decode('utf-8')
-            token_data = json.loads(decoded_str)
-            user_id = token_data.get('sub') or token_data.get('email')
-        except:
-            # Fallback to JWT decoding (for future improvements)
-            decoded = jwt.decode(token, options={"verify_signature": False})
-            user_id = decoded.get('sub') or decoded.get('userId') or decoded.get('id') or decoded.get('email')
+#     try:
+#         # Handle base64-encoded JSON token from frontend
+#         try:
+#             import base64
+#             decoded_bytes = base64.b64decode(token + '==')  # Add padding if needed
+#             decoded_str = decoded_bytes.decode('utf-8')
+#             token_data = json.loads(decoded_str)
+#             user_id = token_data.get('sub') or token_data.get('email')
+#         except:
+#             # Fallback to JWT decoding (for future improvements)
+#             decoded = jwt.decode(token, options={"verify_signature": False})
+#             user_id = decoded.get('sub') or decoded.get('userId') or decoded.get('id') or decoded.get('email')
         
-        if user_id:
-            log_system_message(f"Extracted user ID: {user_id}")
-            return user_id
-        else:
-            log_warning("No user ID found in token")
-            return None
-    except Exception as e:
-        log_error(f"Error decoding token: {e}")
-        return None
+#         if user_id:
+#             log_system_message(f"Extracted user ID: {user_id}")
+#             return user_id
+#         else:
+#             log_warning("No user ID found in token")
+#             return None
+#     except Exception as e:
+#         log_error(f"Error decoding token: {e}")
+#         return None
 
-def require_auth(f):
-    """
-    Decorator to require authentication for API endpoints.
-    """
-    def decorated_function(*args, **kwargs):
-        user_id = get_user_id_from_request()
-        if not user_id:
-            return jsonify({"error": "Authentication required"}), 401
-        return f(user_id, *args, **kwargs)
-    decorated_function.__name__ = f.__name__
-    return decorated_function
+# def require_auth(f):
+#     """
+#     Decorator to require authentication for API endpoints.
+#     """
+#     def decorated_function(*args, **kwargs):
+#         user_id = get_user_id_from_request()
+#         if not user_id:
+#             return jsonify({"error": "Authentication required"}), 401
+#         return f(user_id, *args, **kwargs)
+#     decorated_function.__name__ = f.__name__
+#     return decorated_function
 
 class LLMNode:
     def __init__(self, node_id: str, node_name:str, knowledge: str = "",
-                 llm_api_key_override: str = "", llm_params: dict = None, network: Optional[Intercom] = None,
-                 user_id: str = None):
+                 llm_api_key_override: str = "", llm_params: dict = None, network: Optional[Intercom] = None):
         """
         Initialize a new LLMNode instance. This class represents an individual AI agent
         within the network, equipped with its own LLM, knowledge, and communication capabilities.
@@ -135,7 +134,7 @@ class LLMNode:
         self.node_id = node_id
         self.node_name = node_name
         self.knowledge = knowledge # Note: knowledge is not actively used by Brain/Communication yet
-        self.user_id = user_id  # Store user ID for data isolation
+        #self.user_id = user_id  # Store user ID for data isolation
 
         # Determine API key to use for this specific node.
         # If an override is provided, use that; otherwise, fall back to the global API key.
