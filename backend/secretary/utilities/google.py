@@ -82,20 +82,15 @@ def initialize_google_services(node_id: str = None) -> dict:
 
     services = {'calendar': None, 'gmail': None}
     
-    # Check if Google services are force-enabled or force-disabled
+    # Check if Google services are force-enabled
     force_enabled = os.getenv('FORCE_GOOGLE_SERVICES', '').lower() in ['true', '1', 'yes']
-    force_disabled = os.getenv('FORCE_GOOGLE_SERVICES', '').lower() in ['false', '0', 'no']
     
     # Force production mode if we're clearly in a container/server environment
     current_path = os.getcwd()
     if '/app' in current_path or '/opt' in current_path:
         print(f"{prefix} Container environment detected (path: {current_path})")
-        if force_disabled:
-            print(f"{prefix} Google services force-disabled via FORCE_GOOGLE_SERVICES=false")
-            return services
-        elif not force_enabled:
-            print(f"{prefix} Google Calendar and Gmail features will be disabled in container environment")
-            print(f"{prefix} Set FORCE_GOOGLE_SERVICES=true to enable, or provide service account credentials")
+        if not force_enabled:
+            print(f"{prefix} Google Calendar and Gmail features will be disabled (set FORCE_GOOGLE_SERVICES=true to enable)")
             return services
 
     is_prod = is_production_environment()
@@ -118,15 +113,11 @@ def initialize_google_services(node_id: str = None) -> dict:
                 except Exception as e:
                     print(f"{prefix} Failed to load existing OAuth credentials: {e}")
             
-            if not creds:
-                if force_enabled:
-                    print(f"{prefix} No valid credentials found, but FORCE_GOOGLE_SERVICES=true - attempting OAuth")
-                else:
-                    print(f"{prefix} No valid credentials available and OAuth not possible in production")
-                    print(f"{prefix} Google Calendar and Gmail features will be disabled")
-                    print(f"{prefix} To enable: set FORCE_GOOGLE_SERVICES=true, provide service account credentials,")
-                    print(f"{prefix} or copy token.pickle from development environment")
-                    return services
+            if not creds and not force_enabled:
+                print(f"{prefix} No valid credentials available and OAuth not possible in production")
+                print(f"{prefix} Google Calendar and Gmail features will be disabled")
+                print(f"{prefix} To enable, set FORCE_GOOGLE_SERVICES=true or provide service account credentials")
+                return services
 
     # If not in production or no service account, use OAuth flow
     if not creds:
@@ -176,9 +167,6 @@ def initialize_google_services(node_id: str = None) -> dict:
                     creds = flow.run_local_server(port=8080)
                 except Exception as e:
                     print(f"{prefix} Failed to initialize OAuth flow: {e}")
-                    if is_prod or '/app' in os.getcwd():
-                        print(f"{prefix} OAuth not available in container/production environment")
-                        print(f"{prefix} Consider using service account credentials or copying token.pickle from development")
                     return services
                     
             try:
