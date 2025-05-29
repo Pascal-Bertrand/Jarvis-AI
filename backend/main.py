@@ -60,56 +60,57 @@ SCOPES = [
 GOOGLE_CLIENT_ID = '473172815719-uqsf1bv6rior1ctebkernlnamca3mv3e.apps.googleusercontent.com'
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')  # Fallback to empty string if not set
 
-# def get_user_id_from_request():
-#     """
-#     Extract user ID from the Authorization header.
-#     Returns the user ID if valid, None otherwise.
-#     """
-#     auth_header = request.headers.get('Authorization')
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         log_warning("No valid Authorization header found")
-#         return None
+def get_user_id_from_request():
+    """
+    Extract user ID from the Authorization header.
+    Returns the user ID if valid, None otherwise.
+    """
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        log_warning("No valid Authorization header found")
+        return None
     
-#     token = auth_header.split(' ')[1]
+    token = auth_header.split(' ')[1]
     
-#     try:
-#         # Handle base64-encoded JSON token from frontend
-#         try:
-#             import base64
-#             decoded_bytes = base64.b64decode(token + '==')  # Add padding if needed
-#             decoded_str = decoded_bytes.decode('utf-8')
-#             token_data = json.loads(decoded_str)
-#             user_id = token_data.get('sub') or token_data.get('email')
-#         except:
-#             # Fallback to JWT decoding (for future improvements)
-#             decoded = jwt.decode(token, options={"verify_signature": False})
-#             user_id = decoded.get('sub') or decoded.get('userId') or decoded.get('id') or decoded.get('email')
+    try:
+        # Handle base64-encoded JSON token from frontend
+        try:
+            import base64
+            decoded_bytes = base64.b64decode(token + '==')  # Add padding if needed
+            decoded_str = decoded_bytes.decode('utf-8')
+            token_data = json.loads(decoded_str)
+            user_id = token_data.get('sub') or token_data.get('email')
+        except:
+            # Fallback to JWT decoding (for future improvements)
+            decoded = jwt.decode(token, options={"verify_signature": False})
+            user_id = decoded.get('sub') or decoded.get('userId') or decoded.get('id') or decoded.get('email')
         
-#         if user_id:
-#             log_system_message(f"Extracted user ID: {user_id}")
-#             return user_id
-#         else:
-#             log_warning("No user ID found in token")
-#             return None
-#     except Exception as e:
-#         log_error(f"Error decoding token: {e}")
-#         return None
+        if user_id:
+            log_system_message(f"Extracted user ID: {user_id}")
+            return user_id
+        else:
+            log_warning("No user ID found in token")
+            return None
+    except Exception as e:
+        log_error(f"Error decoding token: {e}")
+        return None
 
-# def require_auth(f):
-#     """
-#     Decorator to require authentication for API endpoints.
-#     """
-#     def decorated_function(*args, **kwargs):
-#         user_id = get_user_id_from_request()
-#         if not user_id:
-#             return jsonify({"error": "Authentication required"}), 401
-#         return f(user_id, *args, **kwargs)
-#     decorated_function.__name__ = f.__name__
-#     return decorated_function
+def require_auth(f):
+    """
+    Decorator to require authentication for API endpoints.
+    """
+    def decorated_function(*args, **kwargs):
+        user_id = get_user_id_from_request()
+        if not user_id:
+            return jsonify({"error": "Authentication required"}), 401
+        return f(user_id, *args, **kwargs)
+    decorated_function.__name__ = f.__name__
+    return decorated_function
 
 class LLMNode:
     def __init__(self, node_id: str, node_name:str, knowledge: str = "",
-                 llm_api_key_override: str = "", llm_params: dict = None, network: Optional[Intercom] = None):
+                 llm_api_key_override: str = "", llm_params: dict = None, network: Optional[Intercom] = None,
+                 user_id: str = None):
         """
         Initialize a new LLMNode instance. This class represents an individual AI agent
         within the network, equipped with its own LLM, knowledge, and communication capabilities.
@@ -134,7 +135,7 @@ class LLMNode:
         self.node_id = node_id
         self.node_name = node_name
         self.knowledge = knowledge # Note: knowledge is not actively used by Brain/Communication yet
-        #self.user_id = user_id  # Store user ID for data isolation
+        self.user_id = user_id  # Store user ID for data isolation
 
         # Determine API key to use for this specific node.
         # If an override is provided, use that; otherwise, fall back to the global API key.
@@ -214,47 +215,6 @@ CORS(app)  # Enable CORS for all routes
 socketio.init_app(app) 
 
 network: Optional[Intercom] = None  # Will be set by the main function
-
-def initialize_app_components():
-    """Initializes the Intercom network and registers LLMNodes."""
-    global network
-    # 1. Initialize the Intercom network.
-    # The log_file parameter specifies where communication logs will be stored.
-    network = Intercom(log_file="communication_log.txt")
-    log_system_message("Intercom network initialized.")
-
-    # 2. & 3. Load agent configurations and create/register LLMNodes.
-    if not AGENT_CONFIG:
-        log_warning("AGENT_CONFIG is empty. No LLMNodes will be created.")
-    else:
-        log_system_message(f"Found {len(AGENT_CONFIG)} agent configurations to load.")
-
-    for agent_config in AGENT_CONFIG:
-        try:
-            # Create a new LLMNode instance for each configuration.
-            # It's provided with its ID, name, knowledge, a reference to the network,
-            # and the global OpenAI API key (can be overridden per node if needed).
-            node = LLMNode(
-                node_id=agent_config["id"],
-                node_name=agent_config["name"],
-                knowledge=agent_config.get("knowledge", ""), # Use .get for optional keys like knowledge
-                network=network,
-                llm_api_key_override=openai_api_key # Using the global key for all nodes here
-            )
-            # Register the newly created node with the Intercom network.
-            network.register_node(node.node_id, node)
-            log_system_message(f"Created and registered LLMNode: {agent_config['id']} - {agent_config['name']}")
-        except KeyError as e:
-            log_error(f"Missing key {str(e)} in agent configuration: {agent_config}. Skipping this agent.")
-        except Exception as e:
-            log_error(f"Error creating or registering node for config {agent_config.get('id', 'UNKNOWN_ID')}: {str(e)}. Skipping this agent.")
-    
-    log_system_message(f"All specified LLMNodes registered. Current nodes in network: {list(network.get_all_nodes().keys()) if network else 'Network not initialized'}")
-
-# Initialize components when the app module is loaded,
-# ensuring it runs for WSGI servers too.
-initialize_app_components()
-
 
 #QESTION: Already have that in app.py, so why again here?
 @socketio.on('join_room')
@@ -889,21 +849,45 @@ if __name__ == "__main__":
     6. Logs that the main thread has finished, indicating that background services (Flask)
        are now running.
     """
-    # Initialize components if running directly (already called above, but safe to call again or can be removed if desired)
-    # initialize_app_components() # This call can be removed if it's certain the above call is sufficient.
-                                # For robustness or clarity, it can be left. Let's remove for now to avoid double init.
+    # 1. Initialize the Intercom network.
+    # The log_file parameter specifies where communication logs will be stored.
+    network = Intercom(log_file="communication_log.txt")
+    log_system_message("Intercom network initialized.")
 
-    # If network is still None here, it means initialization failed.
-    if not network:
-        log_error("Network initialization failed prior to starting Flask server. Check earlier logs.")
-        # Optionally, exit or raise an error if network is critical for server startup
-        # return # or sys.exit(1)
+    # 2. & 3. Load agent configurations and create/register LLMNodes.
+    if not AGENT_CONFIG:
+        log_warning("AGENT_CONFIG is empty. No LLMNodes will be created.")
+    else:
+        log_system_message(f"Found {len(AGENT_CONFIG)} agent configurations to load.")
+
+    for agent_config in AGENT_CONFIG:
+        try:
+            # Create a new LLMNode instance for each configuration.
+            # It's provided with its ID, name, knowledge, a reference to the network,
+            # and the global OpenAI API key (can be overridden per node if needed).
+            node = LLMNode(
+                node_id=agent_config["id"],
+                node_name=agent_config["name"],
+                knowledge=agent_config.get("knowledge", ""), # Use .get for optional keys like knowledge
+                network=network,
+                llm_api_key_override=openai_api_key # Using the global key for all nodes here
+            )
+            # Register the newly created node with the Intercom network.
+            network.register_node(node.node_id, node)
+            log_system_message(f"Created and registered LLMNode: {agent_config['id']} - {agent_config['name']}")
+        except KeyError as e:
+            log_error(f"Missing key {str(e)} in agent configuration: {agent_config}. Skipping this agent.")
+        except Exception as e:
+            log_error(f"Error creating or registering node for config {agent_config.get('id', 'UNKNOWN_ID')}: {str(e)}. Skipping this agent.")
+
+
+    #log_system_message(f"All specified LLMNodes registered. Current nodes in network: {list(network.get_all_nodes().keys()) if network else 'Network not initialized'}")
 
     # 4. Start the Flask-SocketIO web server in a daemon thread.
     # Daemon threads automatically exit when the main program exits.
     log_system_message("Starting Flask-SocketIO server in a background thread...")
     flask_thread = threading.Thread(target=start_flask) 
-    flask_thread.daemon = True # Ensures thread doesn't prevent program termination. TODO: Try out daemon=False and see if socketio.emit() actually sends something to the client
+    flask_thread.daemon = False # Changed from True to False - server must stay alive in production
     flask_thread.start()
 
     # 5. Start the browser-opening utility in a daemon thread.
@@ -920,13 +904,6 @@ if __name__ == "__main__":
     # If flask_thread.join() were called, it would wait for start_flask to complete, which it doesn't
     # because socketio.run() is a blocking call that runs indefinitely.
     # For a script that just starts background services, letting the main thread finish is fine.
-    
-    # Log the state of the network after initialization and before server starts in main context
-    if network:
-        log_system_message(f"Network status before Flask start in main: {len(network.get_all_nodes())} nodes loaded.")
-    else:
-        log_system_message("Network is None before Flask start in main. Initialization might have issues.")
-
     log_system_message("Main thread initialization complete. Flask server and browser opener are running in background threads.")
 
 
