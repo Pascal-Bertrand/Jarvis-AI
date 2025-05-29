@@ -101,9 +101,11 @@ class Brain:
         openai_api_key: str,
         network: Intercom,
         llm_params: dict = None,
-        socketio_instance=None
+        socketio_instance=None,
+        user_id: str = None
     ):
         self.node_id = node_id
+        self.user_id = user_id  # Store user ID for data isolation
 
         # --- LLM client setup ---
         openai.api_key = openai_api_key
@@ -124,7 +126,7 @@ class Brain:
         self.network = network
         self.network.register_node(node_id, self)
         self.tasks = []            # local cache if needed
-        self.projects = {}         # project plans by project_id
+        self.projects = {}         # project plans by project_id (user-specific)
 
         self.meeting_context = {
             'active': False,
@@ -152,7 +154,7 @@ class Brain:
         # --- SocketIO (if using realtime UI updates) ---
         self.socketio = socketio_instance
 
-        log_system_message(f"[Brain:{self.node_id}] initialized.")
+        log_system_message(f"[Brain:{self.node_id}] initialized for user: {user_id}.")
         
     def _detect_calendar_intent(self, message):
         """
@@ -282,43 +284,78 @@ class Brain:
         
     def initiate_project_planning(self, project_id: str, objective: str):
         """
-        V2: Initiates project planning by first getting candidate suggestions.
-        The actual planning and task generation will happen after participants are confirmed.
+        Initiates the project planning process (Version 2).
+
+        This method sets up a new project or updates an existing one with the given
+        objective. It then fetches candidate suggestions for project participation.
+        The actual detailed planning and task generation are deferred until
+        participants are confirmed by the user.
+
+        The method updates the project's status to 'pending_final_participants'
+        and sets up a confirmation context to manage the user interaction flow
+        for participant selection.
+
+        It leverages `_get_best_candidates_data` to obtain a list of suitable
+        agents based on the project objective and available agent configurations.
+        The suggested candidates are then formatted into a JSON string and returned
+        as part of a message to the user.
+
+        Args:
+            project_id (str): The unique identifier for the project.
+            objective (str): A description of the project's goals and scope.
+
+        Returns:
+            str: A message for the user, including an introduction and a JSON
+                 payload of suggested candidate agents for the project.
         """
         log_system_message(f"[Brain] [{self.node_id}] Initiating project '{project_id}' with objective: {objective}")
 
         if project_id not in self.projects:
+            # Initialize a new project if it doesn't exist
             self.projects[project_id] = {
                 "name": "Project " + project_id,
                 "objective": objective,
-                #"description": objective,
-                "plan_steps": [], 
-                "participants": set(), 
-                "status": "pending_final_participants", 
+                #"description": objective, # Description can be objective initially
+                "plan_steps": [],  # Plan steps will be populated later
+                "participants": set(),  # Participants will be added by the user
+                "status": "pending_final_participants",  # Initial status
                 "created_at": datetime.now().isoformat()
             }
+            # Activate confirmation context for participant selection
             self.confirmation_context['active'] = True
             self.confirmation_context['context'] = "plan project"
             self.confirmation_context['initial_message'] = f"Initiating project planning for '{project_id}' with objective: {objective}"
             self.confirmation_context['project_id'] = project_id
         else: 
+            # Update an existing project
             self.projects[project_id]["objective"] = objective
-            self.projects[project_id]["description"] = objective
-            self.projects[project_id]["status"] = "pending_final_participants"
-            self.projects[project_id]["participants"] = set() 
+            self.projects[project_id]["description"] = objective # Update description as well
+            self.projects[project_id]["status"] = "pending_final_participants" # Reset status for new planning phase
+            self.projects[project_id]["participants"] = set() # Reset participants for new planning
 
-        # Get candidate suggestions using the new internal method
+        # Get candidate suggestions using the internal helper method
         suggested_candidates_data = self._get_best_candidates_data(project_id, objective)
 
         # Format the response string to be compatible with the UI's current parsing logic
         response_intro = f"Here are the best-suited candidates for your project '{project_id}':"
         response_json_payload = json.dumps(suggested_candidates_data)
         
-        return f"{response_intro}\n{response_json_payload}"
+        return f"{response_intro}\\n{response_json_payload}"
 
-    
+    #TODO: Remove this method once the LLM is able to generate the candidates data
     def _get_default_candidates_data(self) -> list[dict]:
-        """Return default candidates data as a fallback."""
+        """
+        Provides a default list of candidate data.
+
+        This method serves as a fallback when candidate suggestions cannot be
+        generated dynamically (e.g., due to LLM errors or empty configurations).
+        It returns a predefined list of sample agent profiles.
+
+        Returns:
+            list[dict]: A list of dictionaries, where each dictionary represents
+                        a default candidate agent with their details (name,
+                        department, skills, title, description).
+        """
         return [
             {"name": "Ueli Maurer", "department": "Engineering", "skills": ["Swiss German", "AI", "System Design"], "title": "CEO", "description": "Oversees the entire organization and strategy."},
             {"name": "John Doe", "department": "Marketing", "skills": ["English", "Marketing", "Market Analysis"], "title": "Marketing Lead", "description": "Handles marketing campaigns and market analysis."},
@@ -326,9 +363,27 @@ class Brain:
         ]
 
     def _create_candidates_data_from_ids(self, agent_ids: list[str]) -> list[dict]:
-        """Create candidate data (dictionaries) from agent IDs using AGENT_CONFIG."""
+        """
+        Constructs a list of candidate data dictionaries from a list of agent IDs.
+
+        This method iterates through the provided `agent_ids`, looks up each ID
+        in the `AGENT_CONFIG` (case-insensitively), and compiles a list of
+        dictionaries containing detailed information for each found agent.
+        If no candidates are found for the given IDs or if `agent_ids` is empty,
+        it falls back to returning default candidate data.
+
+        Args:
+            agent_ids (list[str]): A list of agent identifiers to look up.
+
+        Returns:
+            list[dict]: A list of dictionaries, where each dictionary contains
+                        the 'name', 'department', 'skills', 'title', and
+                        'description' for a matched agent. Returns default
+                        candidate data if no matches are found or input is empty.
+        """
         candidates_data = []
         for agent_id_lookup in agent_ids:
+            # Find the agent configuration entry matching the agent ID (case-insensitive)
             agent_config_entry = next((a for a in AGENT_CONFIG if a["id"].lower() == agent_id_lookup.lower()), None)
             if agent_config_entry:
                 candidates_data.append({
@@ -339,92 +394,170 @@ class Brain:
                     "description": agent_config_entry["description"]
                 })
         
+        # If no candidates were found from the provided IDs, return default data
         if not candidates_data:
             return self._get_default_candidates_data()
         return candidates_data
     
     def _process_agent_ids(self, agent_ids: list[str]) -> list[str]:
         """
-        Process agent IDs to handle different formats from the AI response.
-        Maps numeric indices or agent_N format to actual agent IDs from AGENT_CONFIG.
+        Processes a list of potentially varied agent identifiers and maps them
+        to standardized agent IDs from `AGENT_CONFIG`.
+
+        This method handles several formats for agent identification:
+        1.  Direct match with an agent's 'id' in `AGENT_CONFIG`.
+        2.  "agent_N" or "agentN" format, where N is a 1-based index into `AGENT_CONFIG`.
+        3.  Numeric string "N", interpreted as a 1-based index into `AGENT_CONFIG`.
+        4.  Direct match with an agent's 'name' (case-insensitive) in `AGENT_CONFIG`.
+
+        The method ensures that the returned list contains unique, valid agent IDs.
+
+        Args:
+            agent_ids (list[str]): A list of agent identifiers which may be in
+                                   various formats (e.g., "Ueli Maurer", "agent_1", "1").
+
+        Returns:
+            list[str]: A list of unique, standardized agent IDs derived from the
+                       input. If an ID cannot be resolved, it's omitted.
         """
         processed_ids = []
         for agent_id in agent_ids:
+            # Check for direct ID match
             if any(a["id"] == agent_id for a in AGENT_CONFIG):
                 processed_ids.append(agent_id)
                 continue
+            
+            # Handle "agent_N" or "agentN" format
             if agent_id.lower().startswith("agent"):
                 num_part = agent_id.lower().replace("agent", "").replace("_", "").strip()
                 try:
-                    idx = int(num_part) - 1
+                    idx = int(num_part) - 1  # Convert to 0-based index
                     if 0 <= idx < len(AGENT_CONFIG):
                         processed_ids.append(AGENT_CONFIG[idx]["id"])
                         continue
                 except ValueError:
+                    # num_part was not a valid integer
                     pass
+            
+            # Handle numeric string "N" as 1-based index
             try:
-                idx = int(agent_id) - 1
+                idx = int(agent_id) - 1  # Convert to 0-based index
                 if 0 <= idx < len(AGENT_CONFIG):
                     processed_ids.append(AGENT_CONFIG[idx]["id"])
                     continue
             except ValueError:
+                # agent_id was not a simple integer string
                 pass
+
+            # Handle matching by agent name (case-insensitive)
             agent_id_lower = agent_id.lower()
             for agent in AGENT_CONFIG:
                 if agent["name"].lower() == agent_id_lower or agent["id"].lower() == agent_id_lower:
                     processed_ids.append(agent["id"])
                     break
-        return list(set(processed_ids)) # Ensure uniqueness
+        return list(set(processed_ids)) # Ensure uniqueness in the final list
 
     def _extract_agent_ids_from_text(self, text: str) -> list[str]:
-        """Extract agent IDs from text when JSON parsing fails."""
+        """
+        Attempts to extract agent IDs from a given text string, typically when
+        direct JSON parsing of an LLM response fails.
+
+        This method employs several strategies:
+        1.  Regex patterns to find "agent_N", "agent N", or standalone numbers (interpreted as 1-based indices).
+        2.  If regex fails, it searches for direct mentions of agent IDs or names (case-insensitive) from `AGENT_CONFIG`.
+        3.  As a last resort, if no IDs are found and `AGENT_CONFIG` is populated,
+            it defaults to returning the IDs of the first three agents in the configuration.
+
+        The method returns up to three unique agent IDs.
+
+        Args:
+            text (str): The text string from which to extract agent IDs.
+
+        Returns:
+            list[str]: A list of extracted and potentially resolved agent IDs,
+                       containing up to three unique IDs.
+        """
         found_ids = []
+        # Regex patterns to find "agent_X" or "X" (numeric index)
         agent_patterns = [
-            r'agent[_\s]*(\d+)',
-            r'\b(\d+)\b'
+            r'agent[_\s]*(\\d+)', # Matches "agent_1", "agent 1", etc.
+            r'\\b(\\d+)\\b'      # Matches standalone numbers, e.g., "1", "2"
         ]
         for pattern in agent_patterns:
             matches = re.findall(pattern, text.lower())
             for match in matches:
-                # Try to map number to agent_index directly if possible
                 try:
-                    idx = int(match) -1
+                    # Attempt to map number to 0-based index in AGENT_CONFIG
+                    idx = int(match) -1 
                     if 0 <= idx < len(AGENT_CONFIG):
                         found_ids.append(AGENT_CONFIG[idx]["id"])
                         continue
                 except ValueError:
                     pass
-                found_ids.append(f"agent_{match}") # Fallback to agent_N format
+                # Fallback to agent_N format if direct index mapping fails or isn't applicable
+                found_ids.append(f"agent_{match}") 
 
+        # If regex patterns yield no results, try matching known agent IDs or names
         if not found_ids:
             for agent in AGENT_CONFIG:
                 if agent["id"].lower() in text.lower() or agent["name"].lower() in text.lower():
                     found_ids.append(agent["id"])
         
+        # As a final fallback, if no IDs are found and AGENT_CONFIG exists, use the first few agents
         if not found_ids and AGENT_CONFIG:
+            # Return IDs of the first up to 3 agents
             found_ids = [agent["id"] for agent in AGENT_CONFIG[:3]]
         
-        return list(set(found_ids))[:3]
+        # Return unique IDs, limited to a maximum of 3
+        return list(set(found_ids))[:3] #TODO: Remove this limit once the LLM is able to generate the optimal number of candidates
 
     def _get_best_candidates_data(self, project_id: str, objective: str) -> list[dict]:
         """
-        Use OpenAI to suggest the best candidates for a project based on the objective.
-        Returns a list of up to 3 candidate data dictionaries.
+        Utilizes an LLM to suggest the most suitable candidate agents for a project
+        based on its objective.
+
+        This method constructs a detailed prompt for the LLM, including:
+        - The project ID and objective.
+        - A comprehensive list of available agents, with their ID, name, department,
+          title, skills, description, and knowledge areas, sourced from `AGENT_CONFIG`.
+        - Instructions for the LLM to analyze the project requirements and select
+          up to three best-suited candidates.
+        - A strict requirement for the LLM to respond ONLY with a valid JSON object
+          containing an array of exact agent IDs (e.g., `{"selected_agents": ["id_1", "id_2"]}`).
+
+        The method handles LLM response parsing, including cleaning potential markdown
+        code blocks. If JSON parsing fails, it attempts to extract agent IDs using
+        `_extract_agent_ids_from_text`. The processed agent IDs are then converted
+        into candidate data dictionaries using `_create_candidates_data_from_ids`.
+
+        If the LLM response is empty, parsing fails repeatedly, or any other
+        exception occurs, it falls back to `_get_default_candidates_data`.
+
+        Args:
+            project_id (str): The identifier of the project.
+            objective (str): The detailed objective or description of the project.
+
+        Returns:
+            list[dict]: A list of dictionaries, where each dictionary represents a
+                        suggested candidate agent with their details. Returns default
+                        candidates in case of errors or empty LLM response.
         """
         agent_info_list = []
+        # Prepare detailed information for each agent to include in the prompt
         for i, agent in enumerate(AGENT_CONFIG):
             agent_info = (
-                f"Agent ID: {agent['id']}\n"
-                f"Name: {agent['name']}\n"
-                f"Department: {agent['department']}\n"
-                f"Title: {agent['title']}\n"
-                f"Skills: {', '.join(agent['skills'])}\n"
-                f"Description: {agent['description']}\n"
-                f"Knowledge: {agent['knowledge']}\n"
+                f"Agent ID: {agent['id']}\\n"
+                f"Name: {agent['name']}\\n"
+                f"Department: {agent['department']}\\n"
+                f"Title: {agent['title']}\\n"
+                f"Skills: {', '.join(agent['skills'])}\\n"
+                f"Description: {agent['description']}\\n"
+                f"Knowledge: {agent['knowledge']}\\n"
             )
             agent_info_list.append(agent_info)
-        agents_info = "\n\n".join(agent_info_list)
+        agents_info = "\\n\\n".join(agent_info_list)
 
+        # Construct the prompt for the LLM
         prompt_content = f"""Given the following project objective (which may include itemized lists and other structures) and available agents, select up to 3 best-suited candidates for the project.
             Thoroughly analyze all details provided in the multi-line 'Project Objective' to understand the full scope and requirements.
             Consider their skills, experience, and knowledge when making the selection.
@@ -455,89 +588,143 @@ class Brain:
 
         try:
             log_api_request("openai_chat_candidates", {"model": self.llm_params["model"], "messages": messages})
+            # Query the LLM for candidate suggestions
             resp = self.client.chat.completions.create(
-                model=self.llm_params.get("model", "gpt-4o-mini"), # Use model from llm_params
+                model=self.llm_params.get("model", "gpt-4o-mini"), # Use model from llm_params or default
                 messages=messages,
-                temperature=self.llm_params.get("temperature", 0.3),
-                max_tokens=self.llm_params.get("max_tokens", 150)
+                temperature=self.llm_params.get("temperature", 0.3), # Use temperature from llm_params or default
+                max_tokens=self.llm_params.get("max_tokens", 150)    # Use max_tokens from llm_params or default
             )
             result_content = resp.choices[0].message.content.strip()
             log_api_response("openai_chat_candidates", {"response": result_content})
 
+            # Handle empty or whitespace-only response
             if not result_content or result_content.isspace():
                 log_warning(f"[{self.node_id}] Empty response from OpenAI for candidate suggestion.")
                 return self._get_default_candidates_data()
 
+            # Clean the response content (e.g., remove markdown ```json ... ```)
             clean_content = result_content.strip()
             if clean_content.startswith("```") and clean_content.endswith("```"):
                 clean_content = clean_content.strip("```")
-                if clean_content.startswith("json"):
+                if clean_content.startswith("json"): # Remove "json" prefix if present
                     clean_content = clean_content[4:].strip()
             
             selected_agent_ids = []
             try:
-                if not clean_content.startswith('{'): # Try to find JSON if embedded
+                # Attempt to find and parse JSON if it's embedded in other text
+                if not clean_content.startswith('{'): 
                     json_start = clean_content.find('{')
                     json_end = clean_content.rfind('}') + 1
                     if json_start >= 0 and json_end > json_start:
                         clean_content = clean_content[json_start:json_end]
                 
                 result = json.loads(clean_content)
-                selected_agent_ids = result.get("selected_agents", [])[:3]
+                # Get the list of selected agent IDs, limit to 3
+                selected_agent_ids = result.get("selected_agents", [])[:3] #TODO: Remove this limit once the LLM is able to generate the optimal number of candidates
             except json.JSONDecodeError:
+                # If JSON parsing fails, try manual extraction from text
                 log_warning(f"[{self.node_id}] JSON parsing error for candidates: {clean_content}. Trying manual extraction.")
                 selected_agent_ids = self._extract_agent_ids_from_text(clean_content)
             
+            # Process the extracted/parsed agent IDs to resolve them to standard forms
             processed_agent_ids = self._process_agent_ids(selected_agent_ids)
+            # Create structured candidate data from the processed IDs
             candidates_data = self._create_candidates_data_from_ids(processed_agent_ids)
             
             if candidates_data:
                 return candidates_data
+            # Fallback to default if no valid candidate data could be created
             return self._get_default_candidates_data()
 
         except Exception as e:
             log_error(f"[{self.node_id}] Error getting best candidates: {str(e)}")
+            # Fallback to default candidates in case of any exception during the process
             return self._get_default_candidates_data()
 
 
     def add_participant_to_project(self, project_id: str, participant_name: str) -> str:
         """
-        Adds a participant to the specified project.
+        Adds a specified participant to a project.
+
+        This method locates the project by `project_id`. If found, it adds the
+        `participant_name` to the project's set of participants.
+        The `participants` attribute of the project is ensured to be a set to
+        maintain uniqueness.
+
+        If a `socketio` instance is available, it emits an 'update_projects' event
+        to notify connected clients of the change.
+
+        Args:
+            project_id (str): The unique identifier of the project.
+            participant_name (str): The name or identifier of the participant to add.
+
+        Returns:
+            str: A confirmation message indicating the outcome, including the
+                 updated list of participants if successful, or an error message
+                 if the project is not found.
         """
         log_system_message(f"[Brain] [{self.node_id}] Adding participant '{participant_name}' to project '{project_id}'")
         if project_id not in self.projects:
             log_warning(f"[Brain] [{self.node_id}] Project '{project_id}' not found for adding participant.")
             return f"Project '{project_id}' not found."
 
-        # Ensure participants is a set
+        # Ensure the 'participants' field is a set for the project
         if not isinstance(self.projects[project_id].get("participants"), set):
             self.projects[project_id]["participants"] = set()
 
         self.projects[project_id]["participants"].add(participant_name)
         log_system_message(f"[Brain] [{self.node_id}] Current participants for '{project_id}': {self.projects[project_id]['participants']}")
-        # Emit an update to the UI if socketio is available
+        
+        # Emit an update to the UI via SocketIO if available
         if self.socketio:
             self.socketio.emit('update_projects', room=self.node_id) # Or a general room if needed
+        
         return f"Added '{participant_name}' to project '{project_id}'. Current participants: {', '.join(self.projects[project_id]['participants'])}."
 
     def finalize_and_plan_project(self, project_id: str) -> str:
         """
-        Finalizes the participant list and proceeds with detailed planning and task generation.
-        This is called after the user indicates they are done adding participants.
+        Finalizes the participant list for a project and proceeds to detailed
+        planning and task generation.
+
+        This method is typically called after the user has confirmed the selection
+        of participants for the project identified by `project_id`.
+
+        It performs the following steps:
+        1.  Validates that the project exists and is in the 'pending_final_participants' status.
+        2.  Retrieves the project's objective and the finalized list of participants.
+        3.  Checks if any participants have been added; if not, it updates the project
+            status to 'failed_no_participants' and returns an error message.
+        4.  Calls `plan_project` to generate a detailed project plan and associated tasks.
+        5.  Updates the project's status based on the outcome of `plan_project`
+            (e.g., 'planned_and_tasks_generated', 'planning_failed').
+        6.  If `socketio` is available, emits 'update_projects' and 'update_tasks'
+            events to notify clients.
+
+        Args:
+            project_id (str): The unique identifier of the project to finalize and plan.
+
+        Returns:
+            str: A message summarizing the outcome of the planning process. This
+                 message includes the result from `plan_project`.
         """
         log_system_message(f"[Brain] [{self.node_id}] Finalizing planning for project '{project_id}'")
+        
+        # Check if the project exists
         if project_id not in self.projects:
             log_warning(f"[Brain] [{self.node_id}] Project '{project_id}' not found for finalization.")
             return f"Project '{project_id}' not found."
 
         project_data = self.projects[project_id]
+        # Check if the project is in the correct state for finalization
         if project_data["status"] != "pending_final_participants":
             log_warning(f"[Brain] [{self.node_id}] Project '{project_id}' is not in 'pending_final_participants' state. Current state: {project_data['status']}")
             return f"Project '{project_id}' is not awaiting finalization. Current status: {project_data['status']}."
 
         objective = project_data["objective"]
-        final_participants = list(project_data["participants"])
+        final_participants = list(project_data["participants"]) # Convert set to list for plan_project
 
+        # Ensure there are participants before proceeding
         if not final_participants:
             log_warning(f"[Brain] [{self.node_id}] No participants added to project '{project_id}'. Cannot proceed with planning.")
             project_data["status"] = "failed_no_participants"
@@ -545,84 +732,82 @@ class Brain:
 
         log_system_message(f"[Brain] [{self.node_id}] Proceeding to detailed plan generation for '{project_id}' with participants: {final_participants}")
         
-        # Call the refactored plan_project method
+        # Call the plan_project method to generate the plan and tasks
         plan_result = self.plan_project(project_id, objective, final_participants)
         
-        # Update project status based on planning outcome
-        # plan_project will internally call generate_tasks_from_plan
-        # The status update will reflect that planning and task generation has been attempted.
+        # Update project status based on the outcome of the planning process
+        # plan_project internally calls generate_tasks_from_plan.
+        # The status update reflects that planning and task generation have been attempted.
         if "successfully planned" in plan_result.lower(): # Check for success message from plan_project
             project_data["status"] = "planned_and_tasks_generated"
         else:
             project_data["status"] = "planning_failed" 
 
-        # Emit an update to the UI
+        # Emit updates to the UI via SocketIO if available
         if self.socketio:
             self.socketio.emit('update_projects', room=self.node_id)
             self.socketio.emit('update_tasks', room=self.node_id)
 
         return plan_result
 
-    # def generate_short_project_title(self, objective: str) -> str:
-    #     """
-    #     Generates a short project title (max 3 words) from a project objective using an LLM.
-    #     """
-    #     prompt = f"""
-    #     Given the following project objective, please generate a very short and catchy project title.
-    #     The title MUST be a maximum of 3 words.
-    #     The title should be suitable for use as a project identifier (e.g., no special characters beyond spaces).
-    #     Only return the title itself, nothing else.
-
-    #     Project Objective:
-    #     "{objective}"
-
-    #     Short Project Title (max 3 words):
-    #     """
-    #     try:
-    #         title = self.llm.chat([{"role": "user", "content": prompt}])
-    #         # Further sanitize: remove potential quotes, ensure it's on one line, and trim.
-    #         title = title.replace('"', '').replace("'", "").strip()
-    #         # Ensure it's max 3 words by splitting and taking the first few
-    #         words = title.split()
-    #         if len(words) > 3:
-    #             title = " ".join(words[:3])
-            
-    #         # Basic sanitization for use as an ID (though backend regex handles a lot)
-    #         title = re.sub(r'[^a-zA-Z0-9_ -]', '', title) # Allow alphanumeric, underscore, space, hyphen
-    #         title = title.replace(" ", "_") # Replace spaces with underscores for a more ID-like format
-
-    #         if not title: # Fallback if LLM returns empty or only special characters
-    #             return "Project_Task" 
-    #         return title
-    #     except Exception as e:
-    #         log_error(f"[{self.node_id}] Error generating short project title: {e}")
-    #         # Fallback title in case of error
-    #         return "Project_Brief"
-
-
     def plan_project(self, project_id: str, objective: str, final_participants: list):
         """
-        V2: Create a detailed project plan using the LLM with a finalized list of participants.
-        Then generates tasks for those participants.
+        Creates a detailed project plan using an LLM and generates associated tasks.
+
+        This method orchestrates the generation of a structured project plan based on
+        the project's objective and a finalized list of participants. It involves:
+        1.  Initializing or updating the project entry in `self.projects` with the
+            provided objective and participants, and setting its status to "planning".
+        2.  Constructing a detailed prompt for an LLM to break down the project
+            objective into 3-5 high-level steps. For each step, the LLM is asked
+            to provide a name, description, and assign responsible participants from
+            the `final_participants` list.
+        3.  Querying the LLM and parsing its response, which is expected to be a JSON
+            object containing "plan_steps".
+        4.  Storing the generated plan steps in the project data and updating the
+            project status to "plan_generated".
+        5.  If plan steps are successfully generated, it calls `generate_tasks_from_plan`
+            to create specific tasks for these steps.
+        6.  Updating the project status further based on the outcome of task generation
+            (e.g., "tasks_generated", "task_generation_failed").
+        7.  Emitting 'update_projects' and 'update_tasks' events via SocketIO if
+            available, to inform the UI of changes.
+
+        Error handling is included for LLM communication issues, JSON parsing errors,
+        and other exceptions during the planning process.
+
+        Args:
+            project_id (str): The unique identifier for the project.
+            objective (str): The detailed objective or description of the project.
+            final_participants (list): A list of names or identifiers of the
+                                       participants finalized for this project.
+
+        Returns:
+            str: A message summarizing the outcome of the planning and task generation
+                 process. This includes details of the generated plan or error messages
+                 if the process failed.
         """
         log_system_message(f"[Brain] [{self.node_id}] Generating detailed plan for '{project_id}' with objective: {objective} and participants: {final_participants}")
 
+        # Ensure project exists or initialize it for planning
         if project_id not in self.projects:
             # This case should ideally be handled before calling this, but as a safeguard:
             self.projects[project_id] = {
                 "name": "Project " + project_id,
                 "objective": objective,
-                "description": objective,
+                "description": objective, # Initialize description with objective
                 "plan_steps": [],
-                "participants": set(final_participants),
-                "status": "planning", # Intermediate status
+                "participants": set(final_participants), # Store participants as a set
+                "status": "planning", # Set intermediate status
                 "created_at": datetime.now().isoformat()
             }
         else:
+            # Update existing project details for replanning or continuation
             self.projects[project_id]["objective"] = objective
             self.projects[project_id]["participants"] = set(final_participants) # Ensure it's a set and updated
             self.projects[project_id]["status"] = "planning"
         
+        # Construct the prompt for the LLM to generate a project plan
         plan_prompt = f"""
         You are creating a detailed project plan for project '{project_id}'.
         Project Objective (This may be a multi-line description with itemized lists. Consider all details carefully):
@@ -656,40 +841,44 @@ class Brain:
         """
 
         try:
+            # Query the LLM to get the project plan
             raw_response = self.query_llm([{"role": "user", "content": plan_prompt}])
             
+            # Clean the LLM response to extract JSON
             json_text = raw_response.strip()
-            if json_text.startswith("```json"):
+            if json_text.startswith("```json"): # Remove markdown code block notation
                 json_text = json_text[7:]
             if json_text.endswith("```"):
                 json_text = json_text[:-3]
             json_text = json_text.strip()
 
+            # Parse the JSON response
             plan_data = json.loads(json_text)
             plan_steps = plan_data.get("plan_steps", [])
 
 
             self.projects[project_id]["plan_steps"] = plan_steps
-            self.projects[project_id]["status"] = "plan_generated"
+            self.projects[project_id]["status"] = "plan_generated" # Update status after plan generation
             log_system_message(f"[Brain] [{self.node_id}] Project plan generated for '{project_id}': {plan_steps}")
 
+            # Check if the LLM returned any plan steps
             if not plan_steps:
                 log_error(f"[Brain] [{self.node_id}] LLM did not return valid plan steps for project '{project_id}'. Response: {raw_response}")
                 self.projects[project_id]["status"] = "planning_failed_no_steps"
                 return f"Failed to generate a project plan for '{project_id}'. The LLM did not provide actionable steps."
 
-            # Generate tasks from the created plan
+            # Generate tasks based on the created plan
             task_generation_result = self.generate_tasks_from_plan(project_id, plan_steps, final_participants)
             
-            # Update project status based on task generation
-            if "task generation process completed" in task_generation_result.lower(): # Check for success from generate_tasks_from_plan
+            # Update project status based on the outcome of task generation
+            if "task generation process completed" in task_generation_result.lower(): # Check for success message from generate_tasks_from_plan
                  self.projects[project_id]["status"] = "tasks_generated"
                  final_message = f"Project '{project_id}' successfully planned and tasks generated for participants: {', '.join(final_participants)}. {task_generation_result}"
             else:
                  self.projects[project_id]["status"] = "task_generation_failed"
                  final_message = f"Project '{project_id}' planned, but task generation failed. {task_generation_result}"
             
-            # Emit updates to UI
+            # Emit updates to UI via SocketIO if available
             if self.socketio:
                 self.socketio.emit('update_projects', room=self.node_id) # Update project details (status, plan)
                 self.socketio.emit('update_tasks', room=self.node_id)    # Update tasks list
@@ -821,7 +1010,8 @@ class Brain:
                                     due_date=due_date,
                                     assigned_to=task_data["assigned_to"],
                                     priority=task_data["priority"],
-                                    project_id=project_id
+                                    project_id=project_id,
+                                    user_id=self.user_id
                                 )
                                 
                                 # Add to network tasks

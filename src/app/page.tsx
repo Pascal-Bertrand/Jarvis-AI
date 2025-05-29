@@ -1,135 +1,209 @@
-'use client'; // Required for hooks like useState, useEffect
+'use client'; // Required for hooks like useState, useEffect in Next.js App Router
 
+// React and core hooks for state management, side effects, and DOM references
 import { useEffect, useState, useRef } from 'react';
+// Socket.IO client for real-time communication with backend
 import { io, Socket } from 'socket.io-client';
+// Lucide React icons for UI elements
 import { Mic, Info, ChevronDown, PlusCircle } from 'lucide-react';
+// Custom components for agent candidate selection and modals
 import AgentCandidateSelector from './components/AgentCandidateSelector';
 import type { CandidateAgent } from './components/AgentCandidateCard';
 import NewProjectModal from './components/NewProjectModal';
 import ProjectDetailModal from './components/ProjectDetailModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import MeetingDetailModal from './components/MeetingDetailModal';
+// NextAuth for authentication with Google OAuth
 import { useSession, signIn, signOut } from 'next-auth/react'
 
-// Define types for our data
+/**
+ * Represents an AI agent that can be selected and communicated with
+ * These agents are fetched from the backend /nodes endpoint
+ */
 interface Agent {
-  id: string;
-  name: string;
-  // Add other agent properties if available from the /nodes endpoint
+  id: string;        // Unique identifier for the agent
+  name: string;      // Display name of the agent
+  // Additional agent properties may be available from the /nodes endpoint in the future
 }
 
+/**
+ * Represents a single step in a project plan with assigned participants
+ */
 interface PlanStep {
-  name: string;
-  description: string;
-  responsible_participants: string[];
+  name: string;                         // Name/title of the plan step
+  description: string;                  // Detailed description of what needs to be done
+  responsible_participants: string[];   // Array of participant names responsible for this step
 }
 
+/**
+ * Represents a chat message in the conversation between user and agent
+ * Supports different message types including special candidate selection messages
+ */
 export interface ChatMessage {
-  id: string;
-  type: 'user' | 'agent' | 'system';
-  text: string;
-  timestamp?: string; // Optional: for displaying time
-  messageSubType?: 'candidate_selection';
-  candidates?: CandidateAgent[];
-  projectId?: string;
-  isLoadingPlaceholder?: boolean;
-  promptIssued?: boolean; // Added to track if next step prompt was issued
+  id: string;                                   // Unique identifier for the message
+  type: 'user' | 'agent' | 'system';            // Who sent the message
+  text: string;                                 // The message content (may contain HTML for agent messages)
+  timestamp?: string;                           // Optional timestamp for display (formatted string)
+  messageSubType?: 'candidate_selection';       // Special subtype for candidate selection messages
+  candidates?: CandidateAgent[];                // Optional array of candidate agents for selection (when messageSubType is 'candidate_selection')
+  projectId?: string;                           // Optional associated project ID for candidate selection
+  isLoadingPlaceholder?: boolean;               // (Optional) Whether this is a temporary loading message
+  promptIssued?: boolean;                       // (Optional) Tracks if next step prompt was issued to prevent duplicates
 }
 
+/**
+ * Represents a meeting/calendar event with attendee and timing information
+ * Data is fetched from Google Calendar via the backend API
+ */
 export interface Meeting {
-  id: string;
-  title: string;
-  dateTime: string; // Formatted start date/time for list display
-  startTimeISO?: string; // Raw start dateTime or date
-  endTimeISO?: string;   // Raw end dateTime or date
-  attendees?: { email: string; displayName?: string }[];
-  organizerEmail?: string;
-  description?: string; // From GCal event description, if available
-  // location?: string; // If GCal events have it
-  // source?: string; // Backend provides this, can be added if needed
+  id: string;                                                 // Unique meeting identifier from calendar system
+  title: string;                                              // Meeting title/subject
+  dateTime: string;                                           // Human-readable formatted start date/time for display
+  startTimeISO?: string;                                      // (Optional) Raw ISO datetime or date string from calendar
+  endTimeISO?: string;                                        // (Optional) Raw ISO datetime or date string for meeting end
+  attendees?: { email: string; displayName?: string }[];      // (Optional) List of meeting attendees with emails and display names
+  organizerEmail?: string;                                    // (Optional) Email of the meeting organizer
+  description?: string;                                       // (Optional) Meeting description from calendar event
+  // Future extensions could include:
+  // location?: string; // Physical or virtual meeting location
+  // source?: string;   // Which calendar system this came from
 }
 
+/**
+ * Represents a project with participants, objectives, and planning steps
+ * Projects can be created by users and managed through agent interactions
+ */
 interface Project {
-  id: string;
-  name: string;
-  owner?: string;
-  participants?: string[];
-  objective?: string;
-  description?: string;
-  plan_steps?: PlanStep[];
-  status?: string;
-  created_at?: string;
+  id: string;                    // Unique project identifier
+  name: string;                  // Project name/title
+  owner?: string;                // (Optional) Project owner (usually the creator)
+  participants?: string[];       // (Optional) Array of participant names involved in the project
+  objective?: string;            // (Optional) High-level project objective or goal
+  description?: string;          // (Optional) Detailed project description
+  plan_steps?: PlanStep[];       // (Optional) Array of planned steps for project execution
+  status?: string;               // (Optional) Current project status (e.g., "active", "completed", "planning")
+  created_at?: string;           // (Optional) ISO timestamp of when project was created
 }
 
+/**
+ * Represents a task that can be assigned to team members with priority and deadlines
+ * Tasks are typically associated with projects but can exist independently
+ */
 interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  assigned_to?: string;
-  due_date?: string;
-  priority?: 'high' | 'medium' | 'low' | string;
-  project_id?: string;
+  id: string;                                          // Unique task identifier
+  title: string;                                       // Task title/name
+  description?: string;                                // (Optional) detailed description of the task
+  assigned_to?: string;                                // (Optional) Name or identifier of the person assigned to this task
+  due_date?: string;                                   // (Optional) Due date (ISO string or formatted date)
+  priority?: 'high' | 'medium' | 'low' | string;       // (Optional) Task priority level
+  project_id?: string;                                 // (Optional) associated project identifier
 }
 
+/**
+ * Interface for project data as stored/returned by the API
+ * Used for handling different API response formats where project data may not include the ID
+ */
 interface ApiProjectData {
-  name: string;
-  owner?: string;
-  participants?: string[];
-  objective?: string;
-  description?: string;
-  plan_steps?: PlanStep[];
-  status?: string;
-  created_at?: string;
+  name: string;                  // Project name
+  owner?: string;                // (Optional) Project owner
+  participants?: string[];       // (Optional) Project participants
+  objective?: string;            // (Optional) Project objective
+  description?: string;          // (Optional) Project description
+  plan_steps?: PlanStep[];       // (Optional) Project planning steps
+  status?: string;               // (Optional) Project status
+  created_at?: string;           // (Optional) Creation timestamp
 }
 
+/**
+ * Interface for project data from API responses that may have the ID at the top level
+ * This handles variations in how the backend returns project data
+ */
 interface ApiProject {
-  id?: string; // id might be at the top level or within the object
-  name: string;
-  owner?: string;
-  participants?: string[];
-  objective?: string;
-  description?: string;
-  plan_steps?: PlanStep[];
-  status?: string;
-  created_at?: string;
+  id?: string;                   // (Optional) Project ID might be at the top level or within nested data
+  name: string;                  // Project name
+  owner?: string;                // (Optional) Project owner
+  participants?: string[];       // (Optional) Project participants
+  objective?: string;            // (Optional) Project objective
+  description?: string;          // (Optional) Project description
+  plan_steps?: PlanStep[];       // (Optional) Project planning steps
+  status?: string;               // (Optional) Project status
+  created_at?: string;           // (Optional) Creation timestamp
 }
 
-// Interface for the raw meeting data structure from the backend
+/**
+ * Interface for the raw meeting event data structure as received from the backend
+ * This represents the unprocessed calendar event data before transformation to the Meeting interface
+ */
 interface RawBackendMeetingEvent {
-  id: string;
-  summary?: string;
-  title?: string; 
-  description?: string;
-  start: { dateTime?: string; date?: string; timeZone?: string };
-  end: { dateTime?: string; date?: string; timeZone?: string };
-  attendees?: { email: string; displayName?: string }[]; 
-  organizer?: { email: string; displayName?: string }; 
-  source?: string; 
+  id: string;                                                           // Unique event ID from calendar system
+  summary?: string;                                                     // (Optional) Event summary (alternative to title)
+  title?: string;                                                       // (Optional) Event title (alternative to summary)
+  description?: string;                                                 // (Optional) Event description/notes
+  start: { dateTime?: string; date?: string; timeZone?: string };       // (Optional) Event start time with timezone info
+  end: { dateTime?: string; date?: string; timeZone?: string };         // (Optional) Event end time with timezone info
+  attendees?: { email: string; displayName?: string }[];                // (Optional) List of event attendees
+  organizer?: { email: string; displayName?: string };                  // (Optional) Event organizer information
+  source?: string;                                                      // (Optional) Source calendar system identifier
 }
 
-// Define a placeholder for the Socket.IO server URL
-// If your backend is on a different port or domain, change this.
-// Example: const SOCKET_URL = 'http://localhost:8000';
+/**
+ * Backend URL configuration with environment-based fallbacks
+ * Uses environment variable NEXT_PUBLIC_BACKEND_URL if available,
+ * otherwise defaults to production URL in production mode or localhost in development
+ */
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 
   (process.env.NODE_ENV === 'production' 
     ? 'https://jarvis-ai-production.up.railway.app' 
     : 'http://localhost:5001')
 
+/**
+ * Main Home component that provides the Jarvis-AI interface
+ * 
+ * This component manages:
+ * - User authentication via NextAuth
+ * - Real-time communication with AI agents via Socket.IO
+ * - Agent selection and context switching
+ * - Chat interface for agent communication
+ * - Sidebar displays for meetings, projects, and tasks
+ * - Modal management for creating and viewing projects, tasks, and meetings
+ * - Candidate selection for project participants
+ * 
+ * The component implements a complete workspace interface where users can:
+ * 1. Authenticate with Google OAuth
+ * 2. Select from available AI agents
+ * 3. Chat with agents using natural language
+ * 4. Create and manage projects
+ * 5. View meetings from their calendar
+ * 6. Manage tasks and project planning
+ * 
+ * @returns JSX.Element The complete home page interface
+ */
 export default function Home() {
+  // Authentication state from NextAuth
   const { data: session, status } = useSession()
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [currentAgentRoom, setCurrentAgentRoom] = useState<string | null>(null);
-  const [inputText, setInputText] = useState(''); // Renamed from 'message' to avoid confusion
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null); // For auto-scrolling
-
-  // State for loading indicators
-  const loadingMessageIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [recentlyPromptedProjectIds, setRecentlyPromptedProjectIds] = useState<Set<string>>(new Set()); // For duplicate prompt issue
-  const promptedCandidateMessageIdsRef = useRef<Set<string>>(new Set()); // Ref to track issued prompts for specific candidate messages
-
+  
+  // Real-time communication state
+  const [socket, setSocket] = useState<Socket | null>(null);                    // Socket.IO connection instance
+  
+  // Agent management state
+  const [agents, setAgents] = useState<Agent[]>([]);                             // Available AI agents from backend
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);        // Currently selected agent for communication
+  const [currentAgentRoom, setCurrentAgentRoom] = useState<string | null>(null); // Current Socket.IO room for agent communication
+  
+  // Chat interface state
+  const [inputText, setInputText] = useState('');                              // Current user input text
+  const [messages, setMessages] = useState<ChatMessage[]>([]);                 // Chat message history
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);                  // Reference for auto-scrolling to latest message
+  
+  // Loading indicator management
+  const loadingMessageIntervalRef = useRef<NodeJS.Timeout | null>(null);       // Interval for cycling loading messages
+  const [recentlyPromptedProjectIds, setRecentlyPromptedProjectIds] = useState<Set<string>>(new Set()); // Prevents duplicate next-step prompts
+  const promptedCandidateMessageIdsRef = useRef<Set<string>>(new Set());       // Tracks candidate messages that already issued next-step prompts
+  
+  /**
+   * Array of loading messages that cycle during project planning operations
+   * These provide user feedback during potentially long-running agent operations
+   */
   const projectPlanningMessages = [
     "Looking through past projects...",
     "Searching for suitable approaches...",
@@ -138,53 +212,84 @@ export default function Home() {
     "Finalizing project structure..."
   ];
 
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
-  const [isProjectDetailModalOpen, setIsProjectDetailModalOpen] = useState(false);
-  const [selectedProjectForDetail, setSelectedProjectForDetail] = useState<Project | null>(null);
-  const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
-  const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<Task | null>(null);
-  const [isMeetingDetailModalOpen, setIsMeetingDetailModalOpen] = useState(false);
-  const [selectedMeetingForDetail, setSelectedMeetingForDetail] = useState<Meeting | null>(null);
+  // Data management state for sidebar content
+  const [meetings, setMeetings] = useState<Meeting[]>([]);      // User's meetings from calendar integration
+  const [projects, setProjects] = useState<Project[]>([]);      // User's projects managed by agents
+  const [tasks, setTasks] = useState<Task[]>([]);               // User's tasks and assignments
+  
+  // Modal state management
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);              // Controls new project creation modal
+  const [isProjectDetailModalOpen, setIsProjectDetailModalOpen] = useState(false);        // Controls project detail viewing modal
+  const [selectedProjectForDetail, setSelectedProjectForDetail] = useState<Project | null>(null); // Currently viewed project in detail modal
+  const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);              // Controls task detail viewing modal
+  const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<Task | null>(null);  // Currently viewed task in detail modal
+  const [isMeetingDetailModalOpen, setIsMeetingDetailModalOpen] = useState(false);        // Controls meeting detail viewing modal
+  const [selectedMeetingForDetail, setSelectedMeetingForDetail] = useState<Meeting | null>(null); // Currently viewed meeting in detail modal
 
-  // Ref for selectedAgent to be used in socket event handlers
+  // Ref to maintain selectedAgent state across socket event handlers
+  // This prevents stale closure issues in socket event callbacks
   const selectedAgentRef = useRef<Agent | null>(null);
 
-  // Scroll to bottom of messages when new messages are added
+  /**
+   * Auto-scroll effect: Scrolls chat to bottom when new messages are added
+   * This ensures users always see the latest message without manual scrolling
+   */
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  /**
+   * Agent reference sync effect: Keeps the selectedAgentRef in sync with selectedAgent state
+   * This ref is used in socket event handlers to avoid stale closure issues
+   */
   useEffect(() => {
     selectedAgentRef.current = selectedAgent;
   }, [selectedAgent]);
 
-  // Initialize user agents on first login
+  /**
+   * User initialization effect: Initializes user-specific agents when user first logs in
+   * This creates the necessary backend resources for the authenticated user
+   */
   useEffect(() => {
-    if (session?.accessToken) {
+    if (session?.user?.email) {
       initializeUserAgents()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session])
 
-  // Effect for initializing and cleaning up Socket.IO connection
+  /**
+   * Socket.IO initialization and event handling effect
+   * 
+   * This effect:
+   * 1. Creates a new Socket.IO connection when user is authenticated
+   * 2. Sets up event handlers for connection status and real-time updates
+   * 3. Handles automatic data fetching when backend sends update notifications
+   * 4. Cleans up the connection when component unmounts or session changes
+   * 
+   * The socket connection enables real-time updates for meetings, projects, and tasks
+   * without requiring manual refresh or polling
+   */
   useEffect(() => {
-    if (!session) return; // Don't initialize socket if not authenticated
+    // Only initialize socket for authenticated users
+    if (!session) return;
 
-    const newSocket = io(BACKEND_URL); // Use BACKEND_URL for Socket.IO
+    // Create new Socket.IO connection to backend
+    const newSocket = io(BACKEND_URL);
     setSocket(newSocket);
 
+    // Connection status event handlers
     newSocket.on('connect', () => {
       console.log('Socket.IO connected:', newSocket.id);
     });
+    
     newSocket.on('disconnect', () => {
       console.log('Socket.IO disconnected');
     });
+    
+    // Handle connection errors and notify user
     newSocket.on('connect_error', (err) => {
       console.error('Socket.IO connection error:', err);
-      // Add a system message about connection error
+      // Add a system message to inform user about connection issues
       setMessages(prev => [...prev, { 
         id: Date.now().toString(), 
         type: 'system', 
@@ -192,9 +297,15 @@ export default function Home() {
       }]);
     });
 
+    /**
+     * Real-time meetings update handler
+     * Triggered when backend notifies of meeting changes (new/updated/deleted meetings)
+     * Automatically refetches meetings for the currently selected agent
+     */
     newSocket.on('update_meetings', () => {
       console.log('Received update_meetings event from backend.');
       setSocket(prevSocket => {
+        // Only fetch if socket is still active and connected
         if (prevSocket && prevSocket.active) {
             const currentSelectedAgentId = selectedAgentRef.current?.id;
             if (currentSelectedAgentId) {
@@ -204,13 +315,19 @@ export default function Home() {
                 console.log("Socket event 'update_meetings': No agent selected, not fetching.");
             }
         }
-        return prevSocket;
+        return prevSocket; // Return socket unchanged (using setSocket for side effect only)
       });
     });
     
+    /**
+     * Real-time projects update handler
+     * Triggered when backend notifies of project changes (new/updated/deleted projects)
+     * Automatically refetches projects for the currently selected agent
+     */
     newSocket.on('update_projects', () => {
         console.log('Received update_projects event from backend.');
         setSocket(prevSocket => {
+            // Only fetch if socket is still active and connected
             if (prevSocket && prevSocket.active) {
                 const currentSelectedAgentId = selectedAgentRef.current?.id;
                 if (currentSelectedAgentId) {
@@ -220,13 +337,19 @@ export default function Home() {
                     console.log("Socket event 'update_projects': No agent selected, not fetching.");
                 }
             }
-            return prevSocket;
+            return prevSocket; // Return socket unchanged (using setSocket for side effect only)
         });
     });
 
+    /**
+     * Real-time tasks update handler
+     * Triggered when backend notifies of task changes (new/updated/deleted tasks)
+     * Automatically refetches tasks for the currently selected agent
+     */
     newSocket.on('update_tasks', () => {
         console.log('Received update_tasks event from backend.');
         setSocket(prevSocket => {
+            // Only fetch if socket is still active and connected
             if (prevSocket && prevSocket.active) {
                 const currentSelectedAgentId = selectedAgentRef.current?.id;
                 if (currentSelectedAgentId) {
@@ -236,7 +359,7 @@ export default function Home() {
                     console.log("Socket event 'update_tasks': No agent selected, not fetching.");
                 }
             }
-            return prevSocket;
+            return prevSocket; // Return socket unchanged (using setSocket for side effect only)
         });
     });
 
@@ -246,10 +369,18 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]); // Re-run when session changes
 
-  // Effect for fetching agents
+  /**
+   * Agent fetching effect: Loads available agents from backend when user is authenticated
+   * This populates the agent selector dropdown with user-specific agents
+   */
   useEffect(() => {
-    if (!session) return; // Don't fetch if not authenticated
+    // Only fetch agents for authenticated users
+    if (!session) return;
 
+    /**
+     * Fetches the list of available AI agents from the backend
+     * Agents are user-specific and created during the initialization process
+     */
     const fetchAgents = async () => {
       try {
         const response = await fetchWithAuth(`${BACKEND_URL}/nodes`);
@@ -258,35 +389,47 @@ export default function Home() {
         }
         const data: Agent[] = await response.json();
         setAgents(data);
-        if (data.length > 0 && !selectedAgent) {
-          // Automatically select the first agent
-          // handleAgentSelect will be called by the button onClick or directly if needed
-        }
+        // Note: First agent auto-selection is handled in a separate effect below
       } catch (error) {
         console.error('Error fetching agents:', error);
-        setMessages(prev => [...prev, { id: Date.now().toString(), type: 'system', text: 'Error fetching agent list.' }]);
+        // Show user-friendly error message in chat
+        setMessages(prev => [...prev, { 
+          id: Date.now().toString(), 
+          type: 'system', 
+          text: 'Error fetching agent list.' 
+        }]);
       }
     };
     fetchAgents();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]); // Re-run when session changes
 
-  // Auto-select first agent when agent list loads
+  /**
+   * Auto-select first agent effect: Automatically selects the first available agent
+   * This provides a better user experience by having an agent ready for interaction
+   */
+  // TODO: Make it select the agent that LOGGED IN!
   useEffect(() => {
     if (agents.length > 0 && !selectedAgent) {
-      handleAgentSelect(agents[0], true);
+      handleAgentSelect(agents[0], true); // true indicates this is an initial selection
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agents]); // Only re-run if agents array itself changes
 
-  // Authentication guard - show loading state
+  /**
+   * Authentication guard: Show loading spinner while authentication status is being determined
+   * This prevents content flash before authentication is confirmed
+   */
   if (status === 'loading') {
     return <div className="flex items-center justify-center h-screen">
       <div className="text-lg">Loading...</div>
     </div>
   }
 
-  // Authentication guard - show sign in
+  /**
+   * Authentication guard: Show sign-in interface for unauthenticated users
+   * Provides Google OAuth sign-in button with clear branding and instructions
+   */
   if (!session) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-gray-50">
@@ -304,125 +447,279 @@ export default function Home() {
     )
   }
 
+  /**
+   * Initializes user-specific AI agents on the backend
+   * 
+   * This function is called when a user first logs in to set up their personalized
+   * AI agents on the backend. It creates the necessary agent instances and configurations
+   * specific to the authenticated user.
+   * 
+   * Flow:
+   * 1. Calls backend /initialize_agents endpoint to create user agents
+   * 2. Fetches the updated list of available agents
+   * 3. Auto-selects the first agent if available
+   * 4. Handles errors gracefully with user-friendly messages
+   * 
+   * @throws Will display error message in chat if initialization fails
+   */
   const initializeUserAgents = async () => {
     try {
-      // Note: Backend automatically initializes agents on startup
-      // This could be used for user-specific initialization if needed
-      console.log('User agents initialization - backend handles this automatically')
+      console.log('Initializing user agents...')
+      
+      // Call backend to create user-specific agent instances
+      const response = await fetchWithAuth(`${BACKEND_URL}/initialize_agents`, {
+        method: 'POST'
+      })
+      
+      // Handle backend errors
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to initialize agents')
+      }
+      
+      const data = await response.json()
+      console.log('Agents initialized:', data)
+      
+      // Refresh the agent list to include newly created agents
+      const agentsResponse = await fetchWithAuth(`${BACKEND_URL}/nodes`)
+      if (agentsResponse.ok) {
+        const agents: Agent[] = await agentsResponse.json()
+        setAgents(agents)
+        // Auto-select first agent for immediate usability
+        if (agents.length > 0 && !selectedAgent) {
+          handleAgentSelect(agents[0], true)
+        }
+      }
     } catch (error) {
       console.error('Failed to initialize user agents:', error)
+      // Display user-friendly error message in the chat interface
+      setMessages(prev => [...prev, { 
+        id: Date.now().toString(), 
+        type: 'system', 
+        text: 'Error initializing your agents. Please refresh the page.' 
+      }])
     }
   }
 
-  // Update all API calls to include auth headers
+  /**
+   * Authenticated fetch wrapper that adds user authentication headers to all API requests
+   * 
+   * This utility function wraps the standard fetch API to automatically include
+   * authentication headers for backend communication. It creates a simple JWT-like
+   * token containing user information for backend identification.
+   * 
+   * @param url - The URL to fetch from (relative or absolute)
+   * @param options - Standard fetch options (method, body, headers, etc.)
+   * @returns Promise<Response> - The fetch response with authentication headers added
+   * 
+   * @example
+   * const response = await fetchWithAuth('/api/agents', { method: 'GET' });
+   * const data = await response.json();
+   */
   const fetchWithAuth = (url: string, options: RequestInit = {}) => {
+    // Create a base64-encoded token containing user information
+    // This serves as a simple authentication mechanism for the backend
+    const userToken = session?.user?.email ? btoa(JSON.stringify({
+      sub: session.user.email,      // Subject (user identifier)
+      email: session.user.email,    // User's email address
+      name: session.user.name       // User's display name
+    })) : ''
+    
+    // Return fetch request with authentication and content-type headers
     return fetch(url, {
       ...options,
       headers: {
-        ...options.headers,
-        'Authorization': `Bearer ${session?.accessToken}`,
-        'Content-Type': 'application/json'
+        ...options.headers,                     // Preserve any existing headers
+        'Authorization': `Bearer ${userToken}`, // Add authentication token
+        'Content-Type': 'application/json'      // Set JSON content type
       }
     })
   }
 
+  /**
+   * Fetches and formats meetings for a specific agent from the backend
+   * 
+   * This function retrieves calendar events/meetings associated with the selected agent
+   * and transforms the raw backend data into a user-friendly format for display.
+   * 
+   * Data transformation includes:
+   * - Converting raw datetime strings to formatted display strings
+   * - Extracting attendee information and generating display names
+   * - Handling different date formats (dateTime vs date only)
+   * - Providing fallbacks for missing titles and dates
+   * 
+   * @param agentId - The unique identifier of the agent whose meetings to fetch
+   * @throws Clears meetings list and logs error if fetch fails
+   */
   const fetchMeetings = async (agentId: string) => {
     try {
+      // Fetch raw meeting data from backend API
       const response = await fetchWithAuth(`${BACKEND_URL}/meetings?agent_id=${agentId}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data: RawBackendMeetingEvent[] = await response.json(); 
       
+      // Transform raw backend meeting data into user-friendly format
       const formattedMeetings: Meeting[] = data.map((meeting_evt) => {
-        const startDate = meeting_evt.start?.dateTime ? new Date(meeting_evt.start.dateTime) : (meeting_evt.start?.date ? new Date(meeting_evt.start.date) : null);
-        // const endDate = meeting_evt.end?.dateTime ? new Date(meeting_evt.end.dateTime) : (meeting_evt.end?.date ? new Date(meeting_evt.end.date) : null);
+        // Parse start date, handling both dateTime and date-only formats
+        const startDate = meeting_evt.start?.dateTime 
+          ? new Date(meeting_evt.start.dateTime) 
+          : (meeting_evt.start?.date ? new Date(meeting_evt.start.date) : null);
 
         return {
           id: meeting_evt.id,
+          // Use title or summary, with fallback for untitled meetings
           title: meeting_evt.title || meeting_evt.summary || 'Untitled Meeting',
-          dateTime: startDate ? (meeting_evt.start?.dateTime ? startDate.toLocaleString() : startDate.toLocaleDateString()) : 'Date TBD',
+          // Format date/time for display (full datetime vs date-only)
+          dateTime: startDate 
+            ? (meeting_evt.start?.dateTime ? startDate.toLocaleString() : startDate.toLocaleDateString()) 
+            : 'Date TBD',
+          // Preserve original ISO strings for potential future use
           startTimeISO: meeting_evt.start?.dateTime || meeting_evt.start?.date,
           endTimeISO: meeting_evt.end?.dateTime || meeting_evt.end?.date,
-          attendees: meeting_evt.attendees?.map((a: { email: string }) => ({ email: a.email, displayName: a.email?.split('@')[0] })) || [],
+          // Transform attendees with generated display names from email
+          attendees: meeting_evt.attendees?.map((a: { email: string }) => ({ 
+            email: a.email, 
+            displayName: a.email?.split('@')[0] // Use email prefix as display name
+          })) || [],
           organizerEmail: meeting_evt.organizer?.email,
-          description: meeting_evt.description, // GCal events might have a description in the root
-                                              // or scheduler.py could add it to the transformed object
+          description: meeting_evt.description, // Calendar event description
         };
       });
+      
+      // Update state with formatted meetings
       setMeetings(formattedMeetings);
     } catch (error) {
       console.error('Error fetching meetings:', error);
-      setMeetings([]); // Clear meetings on error
+      setMeetings([]); // Clear meetings list on error to prevent stale data
     }
   };
 
+  /**
+   * Fetches and normalizes projects for a specific agent from the backend
+   * 
+   * This function handles different response formats from the backend API:
+   * 1. Array format: Direct array of project objects
+   * 2. Object format: Object with project IDs as keys and project data as values
+   * 
+   * The function normalizes both formats into a consistent Project[] array and
+   * provides fallback values for missing fields to ensure UI stability.
+   * 
+   * @param agentId - The unique identifier of the agent whose projects to fetch
+   * @throws Clears projects list and logs error if fetch fails
+   */
   const fetchProjects = async (agentId: string) => {
     try {
+      // Fetch raw project data from backend API
       const response = await fetchWithAuth(`${BACKEND_URL}/projects?agent_id=${agentId}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      // Type for data can be an array of projects or an object mapping IDs to projects
+      
+      // Backend may return either array or object format
       const data: Project[] | { [projectId: string]: Omit<Project, 'id'> } = await response.json();
       let projectArray: Project[] = [];
+      
+      // Handle array format response
       if (Array.isArray(data)) {
         projectArray = data.map((p: ApiProject) => ({ 
-            id: p.id || p.name, // Use p.name as fallback for id if not present
+            id: p.id || p.name,                                    // Use name as fallback ID
             name: p.name,
             owner: p.owner,
-            participants: p.participants || [],
+            participants: p.participants || [],                    // Default to empty array
             objective: p.objective,
-            description: p.description || p.objective, // Use objective as fallback for description
-            plan_steps: p.plan_steps || [],
+            description: p.description || p.objective,             // Use objective as fallback
+            plan_steps: p.plan_steps || [],                        // Default to empty array
             status: p.status,
             created_at: p.created_at
         }));
-      } else if (typeof data === 'object' && data !== null) {
+      } 
+      // Handle object format response (projectId -> projectData)
+      else if (typeof data === 'object' && data !== null) {
         projectArray = Object.keys(data).map(projectId => {
           const projectData = (data as { [key: string]: ApiProjectData })[projectId];
           return {
-            id: projectId,
-            name: projectData.name || projectId, // Use projectId as fallback for name
+            id: projectId,                                         // Use key as project ID
+            name: projectData.name || projectId,                   // Use ID as fallback name
             owner: projectData.owner,
-            participants: projectData.participants || [],
+            participants: projectData.participants || [],          // Default to empty array
             objective: projectData.objective,
             description: projectData.description || projectData.objective, // Use objective as fallback
-            plan_steps: projectData.plan_steps || [],
+            plan_steps: projectData.plan_steps || [],              // Default to empty array
             status: projectData.status,
             created_at: projectData.created_at,
           };
         });
       }
+      
+      // Update state with normalized project array
       setProjects(projectArray);
     } catch (error) {
       console.error('Error fetching projects:', error);
-      setProjects([]); // Clear projects on error
+      setProjects([]); // Clear projects list on error to prevent stale data
     }
   };
 
+  /**
+   * Fetches tasks for a specific agent from the backend
+   * 
+   * This function retrieves all tasks associated with the selected agent.
+   * Tasks can be standalone or associated with specific projects.
+   * The backend is expected to return tasks in a consistent Task[] format.
+   * 
+   * Future enhancements could include:
+   * - Date formatting for due dates
+   * - Task status filtering
+   * - Priority-based sorting
+   * 
+   * @param agentId - The unique identifier of the agent whose tasks to fetch
+   * @throws Clears tasks list and logs error if fetch fails
+   */
   const fetchTasks = async (agentId: string) => {
     try {
+      // Fetch task data from backend API
       const response = await fetchWithAuth(`${BACKEND_URL}/tasks?agent_id=${agentId}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data: Task[] = await response.json(); // Assuming backend returns Task[] directly
+      
+      // Backend returns tasks in Task[] format directly
+      const data: Task[] = await response.json();
+      
+      // Set tasks directly (no transformation needed currently)
+      // Future: Could format due_date here if needed
+      // e.g., new Date(task.due_date).toLocaleDateString()
       setTasks(data.map(task => ({
         ...task,
-        // Format due_date if necessary, e.g., new Date(task.due_date).toLocaleDateString()
-        // For now, assume backend sends it in a displayable format or TaskDetailModal handles it
+        // Task data is used as-is, formatting handled in TaskDetailModal
       })));
     } catch (error) {
       console.error('Error fetching tasks:', error);
-      setTasks([]); // Clear tasks on error
+      setTasks([]); // Clear tasks list on error to prevent stale data
     }
   };
 
+  /**
+   * Handles agent selection and context switching
+   * 
+   * This function manages the complete process of switching between AI agents:
+   * 1. Handles deselection (null agent) by cleaning up state and socket rooms
+   * 2. Prevents unnecessary re-selection of the same agent
+   * 3. Updates UI context and fetches agent-specific data
+   * 4. Manages Socket.IO room membership for real-time updates
+   * 5. Provides appropriate system messages for context changes
+   * 
+   * @param agent - The agent to select (null to deselect)
+   * @param isInitialSelect - Whether this is an automatic initial selection (affects messaging)
+   */
   const handleAgentSelect = (agent: Agent | null, isInitialSelect: boolean = false) => {
+    // Handle agent deselection
     if (!agent) {
         setSelectedAgent(null);
-        // Clear messages only if it's not an initial empty select or error state
-        if (!isInitialSelect || messages.length > 0 && !messages.some(m => m.type === 'system' && m.text.includes('Error'))) {
+        // Clear messages unless this is initial select or error messages exist
+        if (!isInitialSelect || (messages.length > 0 && !messages.some(m => m.type === 'system' && m.text.includes('Error')))) {
             setMessages([]);
         }
+        // Clear all agent-specific data
         setMeetings([]);
         setProjects([]);
         setTasks([]);
+        // Leave current socket room
         if (socket && currentAgentRoom) {
             socket.emit('leave_room', { room: currentAgentRoom });
             console.log(`Emitted leave_room for ${currentAgentRoom}`);
@@ -431,43 +728,72 @@ export default function Home() {
         return;
     }
     
+    // Prevent unnecessary re-selection of the same agent
     if (selectedAgent?.id === agent.id && !isInitialSelect) return;
 
     console.log(`Agent selected: ${agent.name}. Previous room: ${currentAgentRoom}`);
     setSelectedAgent(agent);
     
+    // Add appropriate system message for context change
     if (!isInitialSelect) {
+        // User-initiated agent switch
         setMessages([{ id: Date.now().toString(), type: 'system', text: `Switched context to ${agent.name}` }]);
-    } else if (messages.length === 0) { // Only set initial welcome if no messages exist (e.g. error messages)
+    } else if (messages.length === 0) { 
+        // Initial automatic selection, only if no existing messages (like error messages)
         setMessages([{ id: Date.now().toString(), type: 'system', text: `Context set to ${agent.name}` }]);
     }
 
+    // Fetch all agent-specific data
     fetchMeetings(agent.id);
     fetchProjects(agent.id);
     fetchTasks(agent.id);
 
+    // Manage Socket.IO room membership for real-time updates
     if (socket) {
+      // Leave previous room if different from new agent
       if (currentAgentRoom && currentAgentRoom !== agent.id) {
         socket.emit('leave_room', { room: currentAgentRoom });
         console.log(`Emitted leave_room for ${currentAgentRoom}`);
       }
+      // Join new agent's room if not already in it
       if (currentAgentRoom !== agent.id) {
         socket.emit('join_room', { room: agent.id });
         console.log(`Emitted join_room for ${agent.id}`);
         setCurrentAgentRoom(agent.id);
       }
     }
+    
+    // Clear input text for user-initiated switches
     if (!isInitialSelect) {
         setInputText('');
     }
   };
 
+  /**
+   * Displays a loading indicator message with optional cycling text for project planning
+   * 
+   * This function creates a temporary loading message that provides user feedback
+   * during potentially long-running agent operations. For project planning operations,
+   * it cycles through informative messages to show progress.
+   * 
+   * @param isProjectPlanning - Whether this is a project planning operation (enables message cycling)
+   * @param initialMessageOverride - Optional custom initial message (for project planning)
+   * @returns string - The unique ID of the loading message for later removal
+   * 
+   * @example
+   * const loadingId = displayLoadingIndicator(true, "Searching for participants...");
+   * // Later: removeLoadingIndicator(loadingId);
+   */
   const displayLoadingIndicator = (isProjectPlanning: boolean, initialMessageOverride?: string) => {
+    // Create unique ID for this loading message
     const newLoadingId = `loading-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    
+    // Determine initial loading text
     const text = isProjectPlanning
         ? (initialMessageOverride || projectPlanningMessages[0]) 
         : "Thinking...";
 
+    // Create loading placeholder message
     const placeholderMessage: ChatMessage = {
       id: newLoadingId,
       type: 'agent',
@@ -476,44 +802,79 @@ export default function Home() {
       timestamp: new Date().toLocaleTimeString()
     };
 
+    // Add loading message to chat
     setMessages(prev => [...prev, placeholderMessage]);
 
+    // Set up message cycling for project planning operations
     if (isProjectPlanning) {
+      // Clear any existing interval
       if (loadingMessageIntervalRef.current) {
         clearInterval(loadingMessageIntervalRef.current);
       }
+      
+      // Determine starting index for message cycling
       let index = 0;
       if (initialMessageOverride) { 
           const initialIdx = projectPlanningMessages.indexOf(initialMessageOverride);
-          if (initialIdx !== -1) index = (initialIdx +1) % projectPlanningMessages.length;
+          if (initialIdx !== -1) index = (initialIdx + 1) % projectPlanningMessages.length;
       } else {
-          index = 1; 
+          index = 1; // Start from second message
       }
       
+      // Set up interval to cycle through loading messages
       loadingMessageIntervalRef.current = setInterval(() => {
         const nextMessageText = projectPlanningMessages[index];
+        // Update the specific loading message text
         setMessages(prevMsgs => 
           prevMsgs.map(m => 
             m.id === newLoadingId ? { ...m, text: nextMessageText } : m
           )
         );
         index = (index + 1) % projectPlanningMessages.length;
-      }, 3000); // Cycle every 3 seconds
+      }, 3000); // Cycle every 3 seconds for good user experience
     }
+    
     return newLoadingId;
   };
 
+  /**
+   * Removes a loading indicator message and cleans up any associated intervals
+   * 
+   * This function removes the temporary loading message from the chat and
+   * stops any message cycling that may be in progress. It should be called
+   * when the operation that triggered the loading indicator completes.
+   * 
+   * @param idToRemove - The unique ID of the loading message to remove (null safe)
+   */
   const removeLoadingIndicator = (idToRemove: string | null) => {
+    // Remove the specific loading message if ID provided
     if (idToRemove) {
       setMessages(prevMsgs => prevMsgs.filter(m => m.id !== idToRemove));
     }
+    
+    // Clean up any active message cycling interval
     if (loadingMessageIntervalRef.current) {
       clearInterval(loadingMessageIntervalRef.current);
       loadingMessageIntervalRef.current = null;
     }
   };
 
-  // Reusable function to post any message/command to the agent and handle response
+  /**
+   * Core function for sending messages/commands to the selected AI agent
+   * 
+   * This is the central communication function that handles:
+   * 1. Sending user messages or system commands to the backend agent
+   * 2. Processing different types of agent responses (text, candidate selection, errors)
+   * 3. Parsing special candidate selection responses with JSON data
+   * 4. Adding appropriate messages to the chat interface
+   * 5. Error handling with user-friendly error messages
+   * 
+   * The function handles special response formats like candidate selection where
+   * the agent returns JSON data for interactive candidate selection UI.
+   * 
+   * @param messageText - The message or command to send to the agent
+   * @throws Displays error messages in chat if communication fails
+   */
   const _postMessageToAgent = async (messageText: string) => {
     if (!selectedAgent) {
       setMessages(prev => [...prev, { id: Date.now().toString(), type: 'system', text: 'Error: No agent selected to send the command.' }]);
@@ -723,7 +1084,16 @@ export default function Home() {
     });
   };
 
+  /**
+   * Opens the new project creation modal
+   * Allows users to create new projects with title and description
+   */
   const openNewProjectModal = () => setIsNewProjectModalOpen(true);
+  
+  /**
+   * Closes the new project creation modal
+   * Resets modal state without saving any pending changes
+   */
   const closeNewProjectModal = () => setIsNewProjectModalOpen(false);
 
   const handleSubmitNewProject = async (title: string, description: string) => {
@@ -777,31 +1147,58 @@ export default function Home() {
     }
   };
 
+  /**
+   * Opens the project detail modal for viewing comprehensive project information
+   * 
+   * @param project - The project to display in the detail modal
+   */
   const openProjectDetailModal = (project: Project) => {
     setSelectedProjectForDetail(project);
     setIsProjectDetailModalOpen(true);
   };
 
+  /**
+   * Closes the project detail modal and clears the selected project
+   * Resets both modal state and selected project reference
+   */
   const closeProjectDetailModal = () => {
     setIsProjectDetailModalOpen(false);
     setSelectedProjectForDetail(null);
   };
 
+  /**
+   * Opens the task detail modal for viewing comprehensive task information
+   * 
+   * @param task - The task to display in the detail modal
+   */
   const openTaskDetailModal = (task: Task) => {
     setSelectedTaskForDetail(task);
     setIsTaskDetailModalOpen(true);
   };
 
+  /**
+   * Closes the task detail modal and clears the selected task
+   * Resets both modal state and selected task reference
+   */
   const closeTaskDetailModal = () => {
     setIsTaskDetailModalOpen(false);
     setSelectedTaskForDetail(null);
   };
 
+  /**
+   * Opens the meeting detail modal for viewing comprehensive meeting information
+   * 
+   * @param meeting - The meeting to display in the detail modal
+   */
   const openMeetingDetailModal = (meeting: Meeting) => {
     setSelectedMeetingForDetail(meeting);
     setIsMeetingDetailModalOpen(true);
   };
 
+  /**
+   * Closes the meeting detail modal and clears the selected meeting
+   * Resets both modal state and selected meeting reference
+   */
   const closeMeetingDetailModal = () => {
     setIsMeetingDetailModalOpen(false);
     setSelectedMeetingForDetail(null);
