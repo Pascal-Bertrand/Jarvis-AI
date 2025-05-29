@@ -68,7 +68,7 @@ class Scheduler:
             except Exception as e:
                 log_error(f"[{self.node_id}] Error fetching upcoming meetings from Google Calendar: {str(e)}")
         else:
-            log_warning(f"[{self.node_id}] Google Calendar service not available, cannot fetch GCal meetings.")
+            log_system_message(f"[{self.node_id}] Google Calendar service not available, using local calendar only.")
 
         local_meetings_transformed = []
         if self.brain and hasattr(self.brain, 'calendar') and self.brain.calendar:
@@ -192,8 +192,7 @@ class Scheduler:
         log_system_message(f"[Scheduler] Entered calendar-reminder creation for task: {task.title}")
         
         if not self.calendar_service:
-            log_warning(f"[Scheduler] [[{self.node_id}] Calendar service not available, skipping reminder creation")
-            print(f"[{self.node_id}] Calendar service not available, skipping reminder creation")
+            log_system_message(f"[Scheduler] [{self.node_id}] Calendar service not available, skipping reminder creation")
             return      # No return: Don't want to spam the users
             
         try:
@@ -257,9 +256,8 @@ class Scheduler:
         end_time = start_time + timedelta(hours=1)
         
         if not self.calendar_service:
-            log_warning(f"[{self.node_id}] Calendar service not available, using local scheduling")
-            print(f"[{self.node_id}] Calendar service not available, using local scheduling")
-            return self._fallback_schedule_meeting(project_id, participants, start_time, end_time, meeting_title=meeting_description)  
+            log_system_message(f"[{self.node_id}] Calendar service not available, using local scheduling")
+            return self._fallback_schedule_meeting(project_id, participants, start_time, end_time, meeting_title=meeting_description)
 
         # Build the meeting event structure
         event = {

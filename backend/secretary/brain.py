@@ -22,8 +22,8 @@ class LLMClient:
             api_key: Your OpenAI API key.
             params: Dict containing 'model', 'temperature', 'max_tokens', etc.
         """
-        openai.api_key = api_key
-        self.client = openai
+        # Create a proper OpenAI client instance instead of using the module
+        self.client = openai.OpenAI(api_key=api_key)
         self.params = params
 
     def chat(self, messages):
@@ -108,8 +108,8 @@ class Brain:
         self.user_id = user_id  # Store user ID for data isolation
 
         # --- LLM client setup ---
-        openai.api_key = openai_api_key
-        self.client = openai
+        # Create a proper OpenAI client instance for this Brain
+        self.client = openai.OpenAI(api_key=openai_api_key)
         self.llm_params = llm_params or {
             "model": "gpt-4o-mini",
             "temperature": 0.1,
