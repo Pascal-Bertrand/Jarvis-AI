@@ -215,6 +215,47 @@ socketio.init_app(app)
 
 network: Optional[Intercom] = None  # Will be set by the main function
 
+def initialize_app_components():
+    """Initializes the Intercom network and registers LLMNodes."""
+    global network
+    # 1. Initialize the Intercom network.
+    # The log_file parameter specifies where communication logs will be stored.
+    network = Intercom(log_file="communication_log.txt")
+    log_system_message("Intercom network initialized.")
+
+    # 2. & 3. Load agent configurations and create/register LLMNodes.
+    if not AGENT_CONFIG:
+        log_warning("AGENT_CONFIG is empty. No LLMNodes will be created.")
+    else:
+        log_system_message(f"Found {len(AGENT_CONFIG)} agent configurations to load.")
+
+    for agent_config in AGENT_CONFIG:
+        try:
+            # Create a new LLMNode instance for each configuration.
+            # It's provided with its ID, name, knowledge, a reference to the network,
+            # and the global OpenAI API key (can be overridden per node if needed).
+            node = LLMNode(
+                node_id=agent_config["id"],
+                node_name=agent_config["name"],
+                knowledge=agent_config.get("knowledge", ""), # Use .get for optional keys like knowledge
+                network=network,
+                llm_api_key_override=openai_api_key # Using the global key for all nodes here
+            )
+            # Register the newly created node with the Intercom network.
+            network.register_node(node.node_id, node)
+            log_system_message(f"Created and registered LLMNode: {agent_config['id']} - {agent_config['name']}")
+        except KeyError as e:
+            log_error(f"Missing key {str(e)} in agent configuration: {agent_config}. Skipping this agent.")
+        except Exception as e:
+            log_error(f"Error creating or registering node for config {agent_config.get('id', 'UNKNOWN_ID')}: {str(e)}. Skipping this agent.")
+    
+    log_system_message(f"All specified LLMNodes registered. Current nodes in network: {list(network.get_all_nodes().keys()) if network else 'Network not initialized'}")
+
+# Initialize components when the app module is loaded,
+# ensuring it runs for WSGI servers too.
+initialize_app_components()
+
+
 #QESTION: Already have that in app.py, so why again here?
 @socketio.on('join_room')
 def handle_join_room_event(data):
@@ -848,39 +889,15 @@ if __name__ == "__main__":
     6. Logs that the main thread has finished, indicating that background services (Flask)
        are now running.
     """
-    # 1. Initialize the Intercom network.
-    # The log_file parameter specifies where communication logs will be stored.
-    network = Intercom(log_file="communication_log.txt")
-    log_system_message("Intercom network initialized.")
+    # Initialize components if running directly (already called above, but safe to call again or can be removed if desired)
+    # initialize_app_components() # This call can be removed if it's certain the above call is sufficient.
+                                # For robustness or clarity, it can be left. Let's remove for now to avoid double init.
 
-    # 2. & 3. Load agent configurations and create/register LLMNodes.
-    if not AGENT_CONFIG:
-        log_warning("AGENT_CONFIG is empty. No LLMNodes will be created.")
-    else:
-        log_system_message(f"Found {len(AGENT_CONFIG)} agent configurations to load.")
-
-    for agent_config in AGENT_CONFIG:
-        try:
-            # Create a new LLMNode instance for each configuration.
-            # It's provided with its ID, name, knowledge, a reference to the network,
-            # and the global OpenAI API key (can be overridden per node if needed).
-            node = LLMNode(
-                node_id=agent_config["id"],
-                node_name=agent_config["name"],
-                knowledge=agent_config.get("knowledge", ""), # Use .get for optional keys like knowledge
-                network=network,
-                llm_api_key_override=openai_api_key # Using the global key for all nodes here
-            )
-            # Register the newly created node with the Intercom network.
-            network.register_node(node.node_id, node)
-            log_system_message(f"Created and registered LLMNode: {agent_config['id']} - {agent_config['name']}")
-        except KeyError as e:
-            log_error(f"Missing key {str(e)} in agent configuration: {agent_config}. Skipping this agent.")
-        except Exception as e:
-            log_error(f"Error creating or registering node for config {agent_config.get('id', 'UNKNOWN_ID')}: {str(e)}. Skipping this agent.")
-
-
-    #log_system_message(f"All specified LLMNodes registered. Current nodes in network: {list(network.get_all_nodes().keys()) if network else 'Network not initialized'}")
+    # If network is still None here, it means initialization failed.
+    if not network:
+        log_error("Network initialization failed prior to starting Flask server. Check earlier logs.")
+        # Optionally, exit or raise an error if network is critical for server startup
+        # return # or sys.exit(1)
 
     # 4. Start the Flask-SocketIO web server in a daemon thread.
     # Daemon threads automatically exit when the main program exits.
@@ -903,6 +920,13 @@ if __name__ == "__main__":
     # If flask_thread.join() were called, it would wait for start_flask to complete, which it doesn't
     # because socketio.run() is a blocking call that runs indefinitely.
     # For a script that just starts background services, letting the main thread finish is fine.
+    
+    # Log the state of the network after initialization and before server starts in main context
+    if network:
+        log_system_message(f"Network status before Flask start in main: {len(network.get_all_nodes())} nodes loaded.")
+    else:
+        log_system_message("Network is None before Flask start in main. Initialization might have issues.")
+
     log_system_message("Main thread initialization complete. Flask server and browser opener are running in background threads.")
 
 
