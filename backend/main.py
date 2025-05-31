@@ -767,32 +767,30 @@ def start_flask():
     railway_port = os.getenv('PORT')
     if railway_port:
         port = int(railway_port) # Convert the port from string to integer.
-        print(f"Using Railway PORT: {port}")
+        log_system_message(f"Using Railway PORT: {port}")
         # Run the SocketIO server on the specified port, accessible from any IP address.
         socketio.run(app, debug=False, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
     else:
         # Fallback for local development: try a range of ports.
         for port in range(5001, 5010):
             try:
-                print(f"Attempting to start SocketIO server on port {port}")
+                log_system_message(f"Attempting to start SocketIO server on port {port}")
                 # Add allow_unsafe_werkzeug=True if needed for development auto-reloader with SocketIO
                 # Run the SocketIO server. 
                 socketio.run(app, debug=False, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
-                print(f"SocketIO server started successfully on port {port}")
+                log_system_message(f"SocketIO server started successfully on port {port}")
                 break  # Exit the loop if the server starts successfully.
             except OSError as e:
                 # Handle cases where the port is already in use.
                 if 'Address already in use' in str(e):
-                    print(f"Port {port} is in use, trying next port...")
+                    log_system_message(f"Port {port} is in use, trying next port...")
                 else:
                     # If a different OS error occurs, log it and stop trying.
-                    print(f"An unexpected OS error occurred while starting server: {e}")
-                    log_error(f"Flask server OS error on port {port}: {e}")
+                    log_error(f"An unexpected OS error occurred while starting server: {e}")
                     break 
             except Exception as e:
                 # Handle any other unexpected errors during server startup.
-                print(f"An unexpected error occurred trying to start the server: {e}")
-                log_error(f"Flask server startup error on port {port}: {e}")
+                log_error(f"An unexpected error occurred trying to start the server: {e}")
                 break
 
 
@@ -819,16 +817,16 @@ def open_browser():
             result = sock.connect_ex(('127.0.0.1', port)) # connect_ex returns 0 on success.
             sock.close()
             if result == 0:  # If connection is successful (port is open).
-                print(f"Flask server detected on port {port}. Opening browser...")
+                log_system_message(f"Flask server detected on port {port}. Opening browser...")
                 webbrowser.open(f'http://localhost:{port}') # Open the URL in the browser.
                 break # Stop trying other ports once the server is found and browser is opened.
         except socket.error as e:
             # This will catch connection errors if the server is not yet up on this port.
-            # print(f"Socket error on port {port} while checking for server: {e} - Retrying or skipping.")
+            # log_system_message(f"Socket error on port {port} while checking for server: {e} - Retrying or skipping.")
             pass # Silently continue to the next port or if timeout occurs.
         except Exception as e:
             # Catch any other unexpected errors during the browser opening process.
-            # print(f"Unexpected error on port {port} when trying to open browser: {e}")
+            # log_warning(f"Unexpected error on port {port} when trying to open browser: {e}")
             log_warning(f"Error attempting to open browser for port {port}: {e}")
             continue # Continue to try the next port.
 

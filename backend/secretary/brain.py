@@ -192,7 +192,7 @@ class Brain:
             }
         
         except Exception as e:
-            print(f"[{self.node_id}] Error detecting intent: {str(e)}")
+            log_error(f"[{self.node_id}] Error detecting intent: {str(e)}")
             return {"is_calendar_command": False, "action": None, "missing_info": []}
 
 
@@ -238,8 +238,8 @@ class Brain:
             
             return result
         except Exception as e:
-            print(f"[{self.node_id}] Error extracting meeting details: {str(e)}")
-            return {}
+            log_error(f"[{self.node_id}] Error extracting meeting details: {str(e)}")
+            return {"time": None, "duration": None, "participants": [], "title": None, "description": None}
         
     def query_llm(self, messages):
         """
@@ -278,8 +278,7 @@ class Brain:
         
         except Exception as e:
             error_msg = f"LLM query failed: {e}"
-            print(f"[{self.node_id}] {error_msg}")
-            log_error(error_msg)
+            log_error(f"[{self.node_id}] {error_msg}")
             return "LLM query failed."
         
     def initiate_project_planning(self, project_id: str, objective: str):
@@ -1224,7 +1223,7 @@ class Brain:
             
             return json.loads(response.choices[0].message.content)
         except Exception as e:
-            print(f"[{self.node_id}] Error detecting email intent: {str(e)}")
+            log_error(f"[{self.node_id}] Error detecting email intent: {str(e)}")
             # Default fallback
             return {"action": "none", "count": 5, "query": "", "summary_type": "concise"}
         
@@ -1417,7 +1416,7 @@ class Brain:
             return formatted_labels
             
         except Exception as e:
-            print(f"[{self.node_id}] Error fetching email labels: {str(e)}")
+            log_error(f"[{self.node_id}] Error fetching email labels: {str(e)}")
             return []
             
     def process_advanced_email_command(self, command):
@@ -1538,8 +1537,8 @@ class Brain:
             
             return json.loads(response.choices[0].message.content)
         except Exception as e:
-            print(f"[{self.node_id}] Error analyzing email command: {str(e)}")
-            return {"action": "none", "criteria": {}, "summary_type": "concise"}
+            log_error(f"[{self.node_id}] Error analyzing email command: {str(e)}")
+            return {"action": "unknown", "parameters": {}}
         
     def _detect_send_email_intent(self, message):
         """Detect if the message is requesting to send an email"""
@@ -1594,7 +1593,7 @@ class Brain:
             
             return result
         except Exception as e:
-            print(f"[{self.node_id}] Error detecting send email intent: {str(e)}")
-            return {"is_send_email": False, "recipient": "", "subject": "", "body": "", "missing_info": []}
+            log_error(f"[{self.node_id}] Error detecting send email intent: {str(e)}")
+            return {"is_send_email": False, "missing_info": []}
 
 

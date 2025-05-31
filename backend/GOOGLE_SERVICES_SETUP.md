@@ -66,6 +66,36 @@ This will attempt OAuth flow even in production (requires browser access).
 
 ## Troubleshooting
 
+### Gmail API Service Account Issues
+
+#### "Precondition check failed" Error
+This error typically occurs when using service accounts with Gmail API. Gmail has additional requirements:
+
+1. **Enable Domain-wide Delegation:**
+   - Go to Google Cloud Console → Service Accounts
+   - Click on your service account → "Advanced settings"
+   - Enable "Enable Google Workspace Domain-wide Delegation"
+   - Note the "Client ID" (not the email)
+
+2. **Configure Google Workspace Admin Console:**
+   - Go to [Google Admin Console](https://admin.google.com)
+   - Navigate to Security → API Controls → Domain-wide Delegation
+   - Add the Client ID from step 1
+   - Add scopes: `https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/gmail.modify`
+
+3. **Set Subject Email (if using domain delegation):**
+   ```bash
+   export GOOGLE_SERVICE_ACCOUNT_SUBJECT="user@yourdomain.com"
+   ```
+
+#### Alternative: Use OAuth Tokens for Gmail
+If domain-wide delegation isn't possible, use OAuth tokens:
+```bash
+# Generate tokens locally, then deploy them
+export FORCE_GOOGLE_SERVICES=true
+# Copy token.pickle to production
+```
+
 ### Services Always Disabled
 - Check if you're in a production environment (container, Railway, etc.)
 - Verify environment variables are set correctly

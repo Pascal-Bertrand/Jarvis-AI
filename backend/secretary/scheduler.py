@@ -225,7 +225,7 @@ class Scheduler:
             
         except Exception as e:
             log_warning(f"[{self.node_id}] Failed to create calendar reminder: {e}")
-            print(f"[{self.node_id}] Failed to create calendar reminder: {e}")
+            
 
     # Replace the local meeting scheduling with Google Calendar version
     def schedule_meeting(self, project_id: str, participants: list):
@@ -854,7 +854,7 @@ class Scheduler:
             reschedule_data = json.loads(response_content)
         except json.JSONDecodeError as e:
             msg = f"[{self.node_id}] Error parsing rescheduling JSON: {e}"
-            print(f"[{self.node_id}] Error parsing rescheduling JSON: {e}")
+            log_error(f"[{self.node_id}] Error parsing rescheduling JSON: {e}")
             return msg
         
         print(reschedule_data)
@@ -896,20 +896,20 @@ class Scheduler:
         
         if not self.calendar_service:
             msg = f"[{self.node_id}] Calendar service not available, showing local meetings only"
-            print(f"[{self.node_id}] Calendar service not available, showing local meetings only")
+            log_system_message(f"[{self.node_id}] Calendar service not available, showing local meetings only")
 
             if not self.calendar:
                 msg += f"[{self.node_id}] No meetings scheduled."
-                print(msg)
+                log_system_message(msg)
                 return msg
             
             msg += f"\n[{self.node_id}] Upcoming meetings:"
-            print(f"[{self.node_id}] Upcoming meetings:")
+            log_system_message(f"[{self.node_id}] Upcoming meetings:")
             for meeting in self.brain.calendar:
                 # Format meeting details
                 meeting_info = meeting.get('meeting_info', 'No details available')
                 msg = msg + f"\n  - {meeting_info}"
-                print(f"  - {meeting_info}")
+                log_system_message(f"  - {meeting_info}")
             
             return msg
         
@@ -927,11 +927,11 @@ class Scheduler:
             
             if not events:
                 msg = f"[{self.node_id}] No upcoming meetings found."
-                print(msg)
+                log_system_message(msg)
                 return msg
             
             msg = f"[{self.node_id}] Upcoming meetings:"
-            print(f"[{self.node_id}] Upcoming meetings:")
+            log_system_message(f"[{self.node_id}] Upcoming meetings:")
             for event in events:
                 # Get start time from event details
                 start = event['start'].get('dateTime', event['start'].get('date'))
@@ -939,13 +939,13 @@ class Scheduler:
                 # Format attendee emails by extracting the user part
                 attendees = ", ".join([a.get('email', '').split('@')[0] for a in event.get('attendees', [])])
                 msg = msg + f"\n  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}"
-                print(f"  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}")
+                log_system_message(f"  - {event['summary']} on {start_time.strftime('%Y-%m-%d at %H:%M')} with {attendees}")
                 print (start_time)
             return msg
         
         except Exception as e:
             msg = f"[{self.node_id}] Error listing meetings: {str(e)}"
-            print(f"[{self.node_id}] Error listing meetings: {str(e)}")
+            log_error(f"[{self.node_id}] Error listing meetings: {str(e)}")
             return msg
 
     # TODO: Refactor this function to have return values instead of print statements 
@@ -964,7 +964,7 @@ class Scheduler:
         """
         
         if not self.calendar_service:
-            print(f"[{self.node_id}] Calendar service not available, can't reschedule meetings")
+            log_system_message(f"[{self.node_id}] Calendar service not available, can't reschedule meetings")
             return
         
         try:
@@ -1003,7 +1003,7 @@ class Scheduler:
             try:
                 reschedule_data = json.loads(response_content)
             except json.JSONDecodeError as e:
-                print(f"[{self.node_id}] Error parsing rescheduling JSON: {e}")
+                log_error(f"[{self.node_id}] Error parsing rescheduling JSON: {e}")
                 return
             
             # Extract and normalize data from the JSON response
@@ -1035,11 +1035,11 @@ class Scheduler:
             
             # Validate that a meeting identifier and new date are provided
             if not meeting_identifier:
-                print(f"[{self.node_id}] Could not determine which meeting to reschedule")
+                log_warning(f"[{self.node_id}] Could not determine which meeting to reschedule")
                 return
             
             if not new_date:
-                print(f"[{self.node_id}] No new date specified for rescheduling")
+                log_warning(f"[{self.node_id}] No new date specified for rescheduling")
                 return
             
             # Retrieve upcoming meetings to search for a matching event
@@ -1054,11 +1054,11 @@ class Scheduler:
                 ).execute()
                 events = events_result.get('items', [])
             except Exception as e:
-                print(f"[{self.node_id}] Error fetching calendar events: {str(e)}")
+                log_error(f"[{self.node_id}] Error fetching calendar events: {str(e)}")
                 return
             
             if not events:
-                print(f"[{self.node_id}] No upcoming meetings found to reschedule")
+                log_warning(f"[{self.node_id}] No upcoming meetings found to reschedule")
                 return
             
             # Use a scoring system to find the best matching event based on title, attendees, and original date
@@ -1100,11 +1100,11 @@ class Scheduler:
             
             # Require a minimum matching score
             if best_match_score < 1:
-                print(f"[{self.node_id}] Could not find a meeting matching '{meeting_identifier}'")
+                log_warning(f"[{self.node_id}] Could not find a meeting matching '{meeting_identifier}'")
                 return
             
             if not target_event:
-                print(f"[{self.node_id}] No matching meeting found for '{meeting_identifier}'")
+                log_warning(f"[{self.node_id}] No matching meeting found for '{meeting_identifier}'")
                 return
             
             # Validate the new date and time format and ensure the new time is in the future
@@ -1114,7 +1114,7 @@ class Scheduler:
                 
                 # Check if date is in the past
                 if new_start_datetime < datetime.now():
-                    print(f"[{self.node_id}] Response: The rescheduled time {new_date} at {new_time} is in the past. Please provide a future date and time.")
+                    log_system_message(f"[{self.node_id}] Response: The rescheduled time {new_date} at {new_time} is in the past. Please provide a future date and time.")
                     
                     # Ask for new date and time
                     self.meeting_context = {
@@ -1132,7 +1132,7 @@ class Scheduler:
                     self._ask_for_next_meeting_info()
                     return
             except ValueError:
-                print(f"[{self.node_id}] Response: I couldn't understand the date/time format. Please provide the date in YYYY-MM-DD format and time in HH:MM format.")
+                log_system_message(f"[{self.node_id}] Response: I couldn't understand the date/time format. Please provide the date in YYYY-MM-DD format and time in HH:MM format.")
                 
                 # Ask for new date and time
                 self.meeting_context = {
@@ -1181,7 +1181,7 @@ class Scheduler:
                 formatted_time = new_start_datetime.strftime("%I:%M %p")  # 12-hour format with AM/PM
                 formatted_date = new_start_datetime.strftime("%B %d, %Y")  # Month day, year
                 
-                print(f"[{self.node_id}] Response: Meeting '{meeting_title}' has been rescheduled to {formatted_date} at {formatted_time}.")
+                log_system_message(f"[{self.node_id}] Response: Meeting '{meeting_title}' has been rescheduled to {formatted_date} at {formatted_time}.")
                 
                 # Update local calendar records
                 for meeting in self.calendar:
@@ -1208,11 +1208,11 @@ class Scheduler:
                         self.network.send_message(self.node_id, attendee_id, notification)
                 
             except Exception as e:
-                print(f"[{self.node_id}] Error updating the meeting: {str(e)}")
-                print(f"[{self.node_id}] Response: There was an error rescheduling the meeting. Please try again.")
+                log_error(f"[{self.node_id}] Error updating the meeting: {str(e)}")
+                log_system_message(f"[{self.node_id}] Response: There was an error rescheduling the meeting. Please try again.")
             
-        except Exception as e:
-            print(f"[{self.node_id}] General error in meeting rescheduling: {str(e)}")
+        except Exception as general_e:
+            log_error(f"[{self.node_id}] General error in meeting rescheduling: {str(general_e)}")
     
     def _handle_meeting_cancellation(self, message):
         """
@@ -1272,7 +1272,7 @@ class Scheduler:
             
             if not events:
                 msg = f"[{self.node_id}] No upcoming meetings found to cancel."
-                print(f"[{self.node_id}] No upcoming meetings found to cancel")
+                log_system_message(f"[{self.node_id}] No upcoming meetings found to cancel")
                 return msg
             
             # Filter events based on cancellation criteria
@@ -1328,7 +1328,7 @@ class Scheduler:
                 
                     cancelled_count += 1
                     msg = f"[{self.node_id}] Meeting '{event.get('summary')}' cancelled."
-                    print(f"[{self.node_id}] Cancelled meeting: {event.get('summary')}")
+                    log_system_message(f"[{self.node_id}] Cancelled meeting: {event.get('summary')}")
                     
                     # Emit an update to the UI via SocketIO for cancellation
                     if self.socketio:
@@ -1337,16 +1337,16 @@ class Scheduler:
             
             if cancelled_count == 0:
                 msg = f"[{self.node_id}] No meetings found matching the cancellation criteria"
-                print(f"[{self.node_id}] No meetings found matching the cancellation criteria")
+                log_system_message(f"[{self.node_id}] No meetings found matching the cancellation criteria")
                 return msg
             else:
                 msg = f"[{self.node_id}] Cancelled {cancelled_count} meeting(s)"
-                print(f"[{self.node_id}] Cancelled {cancelled_count} meeting(s)")
+                log_system_message(f"[{self.node_id}] Cancelled {cancelled_count} meeting(s)")
                 return msg
             
         except Exception as e:
             msg = f"[{self.node_id}] Error cancelling meeting: {str(e)}"
-            print(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
+            log_error(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
             return msg    
         
     # TODO: Work on the logic! Right now it just cancels all meetings with minor criteria    
@@ -1373,7 +1373,7 @@ class Scheduler:
         
             if not events:
                 msg = f"[{self.node_id}] No upcoming meetings found to cancel."
-                print(f"[{self.node_id}] No upcoming meetings found to cancel")
+                log_system_message(f"[{self.node_id}] No upcoming meetings found to cancel")
                 return msg
                       
             cancelled_count = 0
@@ -1429,16 +1429,16 @@ class Scheduler:
             
             if cancelled_count == 0:
                 msg = f"[{self.node_id}] No meetings found matching the cancellation criteria"
-                print(f"[{self.node_id}] No meetings found matching the cancellation criteria")
+                log_system_message(f"[{self.node_id}] No meetings found matching the cancellation criteria")
                 return msg
             else:
                 msg = f"[{self.node_id}] Cancelled {cancelled_count} meeting(s)"
-                print(f"[{self.node_id}] Cancelled {cancelled_count} meeting(s)")
+                log_system_message(f"[{self.node_id}] Cancelled {cancelled_count} meeting(s)")
                 return msg
             
         except Exception as e:
             msg = f"[{self.node_id}] Error cancelling meeting: {str(e)}"
-            print(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
+            log_error(f"[{self.node_id}] Error cancelling meeting: {str(e)}")
             return msg
 
     def _get_local_meetings_on_date(self, date: str) -> list:
@@ -1491,7 +1491,7 @@ class Scheduler:
         
         # If calendar service is not available, fall back to local scheduling
         if not self.calendar_service:
-            print(f"[{self.node_id}] Calendar service not available, using local scheduling")
+            log_system_message(f"[{self.node_id}] Calendar service not available, using local scheduling")
             return self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime, meeting_title=title)
             
         
@@ -1521,8 +1521,8 @@ class Scheduler:
             meeting_date = start_datetime.strftime("%Y-%m-%d")
             meeting_time = start_datetime.strftime("%H:%M")
             
-            print(f"[{self.node_id}] Meeting created: {event.get('htmlLink')}")
-            print(f"[{self.node_id}] Meeting '{title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}")
+            log_system_message(f"[{self.node_id}] Meeting created: {event.get('htmlLink')}")
+            log_system_message(f"[{self.node_id}] Meeting '{title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}")
             
             # Create meeting info string
             meeting_info = f"Meeting '{title}' scheduled for {meeting_date} at {meeting_time} with {', '.join(participants)}"
@@ -1557,7 +1557,7 @@ class Scheduler:
 
             return f"Meeting '{title}' scheduled successfully. Check your calendar."
         except Exception as e:
-            print(f"[{self.node_id}] Failed to create calendar event: {e}")
+            log_error(f"[{self.node_id}] Failed to create calendar event: {e}")
             # Fallback to local calendar
             return self._fallback_schedule_meeting(meeting_id, participants, start_datetime, end_datetime, meeting_title=title)
 
